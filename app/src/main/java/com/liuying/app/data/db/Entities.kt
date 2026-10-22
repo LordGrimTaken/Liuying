@@ -69,3 +69,36 @@ data class MetaCacheEntity(val type: String, val id: String, val json: String, v
 
 @Entity(tableName = "recent_searches")
 data class RecentSearchEntity(@PrimaryKey val text: String, val searchedAt: Long)
+
+@Entity(tableName = "plugin_repos", indices = [Index(value = ["manifestUrl"], unique = true)])
+data class PluginRepoEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val manifestUrl: String,
+    val repoId: String,
+    val name: String,
+    val version: String,
+    val description: String,
+    val author: String?,
+    val fetchedAt: Long,
+    /** When the user accepted the permissions screen for this repository; null = never. */
+    val consentedAt: Long?,
+    val lastError: String?,
+)
+
+@Entity(
+    tableName = "plugins",
+    primaryKeys = ["repoId", "pluginId"],
+    foreignKeys = [ForeignKey(PluginRepoEntity::class, ["id"], ["repoId"], onDelete = ForeignKey.CASCADE)],
+)
+data class PluginEntity(
+    val repoId: Long,
+    val pluginId: String,
+    val name: String,
+    val version: String,
+    val description: String,
+    val scriptUrl: String,
+    /** Joined with '\n'. */
+    val types: String,
+    val permissions: String,
+    val enabled: Boolean,
+)

@@ -1,10 +1,161 @@
 package com.liuying.app.ui.home
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import com.liuying.app.ui.PlaceholderScreen
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.liuying.app.data.repo.HomeRow
+import com.liuying.app.data.repo.RowState
+import com.liuying.app.domain.ContinueItem
+import com.liuying.app.domain.ContinueKind
+import com.liuying.app.domain.EpisodeLabels
+import com.liuying.app.ui.common.ArtImage
+import com.liuying.app.ui.common.EmptyBlock
+import com.liuying.app.ui.common.ErrorNote
+import com.liuying.app.ui.common.InkButton
+import com.liuying.app.ui.common.InkTextButton
+import com.liuying.app.ui.common.PosterCard
+import com.liuying.app.ui.common.PosterPlaceholder
+import com.liuying.app.ui.common.ProgressBar
+import com.liuying.app.ui.common.SectionHeader
+import com.liuying.app.ui.common.containerViewModel
+import com.liuying.app.ui.nav.DockClearance
+import com.liuying.app.ui.nav.Navigator
+import com.liuying.app.ui.nav.Tab
+import com.liuying.app.ui.theme.GoldHairline
+import com.liuying.app.ui.theme.Paper
+import com.liuying.app.ui.theme.PaperMuted
+import com.liuying.app.ui.theme.Vermilion
 
 @Composable
-fun TodayScreen() = PlaceholderScreen(
-    title = "Today",
-    message = "Nothing on the table yet. Add a source and the day's picks will gather here.",
-)
+fun TodayScreen(navigator: Navigator) {
+    val vm = containerViewModel { TodayViewModel(it) }
+    val rows by vm.rows.collectAsStateWithLifecycle()
+    val hasSources by vm.hasSources.collectAsStateWithLifecycle()
+    val cw by vm.continueItems.collectAsStateWithLifecycle()
+
+    LazyColumn(Modifier.fillMaxSize().statusBarsPadding(), contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = DockClearance)) {
+        item {
+            Row(Modifier.fillMaxWidth().padding(end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Today", style = MaterialTheme.typography.headlineMedium, color = Paper, modifier = Modifier.weight(1f).padding(horizontal = 20.dp, vertical = 12.dp))
+                if (hasSources == true) InkTextButton("Refresh", vm::refresh)
+            }
+        }
+        if (hasSources == false) {
+            item {
+                EmptyBlock(
+                    "Nothing on the table yet",
+                    "Add a source in You and the day's picks will gather here. Your continue-watching row appears once you start something.",
+                    action = { InkButton("Add a source", { navigator.goTab(Tab.You) }) },
+                )
+            }
+        }
+        if (cw.isNotEmpty()) {
+            item { SectionHeader("Continue watching") }
+            item {
+                LazyRow(contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    items(cw, key = { it.key }) { item ->
+                        ContinueCard(item, onOpen = { navigator.openTitle(item.type, item.titleId, item.videoId) },
+                            onDetails = { navigator.openTitle(item.type, item.titleId) }, onDismiss = { vm.dismiss(item) })
+                    }
+                }
+            }
+        }
+        if (hasSources == true && rows == null) {
+            item { SectionHeader("Loading") ; PlaceholderRow() }
+        }
+        rows?.let { list ->
+            items(list, key = { it.key }) { row -> CatalogRow(row, navigator, onRetry = { vm.retry(row.key) }) }
+            if (hasSources == true && list.isEmpty()) {
+                item { EmptyBlock("No rows to show", "Your sources have no catalogs turned on for Today. They may still be searchable.") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlaceholderRow() {
+    LazyRow(contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        items(5) { PosterPlaceholder() }
+    }
+}
+
+@Composable
+private fun CatalogRow(row: HomeRow, navigator: Navigator, onRetry: () -> Unit) {
+    val state = row.state
+    if (state is RowState.Loaded && state.items.isEmpty()) return
+    SectionHeader(row.entry.title)
+    Column(Modifier.padding(bottom = 8.dp)) {
+        when (state) {
+            RowState.Loading -> PlaceholderRow()
+            is RowState.Failed -> ErrorNote("${row.entry.source.displayName}: ${state.message}", onRetry = onRetry)
+            is RowState.Loaded -> LazyRow(contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                items(state.items, key = { it.id }) { m ->
+                    PosterCard(m.title, m.poster, subtitle = m.displayYear) {
+                        navigator.openDetails(m, row.entry.catalog.type, row.entry.source.id)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun ContinueCard(item: ContinueItem, onOpen: () -> Unit, onDetails: () -> Unit, onDismiss: () -> Unit) {
+    var menu by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(8.dp)
+    Column(Modifier.width(240.dp).combinedClickable(onClick = onOpen, onLongClick = { menu = true })) {
+        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(shape).border(BorderStroke(0.5.dp, GoldHairline), shape)) {
+            ArtImage(item.thumbnail ?: item.poster, item.title ?: "?", Modifier.fillMaxSize())
+            if (item.kind == ContinueKind.UpNext) {
+                Text("Up next", style = MaterialTheme.typography.labelMedium, color = Paper,
+                    modifier = Modifier.align(Alignment.TopStart).padding(6.dp).background(Vermilion, RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 1.dp))
+            } else {
+                ProgressBar(item.fraction.toFloat(), Modifier.align(Alignment.BottomCenter).fillMaxWidth())
+            }
+        }
+        Text(item.title ?: item.titleId, style = MaterialTheme.typography.labelLarge, color = Paper, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
+        val line = buildString {
+            if (item.season != null) append(EpisodeLabels.line(item.season, item.episode, item.episodeTitle))
+            if (item.kind == ContinueKind.InProgress) { if (isNotEmpty()) append(" - "); append(EpisodeLabels.remaining(item.remainingMs)) }
+        }
+        if (line.isNotEmpty()) Text(line, style = MaterialTheme.typography.labelMedium, color = PaperMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            DropdownMenuItem(text = { Text("Open details") }, onClick = { menu = false; onDetails() })
+            DropdownMenuItem(text = { Text("Remove from continue watching") }, onClick = { menu = false; onDismiss() })
+        }
+    }
+}

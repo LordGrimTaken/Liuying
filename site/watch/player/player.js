@@ -62,7 +62,7 @@ export function player({ params, query }) {
   const toastEl = h('div', { class: 'pl-toast', role: 'status' });
   const nextEl = h('div', { class: 'pl-next', hidden: true });
   const panel = h('div', { class: 'pl-panel', role: 'dialog', 'aria-label': 'Player settings' });
-  const resumeEl = h('div', { class: 'pl-center', hidden: true });
+  const resumeEl = h('div', { class: 'pl-center ask', hidden: true });
 
   const root = h('div', { class: 'player ui loading', tabindex: '-1' },
     video, cuesBox, surface,
@@ -149,6 +149,7 @@ export function player({ params, query }) {
   function attach(startAt) {
     teardownHls();
     clear(errEl); errEl.hidden = true;
+    root.classList.remove('err');
     root.classList.add('loading');
     const url = stream.url;
     const isHls = stream.kind === 'hls';
@@ -183,7 +184,7 @@ export function player({ params, query }) {
   }
 
   function showError(msg, { expired = false } = {}) {
-    root.classList.remove('loading'); root.classList.add('ui');
+    root.classList.remove('loading'); root.classList.add('ui', 'err');
     clear(errEl).append(h('h3', { text: "This stream didn't play" }), h('p', { text: msg }),
       h('div', { class: 'btns' },
         h('button', { class: 'btn pri', type: 'button', text: 'Retry', onClick: () => { retries = 0; attach(lastPos || 0); } }),
@@ -218,8 +219,8 @@ export function player({ params, query }) {
     } else if (wantPlaying) video.play().catch(() => {});
   });
   function askResume(pos) {
-    resumeEl.hidden = false; resumeEl.style.setProperty('pointer-events', 'auto');
-    const go = (p) => { resumeEl.hidden = true; try { video.currentTime = p; } catch { /* ignore */ } start(); };
+    resumeEl.hidden = false; root.classList.add('asking');
+    const go = (p) => { resumeEl.hidden = true; root.classList.remove('asking'); try { video.currentTime = p; } catch { /* ignore */ } start(); };
     clear(resumeEl).append(h('div', { class: 'pl-resume' }, h('span', { text: `Resume at ${fmtTime(pos)}?` }), h('button', { class: 'btn pri sm', type: 'button', text: 'Resume', onClick: () => go(pos) }), h('button', { class: 'btn sm', type: 'button', text: 'Start over', onClick: () => go(0) })));
     resumeEl.querySelector('button').focus();
   }

@@ -94,6 +94,8 @@ data class AppSettings(
     val librarySort: LibrarySort = LibrarySort.RecentlyAdded,
     val libraryView: LibraryView = LibraryView.Grid,
     val recentSearchesEnabled: Boolean = true,
+    // Scraper plugins: global off switch (default off)
+    val pluginsEnabled: Boolean = false,
     // Storage
     val imageCacheLimitMb: Int = 512,
     val schemaVersion: Int = CURRENT_SCHEMA,

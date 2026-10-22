@@ -82,12 +82,21 @@ interface LibraryDao {
     @Query("DELETE FROM library WHERE type = :type AND id = :id")
     suspend fun delete(type: String, id: String)
 
+    @Query("DELETE FROM library WHERE id = :id")
+    suspend fun deleteById(id: String)
+
+    @Query("SELECT * FROM library")
+    suspend fun getAll(): List<LibraryEntity>
+
     @Query("DELETE FROM library")
     suspend fun deleteAll()
 }
 
 @Dao
 interface ProgressDao {
+    @Query("SELECT * FROM progress")
+    suspend fun getAll(): List<ProgressEntity>
+
     @Query("SELECT * FROM progress")
     fun observeAll(): Flow<List<ProgressEntity>>
 
@@ -156,4 +165,49 @@ interface RecentSearchDao {
 
     @Query("DELETE FROM recent_searches WHERE text NOT IN (SELECT text FROM recent_searches ORDER BY searchedAt DESC LIMIT :keep)")
     suspend fun trim(keep: Int)
+}
+
+@Dao
+interface PluginDao {
+    @Query("SELECT * FROM plugin_repos ORDER BY id ASC")
+    fun observeRepos(): Flow<List<PluginRepoEntity>>
+
+    @Query("SELECT * FROM plugins ORDER BY name COLLATE NOCASE ASC")
+    fun observePlugins(): Flow<List<PluginEntity>>
+
+    @Query("SELECT * FROM plugin_repos WHERE id = :id")
+    suspend fun getRepo(id: Long): PluginRepoEntity?
+
+    @Query("SELECT * FROM plugin_repos WHERE manifestUrl = :url LIMIT 1")
+    suspend fun getRepoByUrl(url: String): PluginRepoEntity?
+
+    @Query("SELECT * FROM plugins WHERE repoId = :repoId")
+    suspend fun getPlugins(repoId: Long): List<PluginEntity>
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertRepo(e: PluginRepoEntity): Long
+
+    @Update
+    suspend fun updateRepo(e: PluginRepoEntity)
+
+    @Query("UPDATE plugin_repos SET lastError = :error WHERE id = :id")
+    suspend fun setRepoError(id: Long, error: String?)
+
+    @Query("UPDATE plugin_repos SET consentedAt = :at WHERE id = :id")
+    suspend fun setConsent(id: Long, at: Long?)
+
+    @Query("DELETE FROM plugin_repos WHERE id = :id")
+    suspend fun deleteRepo(id: Long)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertPlugin(e: PluginEntity)
+
+    @Query("DELETE FROM plugins WHERE repoId = :repoId AND pluginId = :pluginId")
+    suspend fun deletePlugin(repoId: Long, pluginId: String)
+
+    @Query("UPDATE plugins SET enabled = :enabled WHERE repoId = :repoId AND pluginId = :pluginId")
+    suspend fun setPluginEnabled(repoId: Long, pluginId: String, enabled: Boolean)
+
+    @Query("UPDATE plugins SET enabled = 0 WHERE repoId = :repoId")
+    suspend fun disableAll(repoId: Long)
 }

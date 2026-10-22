@@ -53,9 +53,14 @@ const idbPut = (k, v) => new Promise((res) => {
 export async function init() {
   db = await openDb();
   for (const k of KEYS) {
-    let v;
-    if (db) v = await idbGet(k);
-    if (v === undefined) { try { const s = localStorage.getItem(lsKey(k)); if (s) v = JSON.parse(s); } catch { /* ignore */ } }
+    let rec;
+    if (db) rec = await idbGet(k);
+    // a synchronous localStorage copy is written on page hide; use whichever is newer
+    let ls;
+    try { const t = localStorage.getItem(lsKey(k)); if (t) ls = JSON.parse(t); } catch { /* ignore */ }
+    if (ls && (!rec || (ls.t || 0) > (rec.t || 0))) { rec = ls; dirtyKeys.add(k); }
+    else if (ls) { try { localStorage.removeItem(lsKey(k)); } catch { /* ignore */ } }
+    const v = rec?.v;
     if (v !== undefined && v !== null) {
       state[k] = Array.isArray(state[k]) ? (Array.isArray(v) ? v : state[k])
         : (typeof state[k] === 'object' ? { ...state[k], ...v } : v);
@@ -63,19 +68,27 @@ export async function init() {
   }
   state.settings = { ...DEFAULT_SETTINGS, ...state.settings };
   persistOk = !!db;
+  if (dirtyKeys.size) flushSoon();
 }
 
 const dirtyKeys = new Set();
-const flushNow = async () => {
+let flushing = Promise.resolve();
+function flushNow({ sync = false } = {}) {
   const keys = [...dirtyKeys]; dirtyKeys.clear();
-  for (const k of keys) {
-    const v = JSON.parse(JSON.stringify(state[k]));
-    let ok = false;
-    if (db) ok = await idbPut(k, v);
-    if (!ok) { try { localStorage.setItem(lsKey(k), JSON.stringify(v)); } catch { /* quota or blocked */ } }
-  }
-};
-const flushSoon = debounce(flushNow, 200);
+  const t = Date.now();
+  const jobs = keys.map((k) => {
+    const rec = { t, v: JSON.parse(JSON.stringify(state[k])) };
+    if (sync) { try { localStorage.setItem(lsKey(k), JSON.stringify(rec)); } catch { /* quota */ } }
+    if (!db) { if (!sync) { try { localStorage.setItem(lsKey(k), JSON.stringify(rec)); } catch { /* ignore */ } } return Promise.resolve(); }
+    return idbPut(k, rec).then((ok) => {
+      if (ok) { if (!sync) { try { localStorage.removeItem(lsKey(k)); } catch { /* ignore */ } } return; }
+      try { localStorage.setItem(lsKey(k), JSON.stringify(rec)); } catch { /* ignore */ }
+    });
+  });
+  flushing = Promise.all(jobs);
+  return flushing;
+}
+const flushSoon = debounce(() => flushNow(), 200);
 export const flush = () => { flushSoon.cancel(); return flushNow(); };
 export const persistent = () => persistOk;
 
@@ -86,8 +99,8 @@ function touch(key, detail) {
 }
 export function subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 if (typeof addEventListener === 'function') {
-  addEventListener('pagehide', () => { flush(); });
-  document.addEventListener?.('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
+  addEventListener('pagehide', () => { flushSoon.cancel(); flushNow({ sync: true }); });
+  document.addEventListener?.('visibilitychange', () => { if (document.visibilityState === 'hidden') { flushSoon.cancel(); flushNow({ sync: true }); } });
 }
 
 // ---------- settings ----------

@@ -1,0 +1,360 @@
+package com.liuying.app.ui.details
+
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.liuying.app.data.repo.SourceStreamsState
+import com.liuying.app.data.repo.StreamItem
+import com.liuying.app.data.repo.StreamRepository
+import com.liuying.app.data.settings.StreamGrouping
+import com.liuying.app.domain.EpisodeLabels
+import com.liuying.app.domain.EpisodeState
+import com.liuying.app.domain.PlayKind
+import com.liuying.app.ui.common.ArtImage
+import com.liuying.app.ui.common.Badge
+import com.liuying.app.ui.common.CenterLoading
+import com.liuying.app.ui.common.EmptyBlock
+import com.liuying.app.ui.common.ErrorNote
+import com.liuying.app.ui.common.InkButton
+import com.liuying.app.ui.common.InkChip
+import com.liuying.app.ui.common.InkTextButton
+import com.liuying.app.ui.common.ProgressBar
+import com.liuying.app.ui.common.SectionHeader
+import com.liuying.app.ui.common.containerViewModel
+import com.liuying.app.ui.nav.Navigator
+import com.liuying.app.ui.player.PlayerLauncher
+import com.liuying.app.ui.theme.Gold
+import com.liuying.app.ui.theme.GoldHairline
+import com.liuying.app.ui.theme.Ink
+import com.liuying.app.ui.theme.InkSurface
+import com.liuying.app.ui.theme.Paper
+import com.liuying.app.ui.theme.PaperMuted
+import com.liuying.app.ui.theme.Vermilion
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DetailsScreen(type: String, id: String, playVideoId: String?, navigator: Navigator) {
+    val vm = containerViewModel(key = "details:$type:$id") { DetailsViewModel(it, type, id, playVideoId) }
+    val ui by vm.ui.collectAsStateWithLifecycle()
+    val sheet by vm.sheet.collectAsStateWithLifecycle()
+    val ask by vm.ask.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+
+    LaunchedEffect(vm) {
+        vm.eventFlow.collect { e ->
+            when (e) {
+                is DetailsEvent.Launch -> PlayerLauncher.start(context, e.request)
+                is DetailsEvent.OpenUrl -> runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(e.url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                    .onFailure { Toast.makeText(context, "No app can open this link.", Toast.LENGTH_SHORT).show() }
+                is DetailsEvent.Message -> Toast.makeText(context, e.text, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    val meta = ui.meta
+    val load = ui.load
+    Box(Modifier.fillMaxSize()) {
+        when {
+            load == null || (meta == null && load.loading) -> {
+                Column(Modifier.fillMaxSize().statusBarsPadding()) { BackBar(navigator); CenterLoading(label = "Opening") }
+            }
+            meta == null -> {
+                Column(Modifier.fillMaxSize().statusBarsPadding()) {
+                    BackBar(navigator)
+                    EmptyBlock("Could not open this title", "No source had details for it. Check your connection or your sources.",
+                        action = { InkButton("Try again", vm::reload) })
+                }
+            }
+            else -> DetailsBody(vm, ui, navigator)
+        }
+    }
+
+    sheet?.let { sh ->
+        ModalBottomSheet(onDismissRequest = vm::dismissSheet, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = Ink, contentColor = Paper) {
+            StreamsSheetContent(sh, ui, vm)
+        }
+    }
+    ask?.let { a ->
+        AlertDialog(
+            onDismissRequest = vm::cancelAsk, containerColor = InkSurface, titleContentColor = Paper, textContentColor = PaperMuted,
+            title = { Text("Resume?") },
+            text = { Text("You stopped at ${com.liuying.app.ui.player.logic.TimeFormat.clock(a.positionMs)}.") },
+            confirmButton = { InkTextButton("Resume", { vm.resumeChoice(true) }) },
+            dismissButton = { InkTextButton("Start over", { vm.resumeChoice(false) }, color = PaperMuted) },
+        )
+    }
+}
+
+@Composable
+private fun BackBar(navigator: Navigator, trailing: (@Composable () -> Unit)? = null) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        InkTextButton("‹ Back", navigator::back, color = Paper)
+        Spacer(Modifier.weight(1f))
+        trailing?.invoke()
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun DetailsBody(vm: DetailsViewModel, ui: DetailsUi, navigator: Navigator) {
+    val meta = ui.meta!!
+    val load = ui.load!!
+    val watchedMovie = ui.movieProgress?.watched == true
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
+        item {
+            Box(Modifier.fillMaxWidth().aspectRatio(16f / 10f)) {
+                ArtImage(meta.background ?: meta.poster, meta.title, Modifier.fillMaxSize())
+                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Ink.copy(alpha = 0.55f), Color.Transparent, Ink))))
+                Column(Modifier.statusBarsPadding()) { BackBar(navigator) }
+                Row(Modifier.align(Alignment.BottomStart).padding(horizontal = 20.dp), verticalAlignment = Alignment.Bottom) {
+                    ArtImage(meta.poster, meta.title, Modifier.width(96.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(6.dp)).border(BorderStroke(0.5.dp, GoldHairline), RoundedCornerShape(6.dp)))
+                    Column(Modifier.padding(start = 14.dp).weight(1f)) {
+                        Text(meta.title, style = MaterialTheme.typography.headlineSmall, color = Paper, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                        val line = listOfNotNull(meta.displayYear, meta.runtime, meta.imdbRating?.let { "★ $it" }).joinToString("   ")
+                        if (line.isNotBlank()) Text(line, style = MaterialTheme.typography.bodyMedium, color = PaperMuted)
+                    }
+                }
+            }
+        }
+        item {
+            Column(Modifier.padding(horizontal = 20.dp, vertical = 14.dp)) {
+                if (load.loading) Text("Checking sources…", color = PaperMuted, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(bottom = 8.dp))
+                if (load.allFailed) ErrorNote("Your sources could not be reached. Showing saved details.", Modifier.padding(bottom = 8.dp).then(Modifier), onRetry = vm::reload)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    InkButton(primaryLabel(ui), vm::playPrimary)
+                    InkButton(if (ui.inLibrary) "Saved" else "Save", vm::toggleLibrary, filled = false)
+                    if (!ui.isSeries) {
+                        InkTextButton(if (watchedMovie) "Mark unwatched" else "Mark watched", { vm.setMovieWatched(!watchedMovie) }, color = PaperMuted)
+                    }
+                }
+                val mp = ui.movieProgress
+                if (!ui.isSeries && mp != null && mp.fraction > 0 && !mp.watched) {
+                    ProgressBar(mp.fraction.toFloat(), Modifier.padding(top = 10.dp).fillMaxWidth())
+                    Text(EpisodeLabels.remaining(mp.remainingMs), color = PaperMuted, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 4.dp))
+                }
+                if (meta.allGenres.isNotEmpty()) {
+                    Row(Modifier.padding(top = 14.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        meta.allGenres.take(8).forEach { Badge(it) }
+                    }
+                }
+                meta.description?.takeIf { it.isNotBlank() }?.let { d ->
+                    var expanded by remember(d) { mutableStateOf(false) }
+                    Text(d, style = MaterialTheme.typography.bodyLarge, color = Paper.copy(alpha = 0.88f), maxLines = if (expanded) Int.MAX_VALUE else 5,
+                        overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 14.dp).clickable { expanded = !expanded })
+                }
+                PeopleLine("Cast", meta.cast.take(8))
+                PeopleLine("Director", meta.allDirectors.take(3))
+                PeopleLine("Writer", meta.allWriters.take(3))
+                if (load.errors.isNotEmpty() && !load.loading) {
+                    Text(load.errors.joinToString("  ") { "${it.sourceName}: ${it.message}" }, style = MaterialTheme.typography.labelMedium, color = PaperMuted, modifier = Modifier.padding(top = 10.dp))
+                }
+            }
+        }
+        if (ui.isSeries) {
+            item { SectionHeader("Episodes") }
+            if (ui.seasons.size > 1) item {
+                LazyRow(contentPadding = PaddingValues(horizontal = 20.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(ui.seasons) { s ->
+                        val seasonStates = ui.states.filter { it.season == s }
+                        val label = (if (s == 0) "Specials" else "Season $s") + "  ${seasonStates.count { it.watched }}/${seasonStates.size}"
+                        InkChip(label, s == ui.season, { vm.selectSeason(s) })
+                    }
+                }
+            }
+            items(ui.episodes, key = { it.videoId }) { e -> EpisodeRow(e, onPlay = { vm.playEpisode(e) }, onToggleWatched = { vm.setEpisodeWatched(e, !e.watched) }) }
+        }
+    }
+}
+
+@Composable
+private fun PeopleLine(label: String, names: List<String>) {
+    if (names.isEmpty()) return
+    Row(Modifier.padding(top = 10.dp)) {
+        Text(label, color = Gold, style = MaterialTheme.typography.labelLarge, modifier = Modifier.width(68.dp))
+        Text(names.joinToString(", "), color = PaperMuted, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+    }
+}
+
+private fun primaryLabel(ui: DetailsUi): String {
+    val t = ui.playTarget
+    if (t?.episode != null) {
+        val code = EpisodeLabels.code(t.episode.season, t.episode.episode)
+        return when (t.kind) {
+            PlayKind.Resume -> "Resume $code"
+            PlayKind.Next, PlayKind.Start -> "Play $code"
+            PlayKind.WatchAgain -> "Watch again"
+        }
+    }
+    val mp = ui.movieProgress
+    return when {
+        mp != null && mp.watched && mp.positionMs == 0L -> "Watch again"
+        mp != null && mp.positionMs > 0 -> "Resume"
+        else -> "Play"
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun EpisodeRow(e: EpisodeState, onPlay: () -> Unit, onToggleWatched: () -> Unit) {
+    var menu by remember { mutableStateOf(false) }
+    Box {
+        Row(
+            Modifier.fillMaxWidth().combinedClickable(onClick = onPlay, onLongClick = { menu = true }).padding(horizontal = 20.dp, vertical = 8.dp).alpha(if (e.released) 1f else 0.5f),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.width(120.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(6.dp)).alpha(if (e.watched) 0.5f else 1f)) {
+                ArtImage(e.video.thumbnail, "${e.episode}", Modifier.fillMaxSize())
+                if (e.fraction > 0 && !e.watched) ProgressBar(e.fraction.toFloat(), Modifier.align(Alignment.BottomCenter).fillMaxWidth())
+            }
+            Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                Text("${e.episode}. ${e.video.displayTitle ?: "Episode ${e.episode}"}", color = Paper, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                val sub = when {
+                    !e.released -> "Not released yet"
+                    e.watched -> "Watched"
+                    e.inProgress -> EpisodeLabels.remaining((e.durationMs - e.positionMs).coerceAtLeast(0))
+                    else -> e.video.released?.take(10)
+                }
+                if (sub != null) Text(sub, color = if (e.watched) Gold else PaperMuted, style = MaterialTheme.typography.labelMedium)
+                e.video.displayOverview?.let { Text(it, color = PaperMuted, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+            }
+        }
+        DropdownMenu(menu, { menu = false }) {
+            DropdownMenuItem(text = { Text(if (e.watched) "Mark unwatched" else "Mark watched") }, onClick = { menu = false; onToggleWatched() })
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------- streams
+
+@Composable
+private fun StreamsSheetContent(sh: StreamsSheet, ui: DetailsUi, vm: DetailsViewModel) {
+    val s = ui.settings
+    val r = sh.result
+    LazyColumn(Modifier.fillMaxWidth().navigationBarsPadding(), contentPadding = PaddingValues(bottom = 24.dp)) {
+        item {
+            Column(Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
+                Text("Choose a stream", style = MaterialTheme.typography.titleLarge, color = Paper)
+                val sub = listOfNotNull(ui.meta?.title, sh.target.label.takeIf { it.isNotBlank() }).joinToString("  ·  ")
+                if (sub.isNotBlank()) Text(sub, style = MaterialTheme.typography.bodyMedium, color = PaperMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        if (sh.autoPending) item { CenterLoading(label = "Picking the best stream…") }
+        if (r == null) { item { CenterLoading(label = "Asking your sources") }; return@LazyColumn }
+        if (r.groups.isEmpty()) {
+            item { EmptyBlock("No sources for this", "None of your enabled sources offers streams for this title. Add or enable one in You.") }
+            return@LazyColumn
+        }
+        if (r.isEmpty) {
+            item {
+                EmptyBlock(
+                    if (r.allFailed) "Sources did not answer" else "No streams found",
+                    if (r.allFailed) "Every source failed. Check your connection and try again." else "Your sources have nothing for this yet.",
+                    action = { InkButton("Try again", vm::refreshStreams) },
+                )
+            }
+        }
+        if (s.streamGrouping == StreamGrouping.FlatSorted) {
+            val flat = StreamRepository.sort(r.items.filter { !s.hideNonPlayableStreams || it.enabled }, s.streamSort)
+            items(flat, key = { it.key }) { StreamRow(it, s.showRawStreamDescription, showSource = true) { vm.onStreamClick(it) } }
+            for (g in r.groups) {
+                val st = g.state
+                if (st is SourceStreamsState.Loading) item(key = "l${g.source.id}") { SourceLoadingRow(g.source.displayName) }
+                if (st is SourceStreamsState.Failed) item(key = "f${g.source.id}") { SourceFailedRow(g.source.displayName, st.message, vm::retryStreams) }
+            }
+        } else {
+            for (g in r.groups) {
+                item(key = "h${g.source.id}") { SectionHeader(g.source.displayName) }
+                when (val st = g.state) {
+                    SourceStreamsState.Loading -> item(key = "l${g.source.id}") { SourceLoadingRow(g.source.displayName) }
+                    is SourceStreamsState.Failed -> item(key = "f${g.source.id}") { SourceFailedRow(g.source.displayName, st.message, vm::retryStreams) }
+                    is SourceStreamsState.Loaded -> {
+                        val list = StreamRepository.sort(st.items.filter { !s.hideNonPlayableStreams || it.enabled }, s.streamSort)
+                        if (list.isEmpty()) item(key = "e${g.source.id}") { Text("Nothing from this source.", color = PaperMuted, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) }
+                        items(list, key = { it.key }) { StreamRow(it, s.showRawStreamDescription, showSource = false) { vm.onStreamClick(it) } }
+                    }
+                }
+            }
+        }
+        if (r.done && !r.isEmpty) item { Row(Modifier.padding(horizontal = 12.dp)) { InkTextButton("Refresh streams", vm::refreshStreams, color = PaperMuted) } }
+    }
+}
+
+@Composable
+private fun SourceLoadingRow(name: String) {
+    Text("Asking $name…", color = PaperMuted, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+}
+
+@Composable
+private fun SourceFailedRow(name: String, message: String, onRetry: () -> Unit) {
+    ErrorNote("$name: $message", onRetry = onRetry)
+}
+
+@Composable
+private fun StreamRow(item: StreamItem, showRaw: Boolean, showSource: Boolean, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(10.dp)
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).clip(shape).background(InkSurface).border(BorderStroke(0.5.dp, GoldHairline), shape)
+            .clickable(onClick = onClick).padding(12.dp).alpha(if (item.enabled) 1f else 0.5f),
+    ) {
+        Text(item.displayName, color = Paper, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        val badges = buildList {
+            if (showSource) add(item.source.displayName)
+            addAll(item.quality.badges)
+        }
+        if (badges.isNotEmpty()) Row(Modifier.padding(top = 6.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) { badges.forEach { Badge(it) } }
+        if (showRaw) item.detail?.takeIf { it.isNotBlank() }?.let { Text(it, color = PaperMuted, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp)) }
+        item.disabledReason?.let { Text(it, color = Vermilion, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 6.dp)) }
+        if (item.kind == com.liuying.app.domain.StreamKind.External) Text("Opens outside Liuying", color = PaperMuted, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 4.dp))
+    }
+}
