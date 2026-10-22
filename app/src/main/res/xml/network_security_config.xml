@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Cleartext (http) is permitted because user-added sources and addons are often
+  served over plain http on a LAN. Everything else defaults to the platform's
+  normal trust anchors. Tighten per-domain here if a fixed host list is ever known.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
