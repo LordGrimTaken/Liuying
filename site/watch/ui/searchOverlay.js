@@ -6,7 +6,7 @@ import { loadCatalog } from '../addon/service.js';
 import { describeError, searchableCatalogs } from '../addon/client.js';
 import { posterCard, rowSection, showSkeletons, errorCard, emptyState } from './components.js';
 import { debounce } from '../util.js';
-import { matchesType, typeFilters, typeFilterLabel, suggest } from '../ux.js';
+import { matchesType, typeFilters, typeFilterLabel, suggest, rankByQuery, exactMatches, searchTips } from '../ux.js';
 import { cachedTitles, rowSubtitle } from './today.js';
 import { currentRoute, navigate } from '../router.js';
 
@@ -19,6 +19,7 @@ export function openSearch(q = '') {
   const prevFocus = document.activeElement;
   let ctl = null;
   let typeFilter = 'all';
+  let srcFilter = 'all';
   let sections = [];
   let lastRun = '';
 
@@ -35,17 +36,43 @@ export function openSearch(q = '') {
     h('div', { class: 'so-in' }, h('div', { class: 'so-top' }, form, closeBtn), typeBox, body));
   const shell = document.getElementById('shell');
 
+  const srcBox = h('div', { class: 'chips', role: 'group', 'aria-label': 'Filter by source', hidden: true });
+  typeBox.after?.(srcBox);
+  const bestSec = rowSection('Best match', { sub: 'Exact title' });
+  bestSec.el.hidden = true; bestSec.el.classList.add('best');
   function drawTypes() {
     const types = typeFilters(sections.map((s) => s.cat.type));
     clear(typeBox);
     for (const t of types) typeBox.append(h('button', { class: 'chip', type: 'button', 'aria-pressed': String(typeFilter === t), onClick: () => { typeFilter = t; applyFilter(); drawTypes(); } }, typeFilterLabel(t)));
+    // one chip per source that has results; only worth showing when there are two or more
+    const srcs = [...new Map(sections.filter((x) => !x.empty).map((x) => [x.source.url, x.source.manifest?.name || 'Source'])).entries()];
+    if (srcFilter !== 'all' && !srcs.some(([u]) => u === srcFilter)) srcFilter = 'all';
+    srcBox.hidden = srcs.length < 2;
+    clear(srcBox);
+    if (srcs.length > 1) {
+      srcBox.append(h('button', { class: 'chip', type: 'button', 'aria-pressed': String(srcFilter === 'all'), onClick: () => { srcFilter = 'all'; applyFilter(); drawTypes(); } }, 'All sources'));
+      for (const [u, n] of srcs) srcBox.append(h('button', { class: 'chip', type: 'button', 'aria-pressed': String(srcFilter === u), onClick: () => { srcFilter = u; applyFilter(); drawTypes(); } }, n));
+    }
   }
   function applyFilter() {
     let shown = 0;
-    for (const s of sections) { const hide = !matchesType(s.cat.type, typeFilter) || s.empty; s.sec.el.hidden = hide; if (!hide) shown++; }
+    const pass = (s) => matchesType(s.cat.type, typeFilter) && (srcFilter === 'all' || s.source.url === srcFilter) && !s.empty;
+    for (const s of sections) { const hide = !pass(s); s.sec.el.hidden = hide; if (!hide) shown++; }
     results.querySelector('.nofilter')?.remove();
     if (sections.length && sections.every((s) => s.done) && !shown && sections.some((s) => !s.empty)) {
-      results.append(h('p', { class: 'mute nofilter', text: `No ${typeFilterLabel(typeFilter).toLowerCase()} results. Try All.` }));
+      results.append(h('p', { class: 'mute nofilter', text: 'No results with these filters. Try All.' }));
+    }
+    // exact title matches float to the top as their own row (L006)
+    const vis = sections.filter(pass);
+    const best = exactMatches(vis.map((s) => s.items || []), lastRun);
+    bestSec.el.hidden = !best.length;
+    if (best.length) {
+      const key = best.map((b) => b.id).join('|');
+      if (bestSec.el.dataset.key !== key) {
+        bestSec.el.dataset.key = key; clear(bestSec.scroller); bestSec.scroller.className = 'scroller';
+        const owner = (it) => vis.find((s) => (s.items || []).includes(it))?.source;
+        for (const it of best.slice(0, 12)) { const c = posterCard(it, { srcId: owner(it) ? store.sourceId(owner(it)) : undefined }); c.setAttribute('role', 'listitem'); bestSec.scroller.append(c); }
+      }
     }
   }
 
@@ -75,7 +102,7 @@ export function openSearch(q = '') {
     const v = input.value.trim();
     clr.hidden = !input.value;
     ctl?.abort();
-    clear(results); sections = []; lastRun = v;
+    clear(results); sections = []; lastRun = v; bestSec.el.dataset.key = ''; bestSec.el.hidden = true; srcBox.hidden = true;
     if (v.length < 2) { lastRun = ''; drawTypes(); drawRecent(); drawSuggestions(); return; }
     clear(recent); clear(sugBox);
     ctl = new AbortController();
@@ -88,7 +115,7 @@ export function openSearch(q = '') {
     }
     let pending = targets.length, found = 0;
     const live = h('p', { class: 'progress-line' }, h('span', { class: 'spin' }), `Searching ${pending} catalog${pending > 1 ? 's' : ''}…`);
-    results.append(live);
+    results.append(live, bestSec.el);
     for (const t of targets) {
       const sec = rowSection(catalogTitle(t.cat), { sub: rowSubtitle(t.cat, t.source) });
       showSkeletons(sec.scroller, 6);
@@ -103,7 +130,8 @@ export function openSearch(q = '') {
           clear(sec.scroller);
           if (!items.length) { entry.empty = true; sec.el.hidden = true; } else {
             found += items.length;
-            for (const it of items.slice(0, 40)) { const c = posterCard(it, { srcId: store.sourceId(t.source) }); c.setAttribute('role', 'listitem'); sec.scroller.append(c); }
+            entry.items = rankByQuery(items, v).slice(0, 40);
+            for (const it of entry.items) { const c = posterCard(it, { srcId: store.sourceId(t.source) }); c.setAttribute('role', 'listitem'); sec.scroller.append(c); }
           }
         } catch (e) {
           if (signal.aborted) return;
@@ -115,7 +143,11 @@ export function openSearch(q = '') {
             drawTypes(); applyFilter();
             if (pending <= 0) {
               live.remove();
-              if (!found) results.append(emptyState(`No results for “${v}”`, 'Check the spelling, or add a source that supports search.'));
+              if (!found) {
+                const tips = searchTips(v, { sources: store.sources().length, searchable: targets.length });
+                results.append(h('div', { class: 'state noresults' }, h('h3', { text: `No results for “${v}”` }), h('ul', {}, tips.map((t) => h('li', { text: t }))),
+                  h('a', { class: 'btn sm', href: '#/sources', onClick: () => close(true), text: 'Check your sources' })));
+              }
             } else live.lastChild.textContent = `Searching ${pending} catalog${pending > 1 ? 's' : ''}…`;
           }
         }

@@ -3,7 +3,7 @@ import { h, icon, clear } from './dom.js';
 import * as store from '../store.js';
 import { loadMeta } from '../addon/service.js';
 import { normalizeVideos } from '../progress.js';
-import { buildAgenda, airStatus } from '../ux.js';
+import { buildAgenda, airStatus, filterAgenda } from '../ux.js';
 import { artImg, emptyState, titleHref } from './components.js';
 import { streamsHref } from './continue.js';
 
@@ -16,7 +16,8 @@ export function calendar() {
   clear(view).append(page);
   const status = h('p', { class: 'mute cal-status', role: 'status' });
   const out = h('div', { class: 'cal-grid' });
-  page.append(h('div', { class: 'page-h' }, h('h1', { text: 'Calendar' })), h('p', { class: 'lede', text: 'New and recent episodes for the series on your shelf.' }), status, out);
+  const hideBtn = h('button', { class: 'chip', type: 'button', 'aria-pressed': String(!!store.settings().calHideWatched), title: 'Leave out episodes you have already watched', onClick: () => { const on = !store.settings().calHideWatched; store.setSettings({ calHideWatched: on }); hideBtn.setAttribute('aria-pressed', String(on)); draw(false); } }, 'Hide watched');
+  page.append(h('div', { class: 'page-h' }, h('h1', { text: 'Calendar' }), h('div', { class: 'chips', role: 'group', 'aria-label': 'Display' }, hideBtn)), h('p', { class: 'lede', text: 'New and recent episodes for the series on your shelf.' }), status, out);
 
   const shelfSeries = () => store.library().filter((i) => i.type === 'series').slice(0, MAX_SERIES);
 
@@ -50,11 +51,11 @@ export function calendar() {
       out.append(emptyState('No series on your shelf', 'Save a series and its upcoming episodes will be listed here.', h('a', { class: 'btn pri', href: '#/', text: 'Browse Today' })));
       return;
     }
-    const a = buildAgenda(series, store.cachedMeta, normalizeVideos, new Date());
+    const a = filterAgenda(buildAgenda(series, store.cachedMeta, normalizeVideos, new Date()), { hideWatched: !!store.settings().calHideWatched, isWatched: (id, ep) => !!store.getProgress(id, ep)?.watched });
     status.textContent = loading ? `Checking ${a.series} series for new episodes…` : `${a.tracked} of ${a.series} series reported release dates.`;
     const up = h('div', { class: 'cal-col' }, h('h2', { class: 'sec', text: 'Upcoming' }));
     if (a.upcoming.length) a.upcoming.forEach((d) => up.append(dayBlock(d)));
-    else up.append(h('div', { class: 'state compact', text: loading ? 'Loading release dates…' : 'Nothing scheduled. Your sources have no future release dates for these series.' }));
+    else up.append(h('div', { class: 'state compact', text: loading ? 'Loading release dates…' : store.settings().calHideWatched ? 'Nothing new to show. Turn off Hide watched to see everything.' : 'Nothing scheduled. Your sources have no future release dates for these series.' }));
     const rc = h('div', { class: 'cal-col' }, h('h2', { class: 'sec', text: 'Recently aired' }));
     if (a.recent.length) a.recent.forEach((d) => rc.append(dayBlock(d)));
     else rc.append(h('div', { class: 'state compact', text: 'No episodes in the last 7 days.' }));

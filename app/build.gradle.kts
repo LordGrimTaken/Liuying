@@ -71,6 +71,8 @@ android {
                 (System.getenv("ROBOLECTRIC_REPO_URL") ?: "https://maven-central.storage-download.googleapis.com/maven2")
                     .let { t.systemProperty("robolectric.dependency.repo.url", it) }
                 t.maxHeapSize = "2g"
+                // LIUYING_SHOTS=1 writes the Roborazzi screenshots of ui/shots to app/build/shots
+                if (System.getenv("LIUYING_SHOTS") != null) t.systemProperty("roborazzi.test.record", "true")
             }
         }
     }

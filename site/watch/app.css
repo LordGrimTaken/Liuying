@@ -891,3 +891,31 @@ html{scroll-padding-top:calc(var(--tb) + env(safe-area-inset-top) + 16px);scroll
 [role="checkbox"][data-id]::after{content:"";position:absolute;top:8px;left:8px;width:22px;height:22px;border-radius:50%;background:rgba(20,17,15,.7);border:2px solid #f2e9da;box-sizing:border-box;z-index:3}
 [role="checkbox"][data-id].picked{outline:3px solid var(--gold);outline-offset:-3px}
 [role="checkbox"][data-id].picked::after{background:var(--red) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12.5 4.5 4.5L19 7.5'/%3E%3C/svg%3E") center/14px no-repeat;border-color:#fff}
+
+/* ---- sources: test results, privacy note ---- */
+.ipnote{margin:8px 0 0;font-size:13px}
+.srctest{grid-column:1/-1;margin-top:12px;padding:12px 14px;border:1px dashed var(--line);border-radius:var(--r-sm)}
+.srctest .tt{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
+.srctest ul{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.srctest li{display:grid;grid-template-columns:84px 90px 1fr;gap:8px;font-size:13.5px;align-items:baseline}
+.srctest li.fail .rs{color:var(--red2);font-weight:700}.srctest li.pass .rs{font-weight:700}
+@media(max-width:520px){.srctest li{grid-template-columns:84px 1fr}.srctest li .mute{grid-column:1/-1}}
+
+/* ---- first-run guide ---- */
+.firstrun{max-width:640px;margin:8vh auto 0;padding:22px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--surface)}
+.firstrun h2{font:400 26px/1.2 var(--serif);margin:0 0 14px}
+.firstrun ol{list-style:none;margin:0 0 18px;padding:0;display:grid;gap:14px}
+.firstrun li{display:flex;gap:14px;align-items:flex-start}
+.firstrun .n{flex:none;display:grid;place-items:center;width:30px;height:30px;border-radius:50%;border:1.5px solid var(--gold);font:700 15px var(--serif);color:var(--gold)}
+.firstrun li b{display:block;margin-bottom:2px}.firstrun li span:not(.n){display:block;color:var(--mute);font-size:14.5px;line-height:1.5}
+.firstrun .actions{display:flex;gap:10px;flex-wrap:wrap}
+.refresh-box{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+
+/* ---- search: best match, no-results help ---- */
+.noresults{max-width:560px}.noresults ul{margin:8px 0 14px;padding-left:20px;color:var(--mute);line-height:1.6}
+.so .chips+.chips{margin-top:8px}
+.facet{align-self:center;margin-right:4px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--mute)}
+
+/* ---- spoiler protection ---- */
+.ep.spoil .th img{filter:blur(14px) saturate(.6);transform:scale(1.15)}
+.ep.spoil .o .blur{filter:blur(6px);user-select:none}

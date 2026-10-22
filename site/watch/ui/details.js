@@ -188,14 +188,15 @@ export function details({ params, query }) {
       const th = imgUrl(e.thumbnail);
       const date = e.released && !Number.isNaN(Date.parse(e.released)) ? new Date(e.released).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '';
       const isNext = target.episode?.id === e.id && !rec?.watched;
-      const row = h('div', { class: `ep${rec?.watched ? ' watched' : ''}${future ? ' future' : ''}${isNext ? ' next' : ''}` },
+      const spoil = store.settings().spoilers && !rec?.watched && !(rec?.positionMs > 0); // spoiler protection (L036)
+      const row = h('div', { class: `ep${rec?.watched ? ' watched' : ''}${future ? ' future' : ''}${isNext ? ' next' : ''}${spoil ? ' spoil' : ''}` },
         h('div', { class: 'th' }, h('span', { 'aria-hidden': 'true', text: `E${Number.isFinite(e.episode) ? e.episode : '?'}` }), th ? artImg(th, '') : null,
           rec?.watched ? h('span', { class: 'chk', title: 'Watched' }, icon('check', 14)) : null,
           isInProgress(rec, store.settings().threshold) ? h('div', { class: 'pbar', style: { '--p': Math.round(r * 100) + '%' } }, h('i')) : null),
         h('div', { class: 'info' },
           h('div', { class: 't' }, h('b', { text: `S${e.season} E${Number.isFinite(e.episode) ? e.episode : '?'}` }), h('span', { text: e.title || `Episode ${e.episode}` }), isNext ? h('span', { class: 'badge nx', text: 'Up next' }) : rec?.watched ? h('span', { class: 'badge ok wk', text: 'Watched' }) : null),
           h('div', { class: 'd', text: [date, e.runtime, future ? 'Not released yet' : ''].filter(Boolean).join(' · ') }),
-          e.overview ? h('div', { class: 'o', text: e.overview }) : null),
+          e.overview ? (spoil ? h('div', { class: 'o' }, h('span', { class: 'blur', 'aria-hidden': 'true', text: e.overview }), h('span', { class: 'sr', text: 'Description hidden by spoiler protection.' })) : h('div', { class: 'o', text: e.overview })) : null),
         h('button', { class: 'ibtn' + (rec?.watched ? ' on' : ''), type: 'button', 'aria-label': rec?.watched ? `Mark ${e.title || 'episode'} unwatched` : `Mark ${e.title || 'episode'} watched`, 'aria-pressed': String(!!rec?.watched), title: rec?.watched ? 'Mark unwatched' : 'Mark watched',
           onClick: () => markMany([e], !rec?.watched, 'episode') }, icon('check')));
       if (future) row.append(h('button', { class: 'main', type: 'button', 'aria-label': `${e.title || 'Episode'} is not released yet`, onClick: () => toast(`Not released yet${date ? ' — ' + date : ''}`) }));

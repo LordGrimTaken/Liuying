@@ -1,6 +1,7 @@
 import { h, icon, clear, toast, confirmDialog, keepFocus } from './dom.js';
 import * as store from '../store.js';
-import { fetchManifest, describeError } from '../addon/client.js';
+import { fetchManifest, describeError, fetchCatalog, fetchMeta, fetchStreamsFrom, fetchSubtitlesFrom } from '../addon/client.js';
+import { testSource, summarize, RESOURCE_LABEL } from '../addon/sourcetest.js';
 import { normalizeManifestUrl, isAdult, isConfigurable, configurationRequired, configureUrl, catalogTitle, normalizeResources, catalogCapabilities, catalogKey, noCatalogsNotice } from '../addon/protocol.js';
 import { refreshManifests } from '../addon/service.js';
 import { imgUrl } from '../util.js';
@@ -22,9 +23,11 @@ export function sources({ query }) {
   const list = h('div', { class: 'srclist' });
   const addBox = h('div', {});
   const expanded = new Set();
+  const tests = new Map(); // source url -> {running, results}
   const addBtn = h('button', { class: 'btn pri', type: 'button', onClick: () => openAdd() }, icon('plus', 18), 'Add source');
   page.append(h('div', { class: 'page-h' }, h('h1', { text: 'Sources' }), addBtn),
     h('p', { class: 'lede', text: 'Sources are addons you choose, identified by a manifest link. Liuying does not host or provide any content. You are responsible for the sources you add.' }),
+    h('p', { class: 'mute ipnote', text: 'Privacy: a source can see your IP address and which titles you ask it for, like any website you visit. Liuying itself does not track you.' }),
     h('div', { style: { height: '14px' } }), addBox, list);
   const unsub = store.subscribe((k) => { if (k === 'sources' || k === 'settings') draw(); });
 
@@ -63,7 +66,7 @@ export function sources({ query }) {
     const paste = navigator.clipboard?.readText ? h('button', { class: 'btn', type: 'button', onClick: async () => { try { input.value = (await navigator.clipboard.readText()).trim(); input.focus(); } catch { toast('Clipboard is not available. Paste with Ctrl+V.'); } } }, 'Paste') : null;
     addBox.append(h('form', { class: 'preview', onSubmit: go, 'aria-label': 'Add a source' },
       h('div', { class: 'field' }, h('label', { for: 'src-url', text: 'Manifest link' }), input,
-        h('p', { class: 'hint mute', id: 'src-hint', text: 'Paste the link that ends in /manifest.json. stremio:// links work too.' })),
+        h('p', { class: 'hint mute', id: 'src-hint', text: 'Paste the link that ends in /manifest.json. stremio:// links work too. The source will see your IP address.' })),
       h('div', { class: 'actions' }, $btn, paste, h('button', { class: 'btn', type: 'button', text: 'Close', onClick: () => clear(addBox) })), msg, prev));
     function showPreview(url, m) {
       const dupUrl = store.sources().find((s) => s.url === url);
@@ -135,9 +138,11 @@ export function sources({ query }) {
         h('button', { class: 'btn sm', type: 'button', disabled: idx === n - 1, 'aria-label': `Move ${name} down`, onClick: () => store.moveSource(s.url, 1) }, icon('down', 16), 'Down'),
         m && isConfigurable(m) ? h('a', { class: 'btn sm', href: configureUrl(s.url), target: '_blank', rel: 'noopener noreferrer' }, icon('external', 16), 'Configure') : null,
         h('button', { class: 'btn sm', type: 'button', onClick: () => refresh(s) }, icon('refresh', 16), 'Refresh'),
+        m ? h('button', { class: 'btn sm', type: 'button', 'aria-label': `Test ${name}`, onClick: () => runTest(s, name) }, icon('check', 16), 'Test') : null,
         h('button', { class: 'btn sm', type: 'button', 'aria-expanded': String(open), onClick: () => { open ? expanded.delete(s.url) : expanded.add(s.url); draw(); } }, 'Details'),
         h('button', { class: 'btn sm', type: 'button', onClick: () => remove(s, name) }, icon('trash', 16), 'Remove')));
     if (open && m) row.append(detail(s, m));
+    if (tests.has(s.url)) row.append(testPanel(tests.get(s.url)));
     return row;
   }
 
@@ -156,6 +161,25 @@ export function sources({ query }) {
         return h('label', { class: 'switch' }, h('div', { class: 'tx' }, h('b', { text: catalogTitle(c) }), h('span', { text: [caps.search ? 'Searchable' : '', caps.searchRequired || caps.otherRequired.length ? 'Needs input (not shown on Today)' : ''].filter(Boolean).join(' · ') || 'Show on Today' })),
           h('input', { class: 'tg', type: 'checkbox', checked: !hidden[key], 'aria-label': `Show ${catalogTitle(c)} on Today`, onChange: (e) => { const hc = { ...(store.settings().hiddenCatalogs || {}) }; if (e.target.checked) delete hc[key]; else hc[key] = true; store.setSettings({ hiddenCatalogs: hc }); } }));
       }));
+  }
+
+  /** Asks the source for each resource it declares and shows pass or fail per resource (L081). */
+  async function runTest(s, name) {
+    const st = { running: true, results: [], name };
+    st.url = s.url; tests.set(s.url, st); draw();
+    const ctl = new AbortController();
+    const o = { signal: ctl.signal };
+    try {
+      st.results = await testSource(s, { manifest: (u) => fetchManifest(u, o), catalog: (src, c, x) => fetchCatalog(src, c, x, o), meta: (src, t, i) => fetchMeta(src, t, i, o), stream: (src, t, i) => fetchStreamsFrom(src, t, i, o), subtitles: (src, t, i, x) => fetchSubtitlesFrom(src, t, i, x, o), describe: describeError },
+        { onStep: (r, all) => { st.results = [...all]; draw(); } });
+    } catch (e) { st.results = [{ resource: 'manifest', status: 'fail', ms: 0, detail: describeError(e) }]; }
+    st.running = false; draw();
+  }
+  function testPanel(st) {
+    const G = { pass: '✓ Pass', fail: '✗ Failed', skip: '– Skipped' };
+    return h('div', { class: 'srctest', role: 'status', 'aria-live': 'polite', 'aria-label': `Test results for ${st.name}` },
+      h('div', { class: 'tt' }, h('b', { text: st.running ? 'Testing…' : summarize(st.results.filter((r) => r.status !== 'skip')) }), st.running ? h('span', { class: 'spin' }) : h('button', { class: 'linkbtn', type: 'button', text: 'Close', onClick: () => { tests.delete(st.url); draw(); } })),
+      h('ul', {}, st.results.map((r) => h('li', { class: r.status }, h('span', { class: 'rs', text: G[r.status] }), h('b', { text: RESOURCE_LABEL[r.resource] || r.resource }), h('span', { class: 'mute', text: [r.detail, r.ms ? `${r.ms} ms` : ''].filter(Boolean).join(' · ') })))));
   }
 
   async function refresh(s) {

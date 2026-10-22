@@ -1,4 +1,4 @@
-import { h, icon, clear, iconBtn } from './dom.js';
+import { h, icon, clear, iconBtn, toast } from './dom.js';
 import * as store from '../store.js';
 import { catalogCapabilities, isHomeEligible, catalogKey, catalogTitle, isAdult } from '../addon/protocol.js';
 import { loadCatalog } from '../addon/service.js';
@@ -7,7 +7,9 @@ import { posterCard, rowSection, showSkeletons, errorCard, emptyPage } from './c
 import { renderHero } from './hero.js';
 import { renderContinueRow } from './continue.js';
 import { href, enc, restoreScroll } from '../router.js';
-import { pickFeatured, orderRows } from '../ux.js';
+import { pickFeatured, orderRows, pickSurprise } from '../ux.js';
+import { navigate } from '../router.js';
+import { titleHref } from './components.js';
 
 const cache = new Map(); // key -> {items, at}
 const TTL = 15 * 60e3;          // served without asking the source (L089)
@@ -72,7 +74,19 @@ export function today() {
   const rowsBox = h('div', { class: 'rows-box' });
   const failBanner = h('div', { class: 'fail-box' });
   const refreshBtn = h('button', { class: 'btn sm refresh', type: 'button', onClick: () => build(true) }, icon('refresh', 18), 'Refresh');
-  page.append(h('div', { class: 'page-h sr' }, h('h1', { text: 'Today' })), failBanner, heroBox, contBox, rowsBox, h('div', { class: 'refresh-box' }, refreshBtn));
+  const surpriseBtn = h('button', { class: 'btn sm', type: 'button', title: 'Open a random title from your shelf or what is on screen', onClick: surprise }, icon('dice', 18), 'Surprise me');
+  page.append(h('div', { class: 'page-h sr' }, h('h1', { text: 'Today' })), failBanner, heroBox, contBox, rowsBox, h('div', { class: 'refresh-box' }, surpriseBtn, refreshBtn));
+  /** A random unwatched title: from your shelf first, otherwise from the catalogs loaded here (L010). */
+  function surprise() {
+    const unwatched = (i) => !!store.getProgress(i.id, null)?.watched;
+    const lib = store.library();
+    const pool = lib.some((i) => !unwatched(i)) ? lib : [...cache.values()].flatMap((c) => c.items).filter((i) => i && i.id && i.type);
+    const pick = pickSurprise(pool, { isWatched: unwatched, avoid: store.prefs().lastSurprise || '' });
+    if (!pick) { toast('Nothing to pick from yet. Add a source or save a title first.'); return; }
+    store.setPref('lastSurprise', pick.id);
+    toast(`Tonight: ${pick.name}`);
+    navigate(`/title/${encodeURIComponent(pick.type || 'movie')}/${encodeURIComponent(pick.id)}`);
+  }
   let heroCtl = null;
 
   let status = {};
@@ -84,8 +98,9 @@ export function today() {
     renderContinueRow(contBox, ctl.signal, { onChange: () => renderContinueRow(contBox, ctl.signal) });
     if (!store.sources().length) {
       clear(contBox);
-      rowsBox.append(emptyPage('sources', 'Your scroll is blank', 'Liuying shows what your own sources provide. Add a source with its manifest link and your catalogs will appear here.',
-        h('a', { class: 'btn pri', href: '#/sources?add=1', text: 'Add a source' })));
+      surpriseBtn.hidden = true;
+      if (store.prefs().dismissedGuide) rowsBox.append(emptyPage('sources', 'Your scroll is blank', 'Add a source with its manifest link and your catalogs will appear here.', h('a', { class: 'btn pri', href: '#/sources?add=1', text: 'Add a source' }), h('button', { class: 'btn', type: 'button', text: 'Show the guide', onClick: () => { store.setPref('dismissedGuide', false); build(); } })));
+      else rowsBox.append(firstRun());
       return;
     }
     if (!rows.length) {
@@ -102,6 +117,18 @@ export function today() {
       rowsBox.append(sec.el);
       loadRow(r, sec, bypass, r.key === heroKey);
     }
+  }
+
+  /** Three short steps for someone with no source yet; the card can be dismissed for good (L078). */
+  function firstRun() {
+    const step = (n, title, text) => h('li', {}, h('span', { class: 'n', 'aria-hidden': 'true', text: String(n) }), h('div', {}, h('b', { text: title }), h('span', { text })));
+    return h('section', { class: 'firstrun', 'aria-labelledby': 'fr-h' },
+      h('h2', { id: 'fr-h', text: 'Start in three steps' }),
+      h('ol', {},
+        step(1, 'A source is a link', 'It points to an addon that lists titles and streams. Liuying does not host or provide any content, you bring your own.'),
+        step(2, 'Add one', 'Paste its manifest link (it ends in /manifest.json). Catalogs appear here within seconds.'),
+        step(3, 'Know who sees what', 'A source can see your IP address and what you ask it for, like any website. Liuying has no analytics, and your shelf and progress stay in this browser unless you sign in.')),
+      h('div', { class: 'actions' }, h('a', { class: 'btn pri', href: '#/sources?add=1', text: 'Add a source' }), h('button', { class: 'btn', type: 'button', text: 'Skip for now', onClick: () => { store.setPref('dismissedGuide', true); build(); } })));
   }
 
   async function loadRow(r, sec, bypass, isHero) {

@@ -3,6 +3,8 @@ import * as store from '../store.js';
 import { loadStreams } from '../addon/service.js';
 import { describeError, fetchStreamsFrom } from '../addon/client.js';
 import { pickSimilar, sortStreams, RES_RANK, describeStream } from '../addon/streams.js';
+import { qualityOptions, languageOptions, filterStreams } from '../ux.js';
+import { languageName } from '../player/subtitles.js';
 import { normalizeVideos, parseEpisodeId } from '../progress.js';
 import { href, enc, navigate, goBack } from '../router.js';
 import { imgUrl } from '../util.js';
@@ -44,6 +46,7 @@ export function streams({ params, query }) {
   const groups = new Map(); // source url -> {source, status, streams, error}
   let order = [];
   let filter = 'all';
+  let qFilter = '', lFilter = ''; // quality and language chips (L064, L065)
   let sort = null; // {key, dir} once the viewer picks a column
   const expanded = new Set();
   const TOP = 5;
@@ -54,10 +57,12 @@ export function streams({ params, query }) {
   const back = h('a', { class: 'ibtn ring', href: detailsHref, 'aria-label': 'Back to details', onClick: (e) => { if (e.ctrlKey || e.metaKey || e.shiftKey || e.button) return; e.preventDefault(); goBack(detailsHref, (p) => p.name === 'title' && p.params.id === id); } }, icon('back'));
   const head = h('div', { class: 's-head' }, back, artImg(poster, '') || h('div', { class: 'ph' }), h('div', {}, h('p', { class: 'eyebrow', text: 'Choose a stream' }), h('h1', { text: name }), epLabel ? h('p', { class: 'mute', text: epLabel }) : null));
   const chipsEl = h('div', { class: 'chips', role: 'group', 'aria-label': 'Filter by source' });
+  const qualEl = h('div', { class: 'chips', role: 'group', 'aria-label': 'Filter by quality' });
+  const langEl = h('div', { class: 'chips', role: 'group', 'aria-label': 'Filter by language' });
   const listEl = h('div', { class: 'slist' });
   const progEl = h('div', {});
   const autoEl = h('div', {});
-  page.append(head, autoEl, chipsEl, listEl, progEl);
+  page.append(head, autoEl, chipsEl, qualEl, langEl, listEl, progEl);
 
   function play(s) {
     clearTimeout(autoTimer);
@@ -108,7 +113,23 @@ export function streams({ params, query }) {
       btn('quality', 'Quality'), btn('size', 'Size'), btn('source', 'Source'));
   }
 
+  function drawFacets() {
+    const all = [...groups.values()].flatMap((g) => g.streams).filter((x) => x.cls.playable || x.cls.openUrl);
+    const quals = qualityOptions(all), langs = languageOptions(all);
+    if (qFilter && !quals.includes(qFilter)) qFilter = '';
+    if (lFilter && !langs.includes(lFilter)) lFilter = '';
+    const draw = (box, opts, cur, set, label, name) => {
+      clear(box);
+      if (opts.length < 2) return;
+      box.append(h('span', { class: 'facet', text: label }), h('button', { class: 'chip', type: 'button', 'aria-pressed': String(!cur), onClick: () => { set(''); render(); } }, 'Any'));
+      for (const o of opts) box.append(h('button', { class: 'chip', type: 'button', 'aria-pressed': String(cur === o), onClick: () => { set(o); render(); } }, name ? name(o) : o));
+    };
+    draw(qualEl, quals, qFilter, (v) => { qFilter = v; }, 'Quality');
+    draw(langEl, langs, lFilter, (v) => { lFilter = v; }, 'Language', (c) => languageName(c) || c);
+  }
+
   function drawChips() {
+    drawFacets();
     clear(chipsEl);
     if (groups.size < 2) return;
     chipsEl.append(h('button', { class: 'chip', type: 'button', 'aria-pressed': String(filter === 'all'), onClick: () => { filter = 'all'; render(); } }, 'All'));
@@ -126,7 +147,7 @@ export function streams({ params, query }) {
     const s = store.settings();
     clear(listEl);
     const visible = order.filter((u) => filter === 'all' || filter === u).map((u) => groups.get(u));
-    const keep = (x) => !(s.hideUnplayable && !x.cls.playable && !x.cls.openUrl);
+    const keep = (x) => !(s.hideUnplayable && !x.cls.playable && !x.cls.openUrl) && filterStreams([x], { quality: qFilter, lang: lFilter }).length > 0;
     const flat = !!sort || s.streamGroup === 'flat';
     const total = visible.reduce((n, g) => n + g.streams.filter(keep).length, 0);
     if (flat) {
