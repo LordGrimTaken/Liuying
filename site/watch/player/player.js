@@ -146,6 +146,7 @@ export function player({ params, query }) {
   let retries = 0;
   let wantPlaying = true;
   let lastPos = 0;
+  let mediaRecoveries = 0;
   function attach(startAt) {
     teardownHls();
     clear(errEl); errEl.hidden = true;
@@ -158,7 +159,10 @@ export function player({ params, query }) {
       hls.on(window.Hls.Events.ERROR, (_e, data) => {
         if (!data.fatal) return;
         if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR) return netError(() => hls?.startLoad());
-        if (data.type === window.Hls.ErrorTypes.MEDIA_ERROR) { try { hls.recoverMediaError(); return; } catch { /* fall through */ } }
+        if (data.type === window.Hls.ErrorTypes.MEDIA_ERROR && mediaRecoveries < 3) {
+          mediaRecoveries++;
+          try { if (mediaRecoveries === 2) hls.swapAudioCodec(); hls.recoverMediaError(); return; } catch { /* fall through */ }
+        }
         showError('This stream could not be played. Try another stream.');
       });
       hls.on(window.Hls.Events.MANIFEST_PARSED, () => { refreshAudio(); });
@@ -228,7 +232,7 @@ export function player({ params, query }) {
     video.play().catch(() => { wantPlaying = false; syncPlayState(); showUi(true); });
   }
   on(video, 'canplay', () => { root.classList.remove('loading'); retries = 0; });
-  on(video, 'playing', () => { root.classList.remove('loading'); errEl.hidden = true; syncPlayState(); startSaveTimer(); autoSubtitleOnce(); });
+  on(video, 'playing', () => { retries = 0; mediaRecoveries = 0; root.classList.remove('loading'); errEl.hidden = true; syncPlayState(); startSaveTimer(); autoSubtitleOnce(); });
   on(video, 'waiting', () => { loadEl.lastChild.textContent = 'Buffering…'; root.classList.add('loading'); });
   on(video, 'seeking', () => { if (video.readyState < 3) root.classList.add('loading'); });
   on(video, 'seeked', () => { saveProgress(); });

@@ -165,7 +165,16 @@ export async function deleteRemoteAll() {
 }
 
 export function start() {
-  store.subscribe((key) => { if (key === 'sync' && status.user) schedulePush(); });
+  // While a video plays, progress is saved every few seconds: push at most every 30 s, and right after playback ends.
+  let slowTimer = null;
+  store.subscribe((key) => {
+    if (key !== 'sync' || !status.user) return;
+    if (!document.body.classList.contains('playing')) { schedulePush(); return; }
+    if (!slowTimer) slowTimer = setTimeout(() => { slowTimer = null; push(); }, 30000);
+  });
+  new MutationObserver(() => {
+    if (!document.body.classList.contains('playing') && status.user && hasPending()) schedulePush();
+  }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
   addEventListener('online', () => { if (status.user) { failures = 0; hasPending() ? push() : pull(); } });
   // Pick up changes made on other devices: when the tab becomes visible again and every few minutes.
   let lastPull = Date.now();
