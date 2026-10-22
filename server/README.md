@@ -20,6 +20,7 @@ Without `DATABASE_URL` (non-production only) it uses an in-memory pg-mem databas
 | `DATABASE_URL` | Postgres connection string. Required in production. |
 | `DATABASE_SSL` | `true` to enable TLS (no cert verification) - needed for Render's *external* DB URL; the internal URL does not need it. |
 | `NODE_ENV` | `production` turns on `Secure` cookies, HSTS, `upgrade-insecure-requests` and `trust proxy = 1`. |
+| `TRUST_PROXY_HOPS` | Express proxy hops for `req.protocol` (default 1). Client IPs for rate limits are resolved separately (`src/clientIp.js`). |
 | `PORT` | Listen port (default 3000; Render sets it). |
 
 ## Render
@@ -42,6 +43,10 @@ is present, it must match `Host`. Errors: `{error, message}`.
 - `POST /api/auth/login {username,password}` -> 200 `{user:{username}}` + cookie
 - `POST /api/auth/logout` -> 204
 - `GET /api/auth/me` -> 200 `{user:{username}}` or 401 `{error:'unauthenticated'}`
+- `POST /api/auth/password {currentPassword,newPassword}` -> 200; revokes other sessions, rotates this one (403 wrong password)
+- `POST /api/auth/delete {password}` -> 204; deletes the account and all its data
+- `GET /api/auth/sessions` -> `{sessions:[{id,current,createdAt,expiresAt}]}`; `DELETE /api/auth/sessions/:id` -> 204
+- `POST /api/auth/sessions/revoke-others` -> 204; `POST /api/auth/logout-all` -> 204
 
 Error codes: `invalid_username` 400, `invalid_password` 400, `username_taken` 409,
 `invalid_credentials` 401, `rate_limited` 429 (+`Retry-After`), `bad_request` 400,
