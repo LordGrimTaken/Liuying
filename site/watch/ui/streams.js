@@ -1,8 +1,8 @@
 import { h, icon, clear } from './dom.js';
 import * as store from '../store.js';
 import { loadStreams } from '../addon/service.js';
-import { describeError } from '../addon/client.js';
-import { pickSimilar, sortStreams, RES_RANK } from '../addon/streams.js';
+import { describeError, fetchStreamsFrom } from '../addon/client.js';
+import { pickSimilar, sortStreams, RES_RANK, describeStream } from '../addon/streams.js';
 import { normalizeVideos, parseEpisodeId } from '../progress.js';
 import { href, enc, navigate } from '../router.js';
 import { imgUrl } from '../util.js';
@@ -118,17 +118,14 @@ export function streams({ params, query }) {
     if (!groups.size && started) progEl.append(emptyState('No source can provide streams', store.sources().length ? 'None of your enabled sources offers streams for this kind of title.' : 'Add a source to find streams.', h('a', { class: 'btn pri', href: '#/sources', text: 'Open sources' })));
   }
 
-  function retry(g) {
+  async function retry(g) {
     g.status = 'loading'; render();
-    import('../addon/client.js').then(async ({ fetchStreamsFrom }) => {
-      try {
-        const raw = await fetchStreamsFrom(g.source, type, streamId, { signal: ctl.signal });
-        const { describeStream } = await import('../addon/streams.js');
-        g.streams = raw.map((r, i) => describeStream(r, g.source, i, { pageSecure: location.protocol === 'https:' }));
-        g.status = 'ok';
-      } catch (e) { if (ctl.signal.aborted) return; g.status = 'err'; g.error = e; }
-      render();
-    });
+    try {
+      const raw = await fetchStreamsFrom(g.source, type, streamId, { signal: ctl.signal });
+      g.streams = raw.map((r, i) => describeStream(r, g.source, i, { pageSecure: location.protocol === 'https:' }));
+      g.status = 'ok';
+    } catch (e) { if (ctl.signal.aborted) return; g.status = 'err'; g.error = e; }
+    render();
   }
 
   // auto-pick: binge match for next episode, or auto-select setting
@@ -154,7 +151,7 @@ export function streams({ params, query }) {
 
   let started = false;
   function start() {
-    ctl.signal.aborted || (groups.clear(), order = [], started = true);
+    groups.clear(); order = []; started = true;
     render();
     loadStreams(type, streamId, {
       signal: ctl.signal,

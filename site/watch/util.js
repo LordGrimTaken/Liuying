@@ -48,3 +48,4 @@ export const yearOf = (m) => {
 export const uniqBy = (arr, key) => { const seen = new Set(); return arr.filter((x) => { const k = key(x); if (seen.has(k)) return false; seen.add(k); return true; }); };
 
 export const typeLabel = (t) => ({ movie: 'Movie', series: 'Series', tv: 'TV', channel: 'Channel' }[t] || (t ? t[0].toUpperCase() + t.slice(1) : 'Other'));
+export const VERSION = '0.1.0';
