@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Create account | Liuying</title>
+<meta name="description" content="Create a free Liuying account with just a username and password.">
+<meta name="theme-color" content="#14110f">
+<meta name="referrer" content="same-origin">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='3' fill='%23c8372d'/%3E%3Ccircle cx='16' cy='16' r='8' fill='none' stroke='%23f6e9d6' stroke-width='2.5'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/auth.css"></head>
+<body class="auth-page" data-page="signup">
+<a class="skip" href="#main">Skip to content</a>
+<header class="top"><div class="nav"><a class="brand" href="/"><span class="seal" aria-hidden="true">流<br>影</span><span>Liuying</span></a>
+<nav class="links always" aria-label="Primary"><a class="link" href="/">Home</a><a class="link" href="/login">Sign in</a></nav></div></header>
+<main id="main" class="auth"><div class="mist" aria-hidden="true"></div><div class="mist m2" aria-hidden="true"></div>
+<div class="glyph" aria-hidden="true">流影</div>
+<div class="auth-wrap">
+<div class="moon" aria-hidden="true"><span class="cloud c1"></span><span class="cloud c2"></span><div class="ring"></div><span class="seal">流<br>影</span></div>
+<section class="scroll" aria-labelledby="h">
+<div class="scroll-body"><span class="seal stamp" aria-hidden="true">流<br>影</span>
+<p class="eyebrow">Join Liuying</p><h1 id="h">Create account</h1>
+<div id="form-error" class="form-error" role="alert" aria-live="assertive" hidden></div>
+<form id="auth-form" method="post" action="/api/auth/signup" novalidate>
+<div class="field"><label for="username">Username</label>
+<input id="username" name="username" type="text" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required minlength="3" maxlength="24" pattern="[A-Za-z0-9_]{3,24}" aria-describedby="username-hint username-err">
+<p class="hint" id="username-hint">3 to 24 letters, numbers or underscores.</p><p class="ferr" id="username-err" hidden></p></div><div class="field"><label for="password">Password</label>
+<div class="pw"><input id="password" name="password" type="password" autocomplete="new-password" required minlength="8" maxlength="128" aria-describedby="password-hint password-err">
+<button type="button" class="reveal-pw" aria-controls="password" aria-pressed="false" aria-label="Show password">Show</button></div>
+<p class="hint" id="password-hint">8 to 128 characters. A long phrase works well.</p><p class="ferr" id="password-err" hidden></p></div><div class="field"><label for="confirm">Confirm password</label>
+<div class="pw"><input id="confirm" name="confirm" type="password" autocomplete="new-password" required minlength="8" maxlength="128" aria-describedby="confirm-err">
+<button type="button" class="reveal-pw" aria-controls="confirm" aria-pressed="false" aria-label="Show confirm password">Show</button></div>
+<p class="ferr" id="confirm-err" hidden></p></div><p class="honest"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16v.5"/></svg><span>There is no email, so we cannot reset a lost password. Keep it somewhere safe.</span></p>
+<button class="btn pri submit" type="submit"><span class="lbl">Create account</span><span class="spin" aria-hidden="true"></span></button>
+</form>
+<p class="alt">Already have an account? <a href="/login">Sign in</a></p></div></section>
+</div></main>
+<footer class="slim"><div class="wrap"><small>Liuying does not host, provide or endorse any content. Sources are added by the user.</small></div></footer>
+<script src="/auth.js" defer></script>
+</body></html>

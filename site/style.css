@@ -107,3 +107,11 @@ footer small{font:12px/1.6 system-ui,sans-serif;display:block;max-width:70ch}
 @media(prefers-reduced-motion:reduce){
  .mist,.gate .ring::after{animation:none}.reveal{opacity:1;transform:none;transition:none}html{scroll-behavior:auto}.btn{transition:none}
 }
+/* shared: sign-in link, hero sign-in, strict-CSP helpers */
+.nav .nav-auth{display:inline-flex;align-items:center;margin-left:16px}
+.nav .nav-auth .link{margin-left:0;border:1px solid var(--line);padding:8px 14px;color:var(--paper);text-decoration:none;font:13px system-ui,sans-serif;letter-spacing:.12em;text-transform:uppercase;border-radius:2px}
+.nav .nav-auth .link:hover{border-color:var(--gold);background:rgba(184,150,79,.1)}
+.nav .nav-auth .link:focus-visible{outline:2px solid var(--gold);outline-offset:3px}
+.hero-signin{display:inline-block;margin-top:14px;font:14px system-ui,sans-serif;letter-spacing:.06em;color:var(--paper);text-decoration-color:var(--gold);text-underline-offset:4px}
+.hero-signin:focus-visible{outline:2px solid var(--gold);outline-offset:3px}
+@media(min-width:700px){.hero-signin{display:none}}

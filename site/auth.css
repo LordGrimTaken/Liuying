@@ -1,0 +1,78 @@
+/* Auth pages: reuses tokens from style.css */
+.skip{position:absolute;left:12px;top:-60px;z-index:20;background:var(--paper);color:var(--ink);padding:10px 14px;font:600 14px system-ui,sans-serif;text-decoration:none}
+.skip:focus{top:10px}
+.nav .links.always{display:flex;align-items:center}
+.nav-auth{display:inline-flex;align-items:center;gap:8px}
+body.auth-page{min-height:100vh;display:flex;flex-direction:column}
+.auth{position:relative;overflow:hidden;flex:1;padding:96px 0 56px}
+.auth .glyph{top:80px;right:-20px}
+.auth-wrap{position:relative;z-index:1;max-width:460px;margin:0 auto;padding:0 20px;display:flex;flex-direction:column;align-items:center}
+/* moon gate crown */
+.moon{position:relative;width:112px;height:112px;margin-bottom:-34px;z-index:2}
+.moon .ring{position:absolute;inset:0;border-radius:50%;border:2px solid var(--gold);box-shadow:0 0 0 7px var(--ink),0 0 0 8px var(--line),0 0 50px rgba(200,55,45,.25),inset 0 0 30px rgba(0,0,0,.6);background:radial-gradient(circle at 50% 40%,#2b231d,#16120f 70%)}
+.moon .ring::after{content:"";position:absolute;inset:-18px;border-radius:50%;border:1px dashed var(--line);animation:spin 120s linear infinite}
+.moon>.seal{position:absolute;inset:0;margin:auto;width:46px;height:46px;font-size:19px;transform:rotate(-5deg)}
+.moon .cloud{width:90px;height:38px}
+.moon .cloud.c1{left:-70px;top:6px}.moon .cloud.c2{right:-70px;top:60px}
+/* hanging scroll */
+.scroll{position:relative;width:100%;padding-top:14px}
+.scroll::before,.scroll::after{content:"";position:absolute;left:-12px;right:-12px;height:12px;border-radius:6px;background:linear-gradient(180deg,#d9b96e,var(--gold) 45%,#6f5a2c);box-shadow:0 4px 12px rgba(0,0,0,.5);z-index:2}
+.scroll::before{top:0}
+.scroll::after{bottom:-6px}
+.scroll-body{position:relative;margin:0 4px;padding:62px 24px 34px;border:1px solid var(--line);border-top:0;border-bottom:0;background:
+ linear-gradient(180deg,rgba(0,0,0,.35),transparent 90px),
+ repeating-linear-gradient(90deg,transparent 0 31px,rgba(184,150,79,.045) 31px 32px),
+ repeating-linear-gradient(0deg,transparent 0 31px,rgba(184,150,79,.045) 31px 32px),
+ linear-gradient(180deg,#221c17,#1a1512);
+ box-shadow:0 30px 70px rgba(0,0,0,.55)}
+.scroll-body::before,.scroll-body::after{content:"";position:absolute;width:14px;height:14px;border:1px solid var(--gold);bottom:14px}
+.scroll-body::before{left:8px;border-right:0;border-top:0}.scroll-body::after{right:8px;border-left:0;border-top:0}
+.stamp{position:absolute;right:16px;top:22px;width:40px;height:40px;font-size:16px;transform:rotate(7deg);opacity:.95}
+.scroll .eyebrow{font-size:11px;letter-spacing:.26em}
+.scroll h1{white-space:normal;font-size:clamp(32px,9vw,42px);margin:12px 0 22px;line-height:1.1;overflow-wrap:anywhere}
+.scroll .lede{margin:-8px 0 22px;font-size:16px}
+.who{color:var(--red2)}
+/* form */
+.field{margin-bottom:20px}
+.field label{display:block;font:600 12px system-ui,sans-serif;letter-spacing:.16em;text-transform:uppercase;color:var(--gold);margin-bottom:8px}
+.field input{width:100%;min-height:50px;padding:12px 14px;font:17px system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--paper);background:rgba(0,0,0,.32);border:1px solid var(--line);border-bottom:1px solid var(--gold);border-radius:2px;transition:border-color .2s,background .2s}
+.field input:hover{border-color:var(--gold)}
+.field input:focus-visible{outline:2px solid var(--gold);outline-offset:2px;background:rgba(0,0,0,.5)}
+.field input[aria-invalid="true"]{border-color:#ff8a7d}
+.pw{position:relative}
+.pw input{padding-right:84px}
+.reveal-pw{position:absolute;right:4px;top:4px;bottom:4px;min-width:68px;padding:0 12px;background:transparent;border:0;border-left:1px solid var(--line);color:var(--paper);font:600 13px system-ui,sans-serif;letter-spacing:.08em;text-transform:uppercase;cursor:pointer}
+.reveal-pw:hover{color:var(--gold)}
+.reveal-pw:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+.hint,.ferr{font:13px/1.5 system-ui,sans-serif;margin-top:7px}
+.hint{color:var(--mute)}
+.ferr,.form-error{color:#ff9a8e}
+.form-error{font:15px/1.5 system-ui,sans-serif;margin:0 0 20px;padding:12px 14px;border:1px solid rgba(255,138,125,.5);border-left:3px solid var(--red2);background:rgba(200,55,45,.12)}
+.form-error[hidden],.ferr[hidden]{display:none}
+.honest{display:flex;gap:10px;align-items:flex-start;margin:4px 0 22px;padding:12px 14px;font:14px/1.5 system-ui,sans-serif;color:var(--paper);border:1px dashed var(--gold);background:rgba(184,150,79,.07)}
+.honest svg{flex:none;width:20px;height:20px;color:var(--gold);margin-top:1px}
+.submit,#logout{width:100%;justify-content:center;min-height:52px;border:0;cursor:pointer;position:relative}
+#logout{border:1px solid var(--gold);background:transparent;color:var(--paper);margin-top:6px}
+#logout:hover{background:rgba(184,150,79,.12)}
+.submit:disabled,#logout:disabled{opacity:.75;cursor:progress;transform:none}
+.spin{display:none;width:16px;height:16px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite}
+[aria-busy="true"] .spin{display:inline-block}
+.alt{margin-top:24px;padding-top:18px;text-align:center;color:var(--mute);font:15px system-ui,sans-serif;border-top:1px solid var(--line)}
+.alt a{color:var(--paper);text-decoration-color:var(--gold);text-underline-offset:4px}
+.alt a:hover{color:var(--gold)}
+/* account */
+.acct-cards{display:grid;gap:14px;margin:0 0 22px}
+.mini{position:relative;padding:18px 18px 18px;border:1px solid var(--line);background:rgba(0,0,0,.25)}
+.mini h2{font-size:20px;display:block;margin-bottom:6px}
+.mini p{color:var(--mute);font-size:15px;margin-bottom:14px}
+.mini.soon p{margin-bottom:0}
+.mini .btn{width:100%;justify-content:center}
+.mini.soon{border-style:dashed}
+.loading{position:relative;z-index:1;margin-top:60px;color:var(--mute);font:15px system-ui,sans-serif;text-align:center}
+footer.slim{padding:24px 0 30px;background:none}
+footer.slim .wrap{display:block;text-align:center}
+.nav-auth a.link,.nav a.link.me{font:13px system-ui,sans-serif}
+.nav a.link.me{color:var(--paper);border-bottom:1px solid var(--gold)}
+.nav a.link:focus-visible{outline:2px solid var(--gold);outline-offset:3px}
+@media(min-width:700px){.auth{padding:120px 0 80px}.scroll-body{padding:66px 36px 38px}.moon{width:128px;height:128px}.moon>.seal{width:52px;height:52px;font-size:22px}}
+@media(prefers-reduced-motion:reduce){.moon .ring::after,.spin{animation:none}.spin{border-top-color:rgba(255,255,255,.35)}.field input{transition:none}}
