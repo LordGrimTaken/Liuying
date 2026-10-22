@@ -58,6 +58,8 @@ import com.liuying.app.ui.theme.Gold
 import com.liuying.app.ui.theme.GoldHairline
 import com.liuying.app.ui.theme.Paper
 import com.liuying.app.ui.theme.PaperMuted
+import com.liuying.app.domain.model.LibraryItem
+import kotlinx.coroutines.launch
 
 private fun LibrarySort.label() = when (this) {
     LibrarySort.RecentlyAdded -> "Recently added"
@@ -76,7 +78,19 @@ fun ShelfScreen(navigator: Navigator) {
     val filter by vm.filter.collectAsStateWithLifecycle()
     val query by vm.query.collectAsStateWithLifecycle()
     var sortMenu by remember { mutableStateOf(false) }
+    val snackbar = remember { androidx.compose.material3.SnackbarHostState() }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val removeWithUndo = { item: LibraryItem ->
+        vm.remove(item)
+        scope.launch {
+            snackbar.currentSnackbarData?.dismiss()
+            val r = snackbar.showSnackbar("Removed ${item.name} from your shelf", actionLabel = "Undo", duration = androidx.compose.material3.SnackbarDuration.Short)
+            if (r == androidx.compose.material3.SnackbarResult.ActionPerformed) vm.restore(item)
+        }
+        Unit
+    }
 
+    Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
         Row(Modifier.fillMaxWidth().padding(end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Shelf", style = MaterialTheme.typography.headlineMedium, color = Paper, modifier = Modifier.weight(1f).padding(horizontal = 20.dp, vertical = 12.dp))
@@ -109,12 +123,12 @@ fun ShelfScreen(navigator: Navigator) {
         }
         if (settings.libraryView == LibraryView.Grid) {
             LazyVerticalGrid(
-                GridCells.Adaptive(108.dp), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = DockClearance),
+                GridCells.Adaptive(90.dp), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = DockClearance),
                 horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 items(state.entries, key = { it.item.type + it.item.id }) { e ->
-                    ShelfCell(e, navigator, onRemove = { vm.remove(e.item) }) { menu, openMenu ->
-                        PosterCard(e.item.name, e.item.poster, width = 108.dp, subtitle = e.item.year, progress = e.progress, watched = e.watched,
+                    ShelfCell(e, navigator, onRemove = { removeWithUndo(e.item) }) { menu, openMenu ->
+                        PosterCard(e.item.name, e.item.poster, fillWidth = true, subtitle = e.item.year, progress = e.progress, watched = e.watched,
                             onLongClick = openMenu) { navigator.openTitle(e.item.type, e.item.id) }
                         menu()
                     }
@@ -123,7 +137,7 @@ fun ShelfScreen(navigator: Navigator) {
         } else {
             LazyColumn(contentPadding = PaddingValues(bottom = DockClearance)) {
                 items(state.entries, key = { it.item.type + it.item.id }) { e ->
-                    ShelfCell(e, navigator, onRemove = { vm.remove(e.item) }) { menu, openMenu ->
+                    ShelfCell(e, navigator, onRemove = { removeWithUndo(e.item) }) { menu, openMenu ->
                         Row(
                             Modifier.fillMaxWidth().combinedClickable(onClick = { navigator.openTitle(e.item.type, e.item.id) }, onLongClick = openMenu)
                                 .padding(horizontal = 20.dp, vertical = 8.dp),
@@ -142,6 +156,8 @@ fun ShelfScreen(navigator: Navigator) {
                 }
             }
         }
+    }
+    androidx.compose.material3.SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(bottom = DockClearance))
     }
 }
 

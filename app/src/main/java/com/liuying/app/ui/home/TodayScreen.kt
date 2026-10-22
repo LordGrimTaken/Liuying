@@ -43,6 +43,7 @@ import com.liuying.app.domain.ContinueKind
 import com.liuying.app.domain.EpisodeLabels
 import com.liuying.app.domain.Ux
 import com.liuying.app.domain.model.MetaPreview
+import com.liuying.app.domain.model.supportsSkip
 import com.liuying.app.ui.common.ArtImage
 import com.liuying.app.ui.common.EmptyBlock
 import com.liuying.app.ui.common.ErrorNote
@@ -63,6 +64,7 @@ import com.liuying.app.ui.theme.Paper
 import com.liuying.app.ui.theme.PaperMuted
 import com.liuying.app.ui.theme.Vermilion
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun TodayScreen(navigator: Navigator) {
     val vm = containerViewModel { TodayViewModel(it) }
@@ -72,7 +74,11 @@ fun TodayScreen(navigator: Navigator) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     val saved by vm.savedKeys.collectAsStateWithLifecycle()
 
-    LazyColumn(Modifier.fillMaxSize().statusBarsPadding(), contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = DockClearance)) {
+    androidx.compose.material3.pulltorefresh.PullToRefreshBox(
+        isRefreshing = rows?.any { it.refreshing } == true, onRefresh = vm::refresh,
+        modifier = Modifier.fillMaxSize().statusBarsPadding(),
+    ) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = DockClearance)) {
         item {
             Row(Modifier.fillMaxWidth().padding(end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Today", style = MaterialTheme.typography.headlineMedium, color = Paper, modifier = Modifier.weight(1f).padding(horizontal = 20.dp, vertical = 12.dp))
@@ -106,6 +112,12 @@ fun TodayScreen(navigator: Navigator) {
                 )
             }
         }
+        val allFailed = hasSources == true && !rows.isNullOrEmpty() && rows.orEmpty().all { it.state is RowState.Failed }
+        if (allFailed) {
+            item(key = "all-failed") {
+                ErrorNote("None of your sources answered. Check your connection, then pull down or tap retry.", onRetry = vm::refresh)
+            }
+        }
         if (cw.isNotEmpty()) {
             item { SectionHeader("Continue watching") }
             item {
@@ -126,6 +138,7 @@ fun TodayScreen(navigator: Navigator) {
                 item { EmptyBlock("No rows to show", "Your sources have no catalogs turned on for Today. They may still be searchable.") }
             }
         }
+    }
     }
 }
 
@@ -148,7 +161,11 @@ private fun PlaceholderRow() {
 private fun CatalogRow(row: HomeRow, navigator: Navigator, saved: Set<String>, onToggleSave: (MetaPreview) -> Unit, onRetry: () -> Unit) {
     val state = row.state
     if (state is RowState.Loaded && state.items.isEmpty()) return
-    SectionHeader(row.entry.title, subtitle = rowSubtitle(row))
+    SectionHeader(row.entry.title, subtitle = rowSubtitle(row), trailing = {
+        if (state is RowState.Loaded && (row.entry.catalog.supportsSkip || state.items.size >= 10)) {
+            InkTextButton("See all", { navigator.openBrowse(row.entry.key) })
+        }
+    })
     Column(Modifier.padding(bottom = 8.dp)) {
         when (state) {
             RowState.Loading -> PlaceholderRow()

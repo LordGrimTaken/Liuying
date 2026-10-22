@@ -173,6 +173,7 @@ fun YouScreen(navigator: Navigator) {
                     Row {
                         InkTextButton("Up", { vm.moveSource(s, -1) }, color = if (idx > 0) Gold else PaperMuted)
                         InkTextButton("Down", { vm.moveSource(s, 1) }, color = if (idx < sources.lastIndex) Gold else PaperMuted)
+                        InkTextButton("Details", { navigator.openSource(s.id) })
                         InkTextButton("Refresh", { vm.refreshSource(s) })
                         InkTextButton("Remove", { removing = s }, color = Vermilion)
                     }
@@ -249,8 +250,11 @@ fun YouScreen(navigator: Navigator) {
             }
         }
 
+        item { SectionHeader("Data and storage") }
+        item { DataSettings() }
+
         item { SectionHeader("About") }
-        item { ToggleRow("Check for updates automatically", "Looks at liuyingapp.com at most every 6 hours", settings.autoUpdateCheck) { v -> vm.update { it.copy(autoUpdateCheck = v) } } }
+        item { ToggleRow("Check for updates automatically", "Looks at liuyingapp.com at most every 12 hours", settings.autoUpdateCheck) { v -> vm.update { it.copy(autoUpdateCheck = v) } } }
         item {
             Column(Modifier.padding(horizontal = 20.dp)) {
                 Text("Liuying", color = Paper, style = MaterialTheme.typography.bodyLarge)

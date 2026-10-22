@@ -108,9 +108,11 @@ fun PosterCard(
     /** Non-null shows the quick-save button; true = already on the shelf. */
     saved: Boolean? = null,
     onToggleSave: (() -> Unit)? = null,
+    /** Grid cells: take the width the grid gives instead of the fixed [width]. */
+    fillWidth: Boolean = false,
     onClick: () -> Unit,
 ) {
-    Column(modifier.width(width).combinedClickable(onClick = onClick, onLongClick = onLongClick)) {
+    Column(modifier.then(if (fillWidth) Modifier.fillMaxWidth() else Modifier.width(width)).combinedClickable(onClick = onClick, onLongClick = onLongClick)) {
         Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(PosterShape).border(BorderStroke(0.5.dp, GoldHairline), PosterShape)) {
             ArtImage(poster, title, Modifier.fillMaxSize())
             if (watched) Text("Seen", style = MaterialTheme.typography.labelMedium, color = OnAccent,

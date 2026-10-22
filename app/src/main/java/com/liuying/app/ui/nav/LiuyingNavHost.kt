@@ -24,6 +24,8 @@ import com.liuying.app.domain.model.MetaPreview
 import com.liuying.app.ui.common.LocalContainer
 import com.liuying.app.ui.details.DetailsScreen
 import com.liuying.app.ui.home.TodayScreen
+import com.liuying.app.ui.browse.BrowseScreen
+import com.liuying.app.ui.sources.SourceDetailScreen
 import com.liuying.app.ui.calendar.CalendarScreen
 import com.liuying.app.ui.library.ShelfScreen
 import com.liuying.app.ui.search.SearchScreen
@@ -47,6 +49,8 @@ class Navigator(private val nav: NavHostController, private val container: AppCo
         nav.navigate(Routes.details(type, preview.id, Routes.PLAY_PRIMARY))
     }
 
+    fun openSource(id: Long) = nav.navigate(Routes.source(id))
+    fun openBrowse(catalogKey: String) = nav.navigate(Routes.browse(catalogKey))
     fun openTitle(type: String, id: String, play: String? = null) = nav.navigate(Routes.details(type, id, play))
     fun back() { nav.popBackStack() }
     /** The full-screen search overlay: it covers the dock and Back returns to where the user was. */
@@ -77,6 +81,14 @@ fun LiuyingApp() {
             composable(Tab.Shelf.route) { ShelfScreen(navigator) }
             composable(Tab.Calendar.route) { CalendarScreen(navigator) }
             composable(Tab.You.route) { YouScreen(navigator) }
+            composable(
+                Routes.SOURCE,
+                arguments = listOf(navArgument("id") { type = NavType.LongType }),
+            ) { e -> SourceDetailScreen(e.arguments?.getLong("id") ?: -1L, navigator) }
+            composable(
+                Routes.BROWSE,
+                arguments = listOf(navArgument("key") { type = NavType.StringType }),
+            ) { e -> BrowseScreen(e.arguments?.getString("key").orEmpty(), navigator) }
             composable(
                 Routes.DETAILS,
                 arguments = listOf(

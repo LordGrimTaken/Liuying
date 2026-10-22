@@ -153,6 +153,10 @@ class CatalogRepository(
     /** Catalogs for Browse/See all. */
     fun browseEntries(): Flow<List<CatalogEntry>> = browseFlow()
 
+    /** Resolves a [CatalogEntry.key] (used in routes) back to its catalog, or null if the source or catalog is gone. */
+    suspend fun entryByKey(key: String): CatalogEntry? =
+        catalogEntries(sources.enabledSources.first(), emptyList(), false, false).firstOrNull { it.key == key }
+
     /** Catalogs that can be searched, as (source, catalog) pairs, optionally filtered to one type. */
     suspend fun searchEntries(type: String? = null): List<CatalogEntry> {
         val hideAdult = settings.first().hideAdultCatalogs

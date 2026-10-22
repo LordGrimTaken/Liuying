@@ -176,7 +176,10 @@ class DetailsViewModel(
         openStreams(if (t != null) StreamTarget(t.videoId, t.season, t.episode, t.video.displayTitle) else StreamTarget(movieVideoId(), null, null, null))
     }
 
-    fun playEpisode(e: EpisodeState) = openStreams(StreamTarget(e.videoId, e.season, e.episode, e.video.displayTitle), auto = false)
+    fun playEpisode(e: EpisodeState) {
+        if (!e.released) { viewModelScope.launch { events.send(DetailsEvent.Message("This episode has not aired yet.")) }; return }
+        openStreams(StreamTarget(e.videoId, e.season, e.episode, e.video.displayTitle), auto = false)
+    }
 
     // ------------------------------------------------------------------------------ streams
 

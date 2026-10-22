@@ -62,6 +62,18 @@ class ProgressRepository(
         onLocalChange?.invoke()
     }
 
+    /**
+     * "Clear watch history": every row is zeroed and stamped now instead of deleted, so the clear out-ranks the older
+     * copies on the account in last-writer-wins sync (deleted rows would simply come back on the next pull).
+     */
+    suspend fun clearAll() {
+        val now = clock.nowMs()
+        val rows = dao.getAll().map { it.toEntry().copy(positionMs = 0, watched = false, updatedAt = now, streamHint = null) }
+        if (rows.isNotEmpty()) dao.upsertAll(rows.map { it.toEntity() })
+        dao.deleteAllDismissed()
+        onLocalChange?.invoke()
+    }
+
     suspend fun dismissContinue(type: String, titleId: String) {
         dao.upsertDismissed(DismissedEntity(type, titleId, clock.nowMs()))
     }

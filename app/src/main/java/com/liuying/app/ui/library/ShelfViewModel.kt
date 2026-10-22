@@ -40,4 +40,5 @@ class ShelfViewModel(private val c: AppContainer) : ViewModel() {
     fun setSort(s: LibrarySort) { viewModelScope.launch { c.settings.update { it.copy(librarySort = s) } } }
     fun toggleView() { viewModelScope.launch { c.settings.update { it.copy(libraryView = if (it.libraryView == LibraryView.Grid) LibraryView.List else LibraryView.Grid) } } }
     fun remove(item: LibraryItem) { viewModelScope.launch { c.library.remove(item.type, item.id) } }
+    fun restore(item: LibraryItem) { viewModelScope.launch { c.library.add(item) } }
 }
