@@ -9,6 +9,7 @@ import com.liuying.app.domain.ContinueItem
 import com.liuying.app.domain.ContinueWatchingLogic
 import com.liuying.app.domain.SystemClock
 import com.liuying.app.domain.model.Meta
+import com.liuying.app.domain.model.MetaPreview
 import com.liuying.app.domain.model.ProgressEntry
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -59,6 +60,16 @@ class TodayViewModel(private val c: AppContainer) : ViewModel() {
                 episodeTitle = item.episodeTitle ?: ep?.displayTitle,
                 thumbnail = item.thumbnail ?: ep?.thumbnail ?: m.background ?: m.poster,
             )
+        }
+    }
+
+    /** Saved titles as "type|id", for the quick-save buttons. */
+    val savedKeys: StateFlow<Set<String>> = c.library.observeAll().map { l -> l.map { it.type + "|" + it.id }.toSet() }.stateIn(viewModelScope, eager, emptySet())
+
+    fun toggleSave(preview: MetaPreview, fallbackType: String) {
+        val type = preview.type.ifBlank { fallbackType }
+        viewModelScope.launch {
+            if ((type + "|" + preview.id) in savedKeys.value) c.library.remove(type, preview.id) else c.library.add(preview, type)
         }
     }
 

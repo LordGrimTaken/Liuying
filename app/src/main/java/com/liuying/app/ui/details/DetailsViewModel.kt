@@ -128,7 +128,7 @@ class DetailsViewModel(
         }
         if (initialPlay != null) viewModelScope.launch {
             ui.first { it.meta != null && (it.states.isNotEmpty() || it.load?.loading == false) }
-            openStreams(targetFor(initialPlay))
+            if (initialPlay == com.liuying.app.ui.nav.Routes.PLAY_PRIMARY) playPrimary() else openStreams(targetFor(initialPlay))
         }
     }
 

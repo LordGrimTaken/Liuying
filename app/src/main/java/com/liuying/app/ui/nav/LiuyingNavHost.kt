@@ -40,6 +40,13 @@ class Navigator(private val nav: NavHostController, private val container: AppCo
         nav.navigate(Routes.details(type, preview.id))
     }
 
+    /** Opens details and goes straight to the stream list for the title's main play target. */
+    fun playTitle(preview: MetaPreview, fallbackType: String, sourceId: Long?) {
+        val type = preview.type.ifBlank { fallbackType }
+        container.putHint(type, preview.copy(type = type), sourceId)
+        nav.navigate(Routes.details(type, preview.id, Routes.PLAY_PRIMARY))
+    }
+
     fun openTitle(type: String, id: String, play: String? = null) = nav.navigate(Routes.details(type, id, play))
     fun back() { nav.popBackStack() }
     /** The full-screen search overlay: it covers the dock and Back returns to where the user was. */
