@@ -139,3 +139,11 @@ export function catalogTitle(cat) {
   const t = { movie: 'Movies', series: 'Series', tv: 'TV', channel: 'Channels' }[cat.type] || cat.type;
   return `${cat.name || cat.id} – ${t}`;
 }
+
+/** Note for the Sources list when nothing can be browsed from a manifest, else null. */
+export function noCatalogsNotice(manifest) {
+  if ((manifest?.catalogs || []).some(isHomeEligible)) return null;
+  const names = new Set(normalizeResources(manifest).map((r) => r.name));
+  names.delete('catalog');
+  return 'This add-on has no browsable catalogs' + (names.size ? `; it provides: ${[...names].join(', ')}` : '');
+}

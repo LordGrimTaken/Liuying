@@ -97,3 +97,9 @@ test('mergeMetas fills gaps without overwriting', () => {
   const m = mergeMetas([{ name: 'A', poster: '' , description: 'd1' }, { name: 'B', poster: 'p', description: 'd2', cast: ['x'] }]);
   assert.deepEqual(m, { name: 'A', poster: 'p', description: 'd1', cast: ['x'] });
 });
+
+test('noCatalogsNotice explains sources without browsable catalogs', () => {
+  assert.equal(P.noCatalogsNotice({ resources: ['stream', 'meta'], catalogs: [] }), 'This add-on has no browsable catalogs; it provides: stream, meta');
+  assert.ok(P.noCatalogsNotice({ resources: ['catalog'], catalogs: [{ type: 'movie', id: 's', extra: [{ name: 'search', isRequired: true }] }] }));
+  assert.equal(P.noCatalogsNotice({ resources: ['catalog'], catalogs: [{ type: 'movie', id: 'top' }] }), null);
+});

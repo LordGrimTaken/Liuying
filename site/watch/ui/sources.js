@@ -1,7 +1,7 @@
 import { h, icon, clear, toast, confirmDialog } from './dom.js';
 import * as store from '../store.js';
 import { fetchManifest, describeError } from '../addon/client.js';
-import { normalizeManifestUrl, isAdult, isConfigurable, configurationRequired, configureUrl, catalogTitle, normalizeResources, catalogCapabilities, catalogKey } from '../addon/protocol.js';
+import { normalizeManifestUrl, isAdult, isConfigurable, configurationRequired, configureUrl, catalogTitle, normalizeResources, catalogCapabilities, catalogKey, noCatalogsNotice } from '../addon/protocol.js';
 import { refreshManifests } from '../addon/service.js';
 import { imgUrl } from '../util.js';
 import { artImg, emptyState } from './components.js';
@@ -123,6 +123,7 @@ export function sources({ query }) {
         h('h3', {}, name, m?.version ? h('small', { text: `v${m.version}` }) : null),
         h('p', { class: 'desc', text: m?.description || (m ? '' : 'Manifest not loaded yet.') }),
         m ? resourceBadges(m) : null,
+        m && noCatalogsNotice(m) ? h('p', { class: 'mute', style: { margin: '6px 0 0', 'font-size': '13px' }, text: noCatalogsNotice(m) }) : null,
         h('div', { style: { 'margin-top': '8px' } }, h('span', { class: `status${!s.enabled ? ' off' : bad ? ' bad' : ''}` }, h('i'), !s.enabled ? 'Disabled' : bad ? `Problem: ${describeError(s.error)}` : 'Ready'),
           m && configurationRequired(m) ? h('span', { class: 'badge warn', style: { 'margin-left': '8px' }, text: 'Needs configuration' }) : null,
           m && isAdult(m) ? h('span', { class: 'badge warn', style: { 'margin-left': '8px' }, text: 'Adult' }) : null)),

@@ -44,6 +44,7 @@ import com.liuying.app.data.settings.StreamSort
 import com.liuying.app.data.settings.SubtitleMode
 import com.liuying.app.data.settings.TimeoutProfile
 import com.liuying.app.data.sync.SyncStatus
+import com.liuying.app.domain.model.noBrowsableCatalogsNotice
 import com.liuying.app.domain.model.Source
 import com.liuying.app.domain.plugins.PluginPermissions
 import com.liuying.app.ui.common.Badge
@@ -183,6 +184,7 @@ fun YouScreen(navigator: Navigator) {
                     }
                     s.lastError?.let { Text("Last refresh failed: $it", color = Vermilion, style = MaterialTheme.typography.labelMedium) }
                     if (s.needsConfiguration) Text("This source needs configuring on its own page before it works.", color = Gold, style = MaterialTheme.typography.labelMedium)
+                    s.manifest.noBrowsableCatalogsNotice?.let { Text(it, color = Gold, style = MaterialTheme.typography.labelMedium) }
                     Row {
                         InkTextButton("Up", { vm.moveSource(s, -1) }, color = if (idx > 0) Gold else PaperMuted)
                         InkTextButton("Down", { vm.moveSource(s, 1) }, color = if (idx < sources.lastIndex) Gold else PaperMuted)

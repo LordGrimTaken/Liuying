@@ -96,3 +96,14 @@ val ManifestCatalog.isHomeEligible: Boolean get() = requiredExtraDefaults() != n
 val ManifestCatalog.needsInput: Boolean get() = !searchRequired && requiredExtraDefaults() == null
 
 val Manifest.isAdult: Boolean get() = behaviorHints.adult
+
+/** Names of the resources this manifest declares (catalog included when it lists catalogs), e.g. "meta, stream". */
+val Manifest.providedResourceNames: List<String>
+    get() = (resources.map { it.name.lowercase() } + if (catalogs.isNotEmpty()) listOf("catalog") else emptyList()).distinct()
+
+/** Plain-language note for the Sources list when nothing can be browsed from this source, else null. */
+val Manifest.noBrowsableCatalogsNotice: String?
+    get() = if (usableCatalogs.any { it.isHomeEligible }) null else {
+        val provides = providedResourceNames.filter { it != "catalog" }.joinToString(", ")
+        "This add-on has no browsable catalogs" + if (provides.isNotEmpty()) "; it provides: $provides" else ""
+    }
