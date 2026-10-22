@@ -48,12 +48,25 @@ trustno1 monkey123 dragon123 football1 baseball1 superman1 sunshine1 princess1 m
 changeme changeme1 12341234 123123123 111111111 123456789a a1234567 zaq12wsx asdfghjk asdfghjkl
 liuying1 liuying123 liuying12`.split(/\s+/).filter(Boolean));
 
-const USERNAME_RE = /^[A-Za-z0-9_]{3,24}$/;
+// Unicode usernames: letters, numbers, combining marks (after a base character) and underscore,
+// 2-24 code points after NFKC. Whitespace, control and format characters never match.
+const USERNAME_RE = /^[\p{L}\p{N}_][\p{L}\p{N}\p{M}_]*$/u;
+export const USERNAME_MSG = 'Username must be 2-24 characters: letters (any language), numbers or underscore.';
+
+/** NFKC-normalised, trimmed display form. */
+export function normalizeUsername(u) {
+  return typeof u === 'string' ? u.normalize('NFKC').trim() : '';
+}
+/** Case-folded unique key (NFKC, then lower-case; ASCII names map exactly as before). */
+export function usernameKey(u) {
+  return normalizeUsername(u).toLowerCase().normalize('NFKC');
+}
 
 export function validateUsername(u) {
-  if (typeof u !== 'string' || !USERNAME_RE.test(u)) {
-    return 'Username must be 3-24 characters: letters, digits or underscore.';
-  }
+  if (typeof u !== 'string' || u.length > 96) return USERNAME_MSG;
+  const n = u.normalize('NFKC');
+  const len = [...n].length;
+  if (n !== n.trim() || len < 2 || len > 24 || !USERNAME_RE.test(n)) return USERNAME_MSG;
   return null;
 }
 
@@ -61,7 +74,7 @@ export function validatePassword(p, username) {
   if (typeof p !== 'string' || p.length < 8 || p.length > 128) {
     return 'Password must be 8-128 characters.';
   }
-  if (typeof username === 'string' && p.toLowerCase() === username.toLowerCase()) {
+  if (typeof username === 'string' && p.toLowerCase() === username.toLowerCase() || usernameKey(p) === usernameKey(username)) {
     return 'Password must not be the same as your username.';
   }
   if (COMMON.has(p.toLowerCase())) {

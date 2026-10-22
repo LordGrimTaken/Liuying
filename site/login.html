@@ -21,8 +21,8 @@
 <div id="form-error" class="form-error" role="alert" aria-live="assertive" hidden></div>
 <form id="auth-form" method="post" action="/api/auth/login" novalidate>
 <div class="field"><label for="username">Username</label>
-<input id="username" name="username" type="text" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required minlength="3" maxlength="24" pattern="[A-Za-z0-9_]{3,24}" aria-describedby="username-hint username-err">
-<p class="hint" id="username-hint">3 to 24 letters, numbers or underscores.</p><p class="ferr" id="username-err" hidden></p></div><div class="field"><label for="password">Password</label>
+<input id="username" name="username" type="text" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required minlength="2" maxlength="48" aria-describedby="username-hint username-err">
+<p class="hint" id="username-hint">2 to 24 characters: letters in any language, numbers or underscores.</p><p class="ferr" id="username-err" hidden></p></div><div class="field"><label for="password">Password</label>
 <div class="pw"><input id="password" name="password" type="password" autocomplete="current-password" required minlength="1" maxlength="128" aria-describedby="password-err">
 <button type="button" class="reveal-pw" aria-controls="password" aria-pressed="false" aria-label="Show password">Show</button></div>
 <p class="ferr" id="password-err" hidden></p></div>

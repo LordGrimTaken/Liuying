@@ -6,7 +6,7 @@ import express from 'express';
 import helmet from 'helmet';
 import {
   DEFAULT_PARAMS, SESSION_COOKIE, SESSION_TTL_MS, cookieOptions, hashPassword, hashToken,
-  needsRehash, newToken, parseCookies, validatePassword, validateUsername, verifyPassword,
+  needsRehash, newToken, parseCookies, validatePassword, validateUsername, normalizeUsername, usernameKey, verifyPassword,
   newRecoveryCode, normalizeRecoveryCode, hashRecoveryCode, recoveryMatches,
 } from './auth.js';
 import { createLimiter } from './rateLimit.js';
@@ -189,7 +189,8 @@ export function createApp({
     const pErr = validatePassword(password, username);
     if (pErr) throw new ApiError(400, 'invalid_password', pErr);
 
-    const lower = username.toLowerCase();
+    const lower = usernameKey(username);
+    const display = normalizeUsername(username);
     const taken = new ApiError(409, 'username_taken', 'That username is already taken.');
     const existing = await db.query('SELECT 1 FROM users WHERE username_lower = $1', [lower]);
     if (existing.rows.length) throw taken;
@@ -200,7 +201,7 @@ export function createApp({
     try {
       await db.query(
         'INSERT INTO users (id, username, username_lower, password_hash, created_at, recovery_hash, recovery_created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-        [id, username, lower, hash, new Date(now()),
+        [id, display, lower, hash, new Date(now()),
           recoveryCode ? hashRecoveryCode(normalizeRecoveryCode(recoveryCode)) : null, recoveryCode ? new Date(now()) : null],
       );
     } catch (err) {
@@ -209,7 +210,7 @@ export function createApp({
     }
     await createSession(res, id, req);
     // The code is returned exactly once, here; only its hash is kept.
-    res.status(201).json(recoveryCode ? { user: { username }, recoveryCode } : { user: { username } });
+    res.status(201).json(recoveryCode ? { user: { username: display }, recoveryCode } : { user: { username: display } });
   });
 
   api.post('/auth/login', async (req, res) => {
@@ -218,10 +219,10 @@ export function createApp({
       throw new ApiError(400, 'bad_request', 'Username and password are required.');
     }
     const ip = ipOf(req);
-    const key = `${ip}|${username.toLowerCase().slice(0, 64)}`;
+    const key = `${ip}|${usernameKey(username).slice(0, 64)}`;
     const a = loginPair.check(key);
     const b = loginIp.check(ip);
-    const c = loginUser.check(username.toLowerCase().slice(0, 64));
+    const c = loginUser.check(usernameKey(username).slice(0, 64));
     if (!a.allowed || !b.allowed || !c.allowed) {
       throw limited(Math.max(a.retryAfterSec, b.retryAfterSec, c.retryAfterSec));
     }
@@ -231,7 +232,7 @@ export function createApp({
     let user = null;
     if (validShape) {
       const r = await db.query(
-        'SELECT id, username, password_hash FROM users WHERE username_lower = $1', [username.toLowerCase()],
+        'SELECT id, username, password_hash FROM users WHERE username_lower = $1', [usernameKey(username)],
       );
       user = r.rows[0] || null;
     }
@@ -281,12 +282,12 @@ export function createApp({
     }
     const ip = ipOf(req);
     const a = recoverIp.check(ip);
-    const b = recoverUser.check(username.toLowerCase().slice(0, 64));
+    const b = recoverUser.check(usernameKey(username).slice(0, 64));
     if (!a.allowed || !b.allowed) throw limited(Math.max(a.retryAfterSec, b.retryAfterSec));
     const bad = new ApiError(401, 'invalid_recovery', 'Incorrect username or recovery code.');
     const code = normalizeRecoveryCode(recoveryCode);
     const r = validateUsername(username) ? { rows: [] }
-      : await db.query('SELECT id, username, recovery_hash FROM users WHERE username_lower = $1', [username.toLowerCase()]);
+      : await db.query('SELECT id, username, recovery_hash FROM users WHERE username_lower = $1', [usernameKey(username)]);
     const user = r.rows[0] || null;
     // Same work whether or not the account exists or has a code.
     const ok = recoveryMatches(code, user?.recovery_hash || hashRecoveryCode('0'.repeat(20)));

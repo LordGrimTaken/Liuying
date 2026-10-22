@@ -1,7 +1,12 @@
 (function () {
   'use strict';
   var page = document.body.getAttribute('data-page');
-  var USER_RE = /^[A-Za-z0-9_]{3,24}$/;
+  var USER_RE = /^[\p{L}\p{N}_][\p{L}\p{N}\p{M}_]*$/u;
+  var USER_MSG = 'Use 2 to 24 characters: letters in any language, numbers or underscores (no spaces).';
+  function userOk(v) {
+    var n = String(v).normalize('NFKC'), len = Array.from(n).length;
+    return len >= 2 && len <= 24 && USER_RE.test(n);
+  }
   var form = document.getElementById('auth-form');
   var errBox = document.getElementById('form-error');
 
@@ -127,7 +132,7 @@
       if (el) el.addEventListener('input', function () { fieldError(el.id, ''); });
     });
     username.addEventListener('blur', function () {
-      if (username.value && !USER_RE.test(username.value)) fieldError('username', 'Use 3 to 24 letters, numbers or underscores.');
+      if (username.value && !userOk(username.value.trim())) fieldError('username', USER_MSG);
     });
 
     var codeEl = document.getElementById('code');
@@ -139,7 +144,7 @@
       clearError();
       var u = username.value.trim(), p = pw.value, first = null;
       ['username', 'password', 'confirm', 'code'].forEach(function (id) { fieldError(id, ''); });
-      if (!USER_RE.test(u)) { fieldError('username', 'Use 3 to 24 letters, numbers or underscores.'); first = first || username; }
+      if (!userOk(u)) { fieldError('username', USER_MSG); first = first || username; }
       if (page === 'signup') {
         if (p.length < 8 || p.length > 128) { fieldError('password', 'Use between 8 and 128 characters.'); first = first || pw; }
         if (confirmEl.value !== p) { fieldError('confirm', 'The passwords do not match.'); first = first || confirmEl; }
@@ -175,7 +180,7 @@
     me().then(function (u) {
       if (!u) { location.replace('/login'); return; }
       document.getElementById('who').textContent = u.username;
-      document.getElementById('initial').textContent = u.username.charAt(0).toUpperCase();
+      document.getElementById('initial').textContent = (Array.from(u.username)[0] || '').toUpperCase();
       loading.hidden = true; card.hidden = false;
       document.title = u.username + ' | Liuying';
       document.getElementById('h').focus && document.getElementById('h').setAttribute('tabindex', '-1');

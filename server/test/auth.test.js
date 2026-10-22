@@ -60,10 +60,16 @@ test('usernames are case-insensitively unique', async () => {
 test('invalid inputs', async () => {
   const { agent } = await setup({ limits: { signupIp: { limit: 1000 } } });
   const cases = [
-    [{ username: 'ab', password: 'long enough pw' }, 'invalid_username'],
+    [{ username: 'a', password: 'long enough pw' }, 'invalid_username'],
+    [{ username: '李', password: 'long enough pw' }, 'invalid_username'],
+    [{ username: '李 雷', password: 'long enough pw' }, 'invalid_username'],
+    [{ username: 'a\u200bb', password: 'long enough pw' }, 'invalid_username'],
+    [{ username: 'ab\u0007', password: 'long enough pw' }, 'invalid_username'],
+    [{ username: 'a\nb', password: 'long enough pw' }, 'invalid_username'],
+    [{ username: 'a-b', password: 'long enough pw' }, 'invalid_username'],
+    [{ username: '李'.repeat(25), password: 'long enough pw' }, 'invalid_username'],
     [{ username: 'a'.repeat(25), password: 'long enough pw' }, 'invalid_username'],
     [{ username: 'bad name', password: 'long enough pw' }, 'invalid_username'],
-    [{ username: 'émile', password: 'long enough pw' }, 'invalid_username'],
     [{ username: 123, password: 'long enough pw' }, 'invalid_username'],
     [{ password: 'long enough pw' }, 'invalid_username'],
     [{ username: 'gooduser', password: 'short' }, 'invalid_password'],
@@ -251,4 +257,63 @@ test('login upgrades hash when params change', async () => {
   assert.equal(r.status, 200);
   const after = (await s.db.query('SELECT password_hash FROM users')).rows[0].password_hash;
   assert.match(after, /^scrypt\$2048\$/);
+});
+
+test('CJK usernames: signup, login, length counted in code points', async () => {
+  const { agent } = await setup();
+  const pw = 'correct horse battery';
+  const s = await post(agent(), '/api/auth/signup', { username: '李雷', password: pw });
+  assert.equal(s.status, 201);
+  assert.deepEqual(s.body, { user: { username: '李雷' } });
+  const li = await post(agent(), '/api/auth/login', { username: '李雷', password: pw });
+  assert.equal(li.status, 200);
+  assert.equal((await post(agent(), '/api/auth/login', { username: '李雷', password: 'wrong password!' })).status, 401);
+  assert.equal((await post(agent(), '/api/auth/signup', { username: '𠀀'.repeat(24), password: pw })).status, 201); // astral, 24 code points
+  assert.equal((await post(agent(), '/api/auth/signup', { username: '𠀀'.repeat(25), password: pw })).status, 400);
+  assert.equal((await post(agent(), '/api/auth/signup', { username: 'Émile_é', password: pw })).status, 201);
+  assert.equal((await post(agent(), '/api/auth/signup', { username: '한국어사용자', password: pw })).status, 201);
+});
+
+test('login and uniqueness use NFKC + case folding; display form kept', async () => {
+  const { agent } = await setup({ limits: { signupIp: { limit: 100 } } });
+  const pw = 'correct horse battery';
+  let n = 0;
+  const su = (username, password) => agent().post('/api/auth/signup').set('Content-Type', 'application/json').set('X-Forwarded-For', `7.7.7.${++n}`).send(JSON.stringify({ username, password }));
+  assert.equal((await su('Émile', pw)).status, 201); // precomposed
+  const dec = 'E\u0301mile'; // decomposed
+  const li = await post(agent(), '/api/auth/login', { username: dec, password: pw });
+  assert.equal(li.status, 200);
+  assert.equal(li.body.user.username, 'Émile');
+  assert.equal((await post(agent(), '/api/auth/login', { username: 'éMILE', password: pw })).status, 200);
+  const dup = await su('e\u0301mile', 'another good pass');
+  assert.equal(dup.status, 409);
+  assert.equal(dup.body.error, 'username_taken');
+  // fullwidth Latin folds to ASCII under NFKC
+  assert.equal((await su('Ｂｏｂ_1', pw)).body.user.username, 'Bob_1');
+  assert.equal((await su('bob_1', pw)).status, 409);
+  // halfwidth katakana vs fullwidth
+  assert.equal((await su('ｶﾀｶﾅ', pw)).status, 201);
+  assert.equal((await su('カタカナ', pw)).status, 409);
+});
+
+test('migration backfills username_lower idempotently and keeps ASCII accounts working', async () => {
+  const { agent, db } = await setup();
+  const pw = 'correct horse battery';
+  await post(agent(), '/api/auth/signup', { username: 'Alice_01', password: pw });
+  await db.query("UPDATE users SET username = $1, username_lower = $2 WHERE username = 'Alice_01'", ['Ｚｏｅ', 'ｚｏｅ']);
+  const { backfillUsernameKeys } = await import('../src/db.js');
+  await backfillUsernameKeys(db); await backfillUsernameKeys(db);
+  assert.equal((await db.query('SELECT username_lower FROM users')).rows[0].username_lower, 'zoe');
+});
+
+test('rate limits still apply to Unicode usernames (equivalent forms share a bucket)', async () => {
+  const { agent } = await setup();
+  let last;
+  for (let i = 0; i < 12; i++) {
+    const name = i % 2 ? 'E\u0301mile' : 'Émile';
+    last = await agent().post('/api/auth/login').set('Content-Type', 'application/json').set('X-Forwarded-For', `8.8.8.${i}`)
+      .send(JSON.stringify({ username: name, password: 'guess guess' }));
+    if (last.status === 429) break;
+  }
+  assert.equal(last.status, 429);
 });

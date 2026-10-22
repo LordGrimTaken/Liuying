@@ -21,7 +21,7 @@
 <div id="form-error" class="form-error" role="alert" aria-live="assertive" hidden></div>
 <form id="auth-form" method="post" action="/api/auth/recover" novalidate>
 <div class="field"><label for="username">Username</label>
-<input id="username" name="username" type="text" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required minlength="3" maxlength="24" pattern="[A-Za-z0-9_]{3,24}" aria-describedby="username-err">
+<input id="username" name="username" type="text" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required minlength="2" maxlength="48" aria-describedby="username-err">
 <p class="ferr" id="username-err" hidden></p></div>
 <div class="field"><label for="code">Recovery code</label>
 <input id="code" name="code" type="text" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" required maxlength="40" aria-describedby="code-hint code-err" class="mono">

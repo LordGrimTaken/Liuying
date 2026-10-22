@@ -96,7 +96,7 @@ function drawSyncChip(st) {
     const label = `Signed in as ${st.user.username} · ${face.sr}`;
     a.href = '#/settings';
     a.title = label; a.setAttribute('aria-label', label);
-    a.replaceChildren(h('span', { class: 'initial', text: (st.user.username || '?').trim().charAt(0).toUpperCase() }), h('i', { class: 'sdot', 'aria-hidden': 'true', text: face.glyph }));
+    a.replaceChildren(h('span', { class: 'initial', text: (Array.from((st.user.username || '?').trim())[0] || '?').toUpperCase() }), h('i', { class: 'sdot', 'aria-hidden': 'true', text: face.glyph }));
   } else {
     a.href = st.state === 'signedout' ? '/login' : '#/settings';
     a.title = 'Sign in'; a.setAttribute('aria-label', 'Sign in');
