@@ -133,9 +133,9 @@ fun YouScreen(navigator: Navigator) {
                         Text("Optional. Sign in to keep your shelf, sources and progress in step with liuyingapp.com.", color = PaperMuted, style = MaterialTheme.typography.bodyMedium)
                         if (account.status is SyncStatus.Failed) Text(syncLine(account.status), color = Vermilion, style = MaterialTheme.typography.bodyMedium)
                         OutlinedTextField(form.username, vm::setUsername, label = { Text("Username") }, singleLine = true, colors = fieldColors(),
-                            // The server only accepts letters, digits and underscore (server/src/auth.js), so the ASCII keyboard stays (QA #34).
+                            // The server accepts letters in any language, digits and underscore (QA #34), so use the normal text keyboard.
                             modifier = Modifier.fillMaxWidth().semantics { contentType = ContentType.Username },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii))
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text))
                         OutlinedTextField(form.password, vm::setPassword, label = { Text("Password") }, singleLine = true, colors = fieldColors(),
                             modifier = Modifier.fillMaxWidth().semantics { contentType = ContentType.Password },
                             visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
