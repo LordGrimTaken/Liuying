@@ -7,11 +7,13 @@ import helmet from 'helmet';
 import {
   DEFAULT_PARAMS, SESSION_COOKIE, SESSION_TTL_MS, cookieOptions, hashPassword, hashToken,
   needsRehash, newToken, parseCookies, validatePassword, validateUsername, verifyPassword,
+  newRecoveryCode, normalizeRecoveryCode, hashRecoveryCode, recoveryMatches,
 } from './auth.js';
 import { createLimiter } from './rateLimit.js';
 import { ApiError } from './errors.js';
 import { clientIp } from './clientIp.js';
 import { createSyncRouter } from './sync.js';
+import { NOT_FOUND_HTML } from './notFoundPage.js';
 
 const DEFAULT_SITE = fileURLToPath(new URL('../../site', import.meta.url));
 const MIN = 60 * 1000;
@@ -59,6 +61,9 @@ export function createApp({
   // Distributed guessing against one account is capped regardless of source IP.
   const loginUser = createLimiter({ limit: 40, windowMs: 15 * MIN, now, ...limits.loginUser });
   const pwChange = createLimiter({ limit: 10, windowMs: 15 * MIN, now, ...limits.pwChange });
+  // Recovery: a guess costs 1 of 100 bits, but cap tries per IP and per account anyway.
+  const recoverIp = createLimiter({ limit: 10, windowMs: 60 * MIN, now, ...limits.recoverIp });
+  const recoverUser = createLimiter({ limit: 5, windowMs: 60 * MIN, now, ...limits.recoverUser });
   const syncLimiter = createLimiter({ limit: 60, windowMs: MIN, now, ...limits.sync });
 
   const cookieOpts = cookieOptions(production);
@@ -178,7 +183,7 @@ export function createApp({
     const rl = signupIp.check(ip);
     if (!rl.allowed) throw limited(rl.retryAfterSec);
 
-    const { username, password } = bodyObject(req);
+    const { username, password, recovery } = bodyObject(req);
     const uErr = validateUsername(username);
     if (uErr) throw new ApiError(400, 'invalid_username', uErr);
     const pErr = validatePassword(password, username);
@@ -191,17 +196,20 @@ export function createApp({
 
     const id = crypto.randomUUID();
     const hash = await hashPassword(password, hashParams);
+    const recoveryCode = recovery === true ? newRecoveryCode() : null;
     try {
       await db.query(
-        'INSERT INTO users (id, username, username_lower, password_hash, created_at) VALUES ($1, $2, $3, $4, $5)',
-        [id, username, lower, hash, new Date(now())],
+        'INSERT INTO users (id, username, username_lower, password_hash, created_at, recovery_hash, recovery_created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+        [id, username, lower, hash, new Date(now()),
+          recoveryCode ? hashRecoveryCode(normalizeRecoveryCode(recoveryCode)) : null, recoveryCode ? new Date(now()) : null],
       );
     } catch (err) {
       if (err.code === '23505' || /unique|duplicate/i.test(err.message)) throw taken;
       throw err;
     }
     await createSession(res, id, req);
-    res.status(201).json({ user: { username } });
+    // The code is returned exactly once, here; only its hash is kept.
+    res.status(201).json(recoveryCode ? { user: { username }, recoveryCode } : { user: { username } });
   });
 
   api.post('/auth/login', async (req, res) => {
@@ -259,7 +267,38 @@ export function createApp({
       purgeExpired();
       clearSessionCookie(res);
     }
+    // ?soft=1: "nobody is signed in" is a normal answer (200 {user:null}) so pages can probe the session
+    // without a red 401 in the browser console on every load.
+    if (req.query.soft === '1') return res.status(200).json({ user: null });
     res.status(401).json({ error: 'unauthenticated', message: 'You are not signed in.' });
+  });
+
+  // Reset a forgotten password with the recovery code. The code is single-use: a fresh one is returned.
+  api.post('/auth/recover', async (req, res) => {
+    const { username, recoveryCode, newPassword } = bodyObject(req);
+    if (typeof username !== 'string' || typeof newPassword !== 'string') {
+      throw new ApiError(400, 'bad_request', 'Username, recovery code and new password are required.');
+    }
+    const ip = ipOf(req);
+    const a = recoverIp.check(ip);
+    const b = recoverUser.check(username.toLowerCase().slice(0, 64));
+    if (!a.allowed || !b.allowed) throw limited(Math.max(a.retryAfterSec, b.retryAfterSec));
+    const bad = new ApiError(401, 'invalid_recovery', 'Incorrect username or recovery code.');
+    const code = normalizeRecoveryCode(recoveryCode);
+    const r = validateUsername(username) ? { rows: [] }
+      : await db.query('SELECT id, username, recovery_hash FROM users WHERE username_lower = $1', [username.toLowerCase()]);
+    const user = r.rows[0] || null;
+    // Same work whether or not the account exists or has a code.
+    const ok = recoveryMatches(code, user?.recovery_hash || hashRecoveryCode('0'.repeat(20)));
+    if (!user || !user.recovery_hash || !ok) throw bad;
+    const pErr = validatePassword(newPassword, user.username);
+    if (pErr) throw new ApiError(400, 'invalid_password', pErr);
+    const fresh = newRecoveryCode();
+    await db.query('UPDATE users SET password_hash = $1, recovery_hash = $2, recovery_created_at = $3 WHERE id = $4',
+      [await hashPassword(newPassword, hashParams), hashRecoveryCode(normalizeRecoveryCode(fresh)), new Date(now()), user.id]);
+    await db.query('DELETE FROM sessions WHERE user_id = $1', [user.id]);
+    await createSession(res, user.id, req);
+    res.status(200).json({ user: { username: user.username }, recoveryCode: fresh });
   });
 
   // ---- Authenticated account management ----
@@ -318,6 +357,23 @@ export function createApp({
     res.status(204).end();
   });
 
+  // Recovery code status, and (re)generation. A new code replaces the old one; it is shown once.
+  api.get('/auth/recovery', async (req, res) => {
+    const u = await requireUser(req);
+    const r = await db.query('SELECT recovery_hash, recovery_created_at FROM users WHERE id = $1', [u.id]);
+    const row = r.rows[0] || {};
+    res.status(200).json({ enabled: !!row.recovery_hash, createdAt: row.recovery_created_at ? new Date(row.recovery_created_at).toISOString() : null });
+  });
+  api.post('/auth/recovery', async (req, res) => {
+    const u = await requireUser(req);
+    const { password } = bodyObject(req);
+    await checkPassword(u, password, req);
+    const code = newRecoveryCode();
+    await db.query('UPDATE users SET recovery_hash = $1, recovery_created_at = $2 WHERE id = $3',
+      [hashRecoveryCode(normalizeRecoveryCode(code)), new Date(now()), u.id]);
+    res.status(200).json({ recoveryCode: code });
+  });
+
   api.get('/auth/sessions', async (req, res) => {
     const u = await requireUser(req);
     const r = await db.query(
@@ -374,7 +430,7 @@ export function createApp({
   app.use('/api', api);
 
   // ---- Static site ----
-  const pages = { '/login': 'login.html', '/signup': 'signup.html', '/account': 'account.html', '/download': 'download.html' };
+  const pages = { '/login': 'login.html', '/signup': 'signup.html', '/recover': 'recover.html', '/account': 'account.html', '/download': 'download.html' };
   for (const [route, file] of Object.entries(pages)) {
     app.get(route, (req, res, next) => {
       const full = path.join(siteDir, file);
@@ -417,7 +473,9 @@ export function createApp({
   app.use(express.static(siteDir, { index: 'index.html', dotfiles: 'ignore', redirect: false }));
 
   function notFound(req, res) {
-    res.status(404).type('text/plain').send('Not found');
+    // browsers get the branded page; scripts, assets and API-ish clients keep the plain-text body
+    if (req.method === 'GET' && req.accepts(['text/plain', 'html']) === 'html' && !path.extname(req.path)) res.status(404).type('html').send(NOT_FOUND_HTML);
+    else res.status(404).type('text/plain').send('Not found');
   }
   app.use(notFound);
 

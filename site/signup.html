@@ -4,16 +4,17 @@
 <meta name="description" content="Create a free Liuying account with just a username and password.">
 <meta name="theme-color" content="#14110f">
 <meta name="referrer" content="same-origin">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='3' fill='%23c8372d'/%3E%3Ccircle cx='16' cy='16' r='8' fill='none' stroke='%23f6e9d6' stroke-width='2.5'/%3E%3C/svg%3E">
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml"><link rel="icon" href="/favicon.ico" sizes="48x48"><link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+<meta property="og:image" content="https://www.liuyingapp.com/assets/og.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="https://www.liuyingapp.com/assets/og.png">
 <link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/auth.css"></head>
 <body class="auth-page" data-page="signup">
 <a class="skip" href="#main">Skip to content</a>
-<header class="top"><div class="nav"><a class="brand" href="/"><span class="seal" aria-hidden="true">流<br>影</span><span>Liuying</span></a>
+<header class="top"><div class="nav"><a class="brand" href="/"><img class="seal" src="/assets/seal.svg" alt="" width="32" height="32"><span>Liuying</span></a>
 <nav class="links always" aria-label="Primary"><a class="link" href="/">Home</a><a class="link" href="/login">Sign in</a></nav></div></header>
 <main id="main" class="auth"><div class="mist" aria-hidden="true"></div><div class="mist m2" aria-hidden="true"></div>
 <div class="glyph" aria-hidden="true">流影</div>
 <div class="auth-wrap">
-<div class="moon" aria-hidden="true"><span class="cloud c1"></span><span class="cloud c2"></span><div class="ring"></div><span class="seal">流<br>影</span></div>
+<div class="moon" aria-hidden="true"><span class="cloud c1"></span><span class="cloud c2"></span><div class="ring"></div><img class="seal" src="/assets/seal.svg" alt="" width="46" height="46"></div>
 <section class="scroll" aria-labelledby="h">
 <div class="scroll-body"><span class="seal stamp" aria-hidden="true">流<br>影</span>
 <p class="eyebrow">Join Liuying</p><h1 id="h">Create account</h1>
@@ -27,10 +28,18 @@
 <p class="hint" id="password-hint">8 to 128 characters. A long phrase works well.</p><p class="ferr" id="password-err" hidden></p></div><div class="field"><label for="confirm">Confirm password</label>
 <div class="pw"><input id="confirm" name="confirm" type="password" autocomplete="new-password" required minlength="8" maxlength="128" aria-describedby="confirm-err">
 <button type="button" class="reveal-pw" aria-controls="confirm" aria-pressed="false" aria-label="Show confirm password">Show</button></div>
-<p class="ferr" id="confirm-err" hidden></p></div><p class="honest"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16v.5"/></svg><span>There is no email, so we cannot reset a lost password. Keep it somewhere safe.</span></p>
+<p class="ferr" id="confirm-err" hidden></p></div><div class="check"><input id="recovery" name="recovery" type="checkbox" checked aria-describedby="recovery-hint"><label for="recovery">Create a recovery code</label></div>
+<p class="hint check-hint" id="recovery-hint">There is no email on Liuying, so a recovery code is the only way to reset a lost password. You will see it once, so keep it somewhere safe.</p>
 <button class="btn pri submit" type="submit"><span class="lbl">Create account</span><span class="spin" aria-hidden="true"></span></button>
 </form>
-<p class="alt">Already have an account? <a href="/login">Sign in</a></p></div></section>
+<p class="alt">Already have an account? <a href="/login">Sign in</a></p>
+<div id="rc-panel" class="rc-panel" hidden aria-labelledby="rc-h"><h2 id="rc-h" tabindex="-1">Save your recovery code</h2>
+<p>This is the only time it is shown. If you forget your password, this code and your username are the only way back in.</p>
+<p class="rc-code" id="rc-code" role="textbox" aria-readonly="true" aria-label="Your recovery code"></p>
+<div class="rc-actions"><button class="btn sec" type="button" id="rc-copy">Copy</button><button class="btn sec" type="button" id="rc-dl">Download as text</button></div>
+<p class="note" id="rc-msg" role="status" hidden></p>
+<div class="check"><input id="rc-ok" type="checkbox"><label for="rc-ok">I have saved my recovery code</label></div>
+<a class="btn pri submit rc-go" id="rc-go" href="/account" aria-disabled="true">Continue</a></div></div></section>
 </div></main>
 <footer class="slim"><div class="wrap"><small>Liuying does not host, provide or endorse any content. Sources are added by the user.</small></div></footer>
 <script src="/auth.js" defer></script>

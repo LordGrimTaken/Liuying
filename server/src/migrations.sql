@@ -49,4 +49,8 @@ CREATE TABLE IF NOT EXISTS user_settings (
   user_id uuid PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   data text NOT NULL,
   updated_at timestamptz NOT NULL
-)
+);
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS recovery_hash text;
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS recovery_created_at timestamptz

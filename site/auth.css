@@ -93,3 +93,22 @@ footer.slim .wrap{display:block;text-align:center}
 .sess button{background:transparent;border:1px solid var(--line);color:var(--paper);min-height:40px;padding:0 12px;cursor:pointer}
 .sess button:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 .dangerbtn{border:1px solid #ff8a7d!important;color:#ff9a8e!important;background:transparent}
+
+/* recovery code */
+.check{display:flex;align-items:flex-start;gap:12px;margin:4px 0 6px}
+.check input{flex:none;width:22px;height:22px;margin-top:1px;accent-color:var(--red2);cursor:pointer}
+.check label{font:15px/1.4 system-ui,sans-serif;color:var(--paper);cursor:pointer}
+.check-hint{margin:0 0 20px 34px}
+.forgot{margin:-6px 0 18px;font:14px system-ui,sans-serif}
+.forgot a{color:var(--mute);text-underline-offset:4px;text-decoration-color:var(--gold)}
+.forgot a:hover{color:var(--gold)}
+.field input.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.08em;text-transform:uppercase}
+.rc-panel{margin-top:6px}
+.rc-panel h2{font-size:22px;margin:0 0 10px;outline:0}
+.rc-panel p{color:var(--mute);margin-bottom:14px}
+.rc-code{display:block;padding:16px 12px;margin:0 0 14px!important;text-align:center;font:600 clamp(14px,4.4vw,22px)/1.3 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.04em;color:var(--paper)!important;border:1px dashed var(--gold);background:rgba(184,150,79,.1);user-select:all;overflow-wrap:anywhere}
+.rc-actions{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.rc-actions .btn{flex:1 1 140px;justify-content:center;min-height:46px;cursor:pointer;background:transparent;color:var(--paper)}
+.rc-go{display:flex;margin-top:14px;text-decoration:none;align-items:center;color:#fff}
+.rc-go[aria-disabled="true"]{opacity:.45;pointer-events:none}
+body.has-code form#auth-form,body.has-code .alt{display:none}

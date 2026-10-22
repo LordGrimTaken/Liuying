@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Reset password | Liuying</title>
+<meta name="description" content="Reset your Liuying password with your recovery code.">
+<meta name="theme-color" content="#14110f">
+<meta name="referrer" content="same-origin">
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml"><link rel="icon" href="/favicon.ico" sizes="48x48"><link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+<meta property="og:image" content="https://www.liuyingapp.com/assets/og.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="https://www.liuyingapp.com/assets/og.png">
+<link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/auth.css"></head>
+<body class="auth-page" data-page="recover">
+<a class="skip" href="#main">Skip to content</a>
+<header class="top"><div class="nav"><a class="brand" href="/"><img class="seal" src="/assets/seal.svg" alt="" width="32" height="32"><span>Liuying</span></a>
+<nav class="links always" aria-label="Primary"><a class="link" href="/">Home</a><a class="link" href="/signup">Create account</a></nav></div></header>
+<main id="main" class="auth"><div class="mist" aria-hidden="true"></div><div class="mist m2" aria-hidden="true"></div>
+<div class="glyph" aria-hidden="true">流影</div>
+<div class="auth-wrap">
+<div class="moon" aria-hidden="true"><span class="cloud c1"></span><span class="cloud c2"></span><div class="ring"></div><img class="seal" src="/assets/seal.svg" alt="" width="46" height="46"></div>
+<section class="scroll" aria-labelledby="h">
+<div class="scroll-body"><span class="seal stamp" aria-hidden="true">流<br>影</span>
+<p class="eyebrow">Recovery code</p><h1 id="h">Reset password</h1>
+<div id="form-error" class="form-error" role="alert" aria-live="assertive" hidden></div>
+<form id="auth-form" method="post" action="/api/auth/recover" novalidate>
+<div class="field"><label for="username">Username</label>
+<input id="username" name="username" type="text" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required minlength="3" maxlength="24" pattern="[A-Za-z0-9_]{3,24}" aria-describedby="username-err">
+<p class="ferr" id="username-err" hidden></p></div>
+<div class="field"><label for="code">Recovery code</label>
+<input id="code" name="code" type="text" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" required maxlength="40" aria-describedby="code-hint code-err" class="mono">
+<p class="hint" id="code-hint">The 20-character code you saved when you created your account, like XXXXX-XXXXX-XXXXX-XXXXX.</p><p class="ferr" id="code-err" hidden></p></div>
+<div class="field"><label for="password">New password</label>
+<div class="pw"><input id="password" name="password" type="password" autocomplete="new-password" required minlength="8" maxlength="128" aria-describedby="password-hint password-err">
+<button type="button" class="reveal-pw" aria-controls="password" aria-pressed="false" aria-label="Show password">Show</button></div>
+<p class="hint" id="password-hint">8 to 128 characters. Other devices will be signed out.</p><p class="ferr" id="password-err" hidden></p></div>
+<button class="btn pri submit" type="submit"><span class="lbl">Reset password</span><span class="spin" aria-hidden="true"></span></button>
+</form>
+<p class="alt">Remembered it? <a href="/login">Sign in</a></p>
+<div id="rc-panel" class="rc-panel" hidden aria-labelledby="rc-h"><h2 id="rc-h" tabindex="-1">Password changed. Save your new recovery code</h2>
+<p>Your old recovery code no longer works. This new one is shown only once.</p>
+<p class="rc-code" id="rc-code" role="textbox" aria-readonly="true" aria-label="Your new recovery code"></p>
+<div class="rc-actions"><button class="btn sec" type="button" id="rc-copy">Copy</button><button class="btn sec" type="button" id="rc-dl">Download as text</button></div>
+<p class="note" id="rc-msg" role="status" hidden></p>
+<div class="check"><input id="rc-ok" type="checkbox"><label for="rc-ok">I have saved my new recovery code</label></div>
+<a class="btn pri submit rc-go" id="rc-go" href="/account" aria-disabled="true">Continue</a></div></div></section>
+</div></main>
+<footer class="slim"><div class="wrap"><small>Liuying does not host, provide or endorse any content. Sources are added by the user.</small></div></footer>
+<script src="/auth.js" defer></script>
+</body></html>

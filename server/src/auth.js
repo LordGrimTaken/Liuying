@@ -94,3 +94,29 @@ export function parseCookies(header) {
 export function cookieOptions(production) {
   return { httpOnly: true, sameSite: 'lax', path: '/', secure: !!production };
 }
+
+// ---- Recovery codes (optional, no email) ----
+// 20 characters of Crockford base32 = 100 bits of randomness, shown once as XXXXX-XXXXX-XXXXX-XXXXX.
+// Only a SHA-256 of the normalised code is stored; with 100 random bits a slow hash adds nothing.
+const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+export function newRecoveryCode() {
+  const bytes = crypto.randomBytes(20);
+  let out = '';
+  for (let i = 0; i < 20; i++) out += CROCKFORD[bytes[i] & 31];
+  return out.match(/.{5}/g).join('-');
+}
+/** Uppercase, Crockford look-alikes folded (O->0, I/L->1), separators dropped. Returns '' unless 20 valid characters. */
+export function normalizeRecoveryCode(input) {
+  if (typeof input !== 'string' || input.length > 64) return '';
+  const s = input.toUpperCase().replace(/[\s-]/g, '').replace(/O/g, '0').replace(/[IL]/g, '1');
+  return /^[0-9A-HJKMNP-TV-Z]{20}$/.test(s) ? s : '';
+}
+export function hashRecoveryCode(normalized) {
+  return crypto.createHash('sha256').update(`liuying-recovery:${normalized}`).digest('hex');
+}
+export function recoveryMatches(normalized, storedHex) {
+  if (!normalized || typeof storedHex !== 'string' || storedHex.length !== 64) return false;
+  const a = Buffer.from(hashRecoveryCode(normalized), 'hex');
+  const b = Buffer.from(storedHex, 'hex');
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
