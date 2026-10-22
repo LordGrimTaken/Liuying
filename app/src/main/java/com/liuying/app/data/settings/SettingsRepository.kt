@@ -111,6 +111,10 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         val subOutline = booleanPreferencesKey("subtitle_outline")
         val subBg = booleanPreferencesKey("subtitle_background")
         val subBottom = intPreferencesKey("subtitle_bottom_percent")
+        val subBold = booleanPreferencesKey("subtitle_bold")
+        val subEdge = stringPreferencesKey("subtitle_edge")
+        val subEdgeColor = longPreferencesKey("subtitle_edge_color")
+        val subBgOpacity = intPreferencesKey("subtitle_bg_opacity")
         val timeout = stringPreferencesKey("timeout_profile")
         val insecure = booleanPreferencesKey("allow_insecure_http")
         val hideNoPoster = booleanPreferencesKey("hide_titles_without_poster")
@@ -196,6 +200,10 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             subtitleOutline = p[K.subOutline] ?: d.subtitleOutline,
             subtitleBackground = p[K.subBg] ?: d.subtitleBackground,
             subtitleBottomPercent = p[K.subBottom] ?: d.subtitleBottomPercent,
+            subtitleBold = p[K.subBold] ?: d.subtitleBold,
+            subtitleEdge = p[K.subEdge] ?: d.subtitleEdge,
+            subtitleEdgeColor = p[K.subEdgeColor] ?: d.subtitleEdgeColor,
+            subtitleBgOpacity = (p[K.subBgOpacity] ?: d.subtitleBgOpacity).coerceIn(0, 100),
             timeoutProfile = p.enum(K.timeout, d.timeoutProfile),
             allowInsecureHttp = p[K.insecure] ?: d.allowInsecureHttp,
             hideTitlesWithoutPoster = p[K.hideNoPoster] ?: d.hideTitlesWithoutPoster,
@@ -276,6 +284,10 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         p[K.subOutline] = s.subtitleOutline
         p[K.subBg] = s.subtitleBackground
         p[K.subBottom] = s.subtitleBottomPercent
+        p[K.subBold] = s.subtitleBold
+        p[K.subEdge] = s.subtitleEdge
+        p[K.subEdgeColor] = s.subtitleEdgeColor
+        p[K.subBgOpacity] = s.subtitleBgOpacity
         p[K.timeout] = s.timeoutProfile.name
         p[K.insecure] = s.allowInsecureHttp
         p[K.hideNoPoster] = s.hideTitlesWithoutPoster

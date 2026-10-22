@@ -16,6 +16,12 @@ import com.liuying.app.ui.nav.LiuyingApp
 import com.liuying.app.ui.theme.LiuyingTheme
 
 class MainActivity : ComponentActivity() {
+    override fun onResume() {
+        super.onResume()
+        // Back from the "install unknown apps" screen: continue the pending update install.
+        (application as LiuyingApplication).container.updates.resumeInstallIfPending()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)

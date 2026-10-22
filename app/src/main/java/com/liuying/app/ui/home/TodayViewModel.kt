@@ -25,7 +25,8 @@ import kotlinx.coroutines.launch
 
 class TodayViewModel(private val c: AppContainer) : ViewModel() {
     private val refreshTick = MutableStateFlow(0)
-    private val eager = SharingStarted.WhileSubscribed(5_000)
+    // Lazily: the pipeline (network rows especially) must survive a trip to Details instead of restarting from skeletons.
+    private val eager = SharingStarted.Lazily
 
     val rows: StateFlow<List<HomeRow>?> = c.catalogs.homeRows(refreshTick).stateIn(viewModelScope, eager, null)
     val hasSources: StateFlow<Boolean?> = c.sources.sources.map { l -> l.any { it.enabled } }.stateIn(viewModelScope, eager, null)

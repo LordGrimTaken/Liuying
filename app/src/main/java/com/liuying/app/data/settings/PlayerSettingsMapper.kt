@@ -13,7 +13,7 @@ object PlayerSettingsMapper {
         val gestures = s.gestureBrightness || s.gestureVolume || s.gestureSpeedHold || s.gesturePinchZoom
         return PlayerSettings(
             preferredAudioLanguages = s.preferredAudioLanguages.ifEmpty { listOf(deviceLanguage) },
-            preferredSubtitleLanguages = s.preferredSubtitleLanguages.ifEmpty { listOf(deviceLanguage) },
+            preferredSubtitleLanguages = s.preferredSubtitleLanguages.ifEmpty { listOf(deviceLanguage, "en").distinct() },
             subtitleMode = when (s.subtitleMode) {
                 SubtitleMode.OffUnlessNeeded -> PlayerSubMode.OFF_UNLESS_NEEDED
                 SubtitleMode.AlwaysOn -> PlayerSubMode.ALWAYS_ON
@@ -23,7 +23,11 @@ object PlayerSettingsMapper {
             subtitleSizePercent = (s.subtitleSizeScale * 100).toInt().coerceIn(50, 200),
             subtitleColor = s.subtitleColor.toInt(),
             subtitleBackground = if (s.subtitleBackground) SubtitleBackground.BOX else SubtitleBackground.NONE,
-            subtitleEdge = if (s.subtitleOutline) SubtitleEdge.OUTLINE else SubtitleEdge.NONE,
+            subtitleBold = s.subtitleBold,
+            subtitleBackgroundOpacityPercent = s.subtitleBgOpacity.coerceIn(0, 100),
+            subtitleEdgeColor = s.subtitleEdgeColor.toInt(),
+            subtitleEdge = runCatching { SubtitleEdge.valueOf(s.subtitleEdge) }.getOrNull()
+                ?: if (s.subtitleOutline) SubtitleEdge.OUTLINE else SubtitleEdge.NONE,
             subtitleBottomOffsetPercent = s.subtitleBottomPercent.coerceIn(0, 40),
             defaultSpeed = s.defaultSpeed,
             aspectDefault = when (s.defaultAspect) {
@@ -36,6 +40,11 @@ object PlayerSettingsMapper {
             longPressSpeedEnabled = s.gestureSpeedHold,
             seekStepSeconds = s.seekStepSec,
             autoPlayNext = s.autoPlayNext,
+            nextCountdownSec = s.nextEpisodeCountdownSec.coerceIn(5, 30),
+            askBeforeNext = s.askBeforeNext,
+            pauseOnHeadphoneUnplug = s.pauseOnHeadphoneUnplug,
+            keepScreenOn = s.keepScreenOn,
+            autoRotate = s.orientation == OrientationMode.AutoRotate,
         )
     }
 
@@ -48,6 +57,13 @@ object PlayerSettingsMapper {
             PlayerAspect.FIT -> if (s.defaultAspect == AspectMode.Fill || s.defaultAspect == AspectMode.Stretch) AspectMode.Fit else s.defaultAspect
         },
         subtitleSizeScale = p.subtitleSizePercent / 100f,
+        subtitleBold = p.subtitleBold,
+        subtitleColor = p.subtitleColor.toLong() and 0xFFFFFFFFL,
+        subtitleBackground = p.subtitleBackground == SubtitleBackground.BOX,
+        subtitleBgOpacity = p.subtitleBackgroundOpacityPercent,
+        subtitleEdge = p.subtitleEdge.name,
+        subtitleEdgeColor = p.subtitleEdgeColor.toLong() and 0xFFFFFFFFL,
+        subtitleOutline = p.subtitleEdge != SubtitleEdge.NONE,
         subtitleBottomPercent = p.subtitleBottomOffsetPercent,
     )
 }

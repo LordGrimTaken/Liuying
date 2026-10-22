@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Auto Backup (Android 6-11): the sync session cookie and the settings store (it holds the metadata API key) stay on the device. -->
+<full-backup-content>
+    <exclude domain="sharedpref" path="liuying_account.xml" />
+    <exclude domain="sharedpref" path="liuying_update.xml" />
+    <exclude domain="file" path="datastore" />
+</full-backup-content>

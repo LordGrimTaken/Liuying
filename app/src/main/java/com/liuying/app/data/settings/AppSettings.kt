@@ -88,6 +88,12 @@ data class AppSettings(
     val subtitleColor: Long = 0xFFFFFFFF,
     val subtitleOutline: Boolean = true,
     val subtitleBackground: Boolean = false,
+    val subtitleBold: Boolean = false,
+    /** NONE | OUTLINE | DROP_SHADOW | RAISED; blank = derive from [subtitleOutline] (older installs). */
+    val subtitleEdge: String = "",
+    val subtitleEdgeColor: Long = 0xFF000000,
+    /** 0..100, opacity of the background box. */
+    val subtitleBgOpacity: Int = 60,
     /** 0 (top) .. 100 (bottom) */
     val subtitleBottomPercent: Int = 8,
     // Sources and content

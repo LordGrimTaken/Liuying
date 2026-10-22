@@ -2,6 +2,7 @@ package com.liuying.app.ui.update
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.LinearProgressIndicator
@@ -33,7 +34,12 @@ fun UpdateDialog(controller: UpdateController) {
                 title = { Text("Update available") },
                 text = { Notes(s.manifest, controller.installedVersionName) },
                 confirmButton = { InkTextButton("Update now", controller::download) },
-                dismissButton = { InkTextButton("Later", controller::dismissPrompt, color = PaperMuted) },
+                dismissButton = {
+                    Row {
+                        InkTextButton("Skip this version", controller::skipVersion, color = PaperMuted)
+                        InkTextButton("Later", controller::dismissPrompt, color = PaperMuted)
+                    }
+                },
             )
         }
         is UpdateState.Downloading -> AlertDialog(

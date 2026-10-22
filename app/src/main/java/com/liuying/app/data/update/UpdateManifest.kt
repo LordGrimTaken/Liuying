@@ -37,12 +37,12 @@ data class UpdateManifest(
 }
 
 object UpdatePolicy {
-    const val CHECK_INTERVAL_MS = 6L * 60 * 60 * 1000
+    const val CHECK_INTERVAL_MS = 12L * 60 * 60 * 1000
 
     /** Only a strictly higher versionCode counts; equal or lower (a rollback manifest) is never offered. */
     fun isNewer(installedCode: Long, manifest: UpdateManifest) = manifest.versionCode > installedCode
 
-    /** Automatic check: setting on, and none in the last 6 hours (a clock set back also re-checks). */
+    /** Automatic check: setting on, and none in the last 12 hours (a clock set back also re-checks). */
     fun shouldAutoCheck(enabled: Boolean, nowMs: Long, lastCheckMs: Long): Boolean =
         enabled && (lastCheckMs <= 0 || nowMs < lastCheckMs || nowMs - lastCheckMs >= CHECK_INTERVAL_MS)
 }

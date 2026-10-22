@@ -18,12 +18,13 @@ object NextEpisodeTiming {
      * @param dismissed the user pressed Cancel; the overlay stays hidden for this playback.
      * @param autoPlay auto-play next setting; without it the overlay is only an offer.
      */
-    fun phase(positionMs: Long, durationMs: Long, hasNext: Boolean, dismissed: Boolean, autoPlay: Boolean): Phase {
+    fun phase(positionMs: Long, durationMs: Long, hasNext: Boolean, dismissed: Boolean, autoPlay: Boolean, countdownMs: Long = COUNTDOWN_MS): Phase {
+        val countdown = countdownMs.coerceIn(1_000L, OFFER_WINDOW_MS)
         if (!hasNext || dismissed || durationMs < MIN_DURATION_MS || positionMs < 0) return Phase.Hidden
         val remaining = durationMs - positionMs
         if (remaining > OFFER_WINDOW_MS || positionMs < durationMs / 2) return Phase.Hidden
-        if (autoPlay && remaining <= COUNTDOWN_MS) {
-            val secs = ((remaining + 999) / 1000).toInt().coerceIn(0, (COUNTDOWN_MS / 1000).toInt())
+        if (autoPlay && remaining <= countdown) {
+            val secs = ((remaining + 999) / 1000).toInt().coerceIn(0, (countdown / 1000).toInt())
             return Phase.Countdown(secs)
         }
         return Phase.Offer

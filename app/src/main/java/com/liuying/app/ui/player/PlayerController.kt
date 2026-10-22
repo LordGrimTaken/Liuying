@@ -154,6 +154,7 @@ class PlayerController(private val activity: PlayerActivity, val request: Playba
     private val session: MediaSession
 
     init {
+        runCatching { PlayerDependencies.onPlaybackStarting?.invoke(request) }
         val ctx = activity.applicationContext
         val httpFactory = OkHttpDataSource.Factory(PlayerDependencies.httpClient)
         val baseFactory = DefaultDataSource.Factory(ctx, httpFactory)
@@ -184,7 +185,7 @@ class PlayerController(private val activity: PlayerActivity, val request: Playba
                 AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(),
                 /* handleAudioFocus = */ true,
             )
-            .setHandleAudioBecomingNoisy(true)
+            .setHandleAudioBecomingNoisy(s.pauseOnHeadphoneUnplug)
             .setSeekBackIncrementMs(s.seekStepSeconds * 1000L)
             .setSeekForwardIncrementMs(s.seekStepSeconds * 1000L)
             .build()
@@ -248,7 +249,8 @@ class PlayerController(private val activity: PlayerActivity, val request: Playba
         bufferedMs = player.bufferedPosition.coerceAtLeast(0)
         if (isPlaying && retryAttempt > 0 && positionMs - lastErrorPositionMs > 5_000) retryAttempt = 0
         nextPhase = NextEpisodeTiming.phase(
-            positionMs, durationMs, request.nextEpisode != null, nextDismissed, settings.autoPlayNext,
+            positionMs, durationMs, request.nextEpisode != null, nextDismissed,
+            settings.autoPlayNext && !settings.askBeforeNext, settings.nextCountdownSec * 1000L,
         )
     }
 
@@ -676,7 +678,7 @@ class PlayerController(private val activity: PlayerActivity, val request: Playba
     private fun onEnded() {
         maybeReport(force = true, atEnd = true)
         val next = request.nextEpisode
-        if (next != null && settings.autoPlayNext && !nextDismissed) playNextNow()
+        if (next != null && settings.autoPlayNext && !settings.askBeforeNext && !nextDismissed) playNextNow()
         else if (next == null) activity.onPlayerFinished(PlayerExit.Closed)
     }
 
@@ -715,9 +717,7 @@ class PlayerController(private val activity: PlayerActivity, val request: Playba
     private fun dispatchReport(pos: Long, dur: Long) {
         val reporter = PlayerDependencies.progressReporter
         val r = request
-        PlayerDependencies.appScope.launch {
-            runCatching { reporter.report(r.mediaId, r.episodeId, pos, dur) }
-        }
+        PlayerDependencies.enqueueReport { reporter.report(r.mediaId, r.episodeId, pos, dur) }
     }
 
     fun onBackgrounded() { maybeReport(force = true) }

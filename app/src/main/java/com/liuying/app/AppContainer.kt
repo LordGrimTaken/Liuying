@@ -23,6 +23,8 @@ import com.liuying.app.domain.model.MetaPreview
 import com.liuying.app.domain.plugins.NoopPluginRunner
 import com.liuying.app.domain.plugins.PluginRunner
 import com.liuying.app.ui.player.PlayerDependencies
+import com.liuying.app.domain.model.PlaybackRef
+import com.liuying.app.domain.sync.SyncLogic
 import com.liuying.app.ui.player.PlayerExit
 import com.liuying.app.ui.player.PlayerSettings
 import com.liuying.app.ui.player.PlayerSettingsProvider
@@ -46,6 +48,12 @@ class AppContainer(private val app: Application) {
     @Volatile private var timeoutScale = 1.0
     val http = AddonClient.createHttpClient(app.cacheDir.resolve("addon-http"))
     val addonClient = AddonClient(http, timeoutScale = { timeoutScale })
+    /** Video and subtitle traffic: no disk cache (a 200 response for a whole video file would be written to it). */
+    private val playerHttp = http.newBuilder().cache(null)
+        .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS).readTimeout(30, java.util.concurrent.TimeUnit.SECONDS).build()
+    /** APK download: no cache, and never follows an https redirect down to plain http. */
+    private val downloadHttp = http.newBuilder().cache(null).followSslRedirects(false)
+        .connectTimeout(20, java.util.concurrent.TimeUnit.SECONDS).readTimeout(60, java.util.concurrent.TimeUnit.SECONDS).build()
 
     val sources by lazy { SourceRepository(db, db.sourceDao(), addonClient) }
     val catalogs by lazy { CatalogRepository(sources, addonClient, settings.settings) }
@@ -72,7 +80,7 @@ class AppContainer(private val app: Application) {
     }
 
     val updates by lazy {
-        com.liuying.app.data.update.UpdateController(app, com.liuying.app.data.update.Updater(http), scope, autoEnabled = { settings.current().autoUpdateCheck })
+        com.liuying.app.data.update.UpdateController(app, com.liuying.app.data.update.Updater(downloadHttp), scope, autoEnabled = { settings.current().autoUpdateCheck })
     }
 
     private val session = PrefsSessionStore(app.getSharedPreferences("liuying_account", 0))
@@ -91,7 +99,12 @@ class AppContainer(private val app: Application) {
 
     fun start() {
         PlayerDependencies.progressReporter = progress
-        PlayerDependencies.httpClient = http
+        PlayerDependencies.httpClient = playerHttp
+        PlayerDependencies.onPlaybackStarting = { r ->
+            val ref = if (r.episodeId == null) PlaybackRef.movie(r.type, r.mediaId)
+            else SyncLogic.parseEpisodeId(r.mediaId, r.episodeId)?.let { (s, e) -> PlaybackRef.episode(r.type, r.mediaId, r.episodeId, s, e) }
+            if (ref != null) progress.registerPlayback(ref)
+        }
         PlayerDependencies.settingsProvider = object : PlayerSettingsProvider {
             override fun current(): PlayerSettings = playerSettings
             override fun save(settings: PlayerSettings) {

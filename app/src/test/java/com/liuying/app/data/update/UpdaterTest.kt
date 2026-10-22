@@ -52,8 +52,8 @@ class UpdaterTest {
     @Test fun autoCheckThrottle() {
         val h = 60 * 60 * 1000L
         assertTrue(UpdatePolicy.shouldAutoCheck(true, 100 * h, 0))
-        assertFalse(UpdatePolicy.shouldAutoCheck(true, 100 * h, 96 * h))
-        assertTrue(UpdatePolicy.shouldAutoCheck(true, 100 * h, 94 * h))
+        assertFalse(UpdatePolicy.shouldAutoCheck(true, 100 * h, 90 * h))
+        assertTrue(UpdatePolicy.shouldAutoCheck(true, 100 * h, 87 * h))
         assertFalse(UpdatePolicy.shouldAutoCheck(false, 100 * h, 0))
         assertTrue(UpdatePolicy.shouldAutoCheck(true, 10 * h, 50 * h)) // clock went backwards
     }

@@ -44,7 +44,7 @@ class UpdateController(
     val installedVersionName: String
         get() = runCatching { app.packageManager.getPackageInfo(app.packageName, 0).versionName }.getOrNull().orEmpty()
 
-    /** App start: honours the setting and the 6 h throttle; failures stay silent. */
+    /** App start: honours the setting and the 12 h throttle; failures stay silent. */
     fun checkOnStart() {
         scope.launch {
             runCatching { updatesDir.listFiles()?.forEach { it.delete() } } // stale downloads from earlier versions
@@ -62,7 +62,11 @@ class UpdateController(
             try {
                 val m = updater.fetchManifest()
                 prefs.edit().putLong(KEY_LAST, now()).apply()
-                _state.value = if (UpdatePolicy.isNewer(installedVersionCode, m)) UpdateState.Available(m, prompt = true) else UpdateState.UpToDate
+                _state.value = when {
+                    !UpdatePolicy.isNewer(installedVersionCode, m) -> UpdateState.UpToDate
+                    !manual && m.versionCode == prefs.getLong(KEY_SKIPPED, 0L) -> UpdateState.Idle // "Skip this version"
+                    else -> UpdateState.Available(m, prompt = true)
+                }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 _state.value = if (manual) UpdateState.Failed(e.message ?: "Could not check for updates.") else UpdateState.Idle
@@ -74,11 +78,24 @@ class UpdateController(
     fun dismissPrompt() {
         val s = _state.value
         if (s is UpdateState.Available) _state.value = s.copy(prompt = false)
+        else if (s is UpdateState.Ready) _state.value = UpdateState.Available(s.manifest, prompt = false) // "Later": the file stays cached, Settings offers it again
         else if (s is UpdateState.Failed || s is UpdateState.UpToDate) _state.value = UpdateState.Idle
+    }
+
+    /** "Skip this version": automatic checks stay quiet about it; a manual check still offers it. */
+    fun skipVersion() {
+        val s = _state.value as? UpdateState.Available ?: return
+        prefs.edit().putLong(KEY_SKIPPED, s.manifest.versionCode).apply()
+        _state.value = UpdateState.Idle
     }
 
     fun download() {
         val m = (_state.value as? UpdateState.Available)?.manifest ?: return
+        val need = if (m.sizeBytes > 0) m.sizeBytes * 2 else 0L
+        if (need > 0 && runCatching { app.cacheDir.usableSpace }.getOrDefault(Long.MAX_VALUE) < need) {
+            _state.value = UpdateState.Failed("Not enough free storage to download this update (${need / 1_048_576} MB needed).")
+            return
+        }
         _state.value = UpdateState.Downloading(m, 0f)
         job?.cancel()
         job = scope.launch {
@@ -97,6 +114,7 @@ class UpdateController(
     fun install(): Boolean {
         val ready = _state.value as? UpdateState.Ready ?: return false
         if (!app.packageManager.canRequestPackageInstalls()) {
+            awaitingInstallPermission = true
             app.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${app.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             return false
         }
@@ -106,10 +124,19 @@ class UpdateController(
         return true
     }
 
+    @Volatile private var awaitingInstallPermission = false
+
+    /** Call when the app returns to the foreground: if the user just allowed installs, carry on with the install. */
+    fun resumeInstallIfPending() {
+        if (!awaitingInstallPermission) return
+        if (_state.value !is UpdateState.Ready) { awaitingInstallPermission = false; return }
+        if (app.packageManager.canRequestPackageInstalls()) { awaitingInstallPermission = false; install() }
+    }
+
     fun cancelDownload() {
         val s = _state.value
         if (s is UpdateState.Downloading) { job?.cancel(); _state.value = UpdateState.Available(s.manifest, prompt = false) }
     }
 
-    private companion object { const val KEY_LAST = "last_check_ms" }
+    private companion object { const val KEY_LAST = "last_check_ms"; const val KEY_SKIPPED = "skipped_version_code" }
 }

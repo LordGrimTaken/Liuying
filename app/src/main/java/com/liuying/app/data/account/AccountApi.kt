@@ -44,7 +44,7 @@ class MemorySessionStore : SessionStore {
 sealed interface ApiResult<out T> {
     data class Ok<T>(val value: T) : ApiResult<T>
     data class Err(val code: String, val message: String, val http: Int = 0, val retryAfterSec: Int? = null) : ApiResult<Nothing> {
-        val unauthenticated: Boolean get() = http == 401 && code == "unauthenticated"
+        val unauthenticated: Boolean get() = http == 401 && code != "invalid_credentials"
         val offline: Boolean get() = http == 0
     }
 }
@@ -159,6 +159,7 @@ class AccountApi(
         val b = Request.Builder().url(baseUrl.trimEnd('/') + path)
             .header("Accept", "application/json")
             .header("Origin", origin)
+            .cacheControl(okhttp3.CacheControl.Builder().noStore().noCache().build())
         session.sid?.let { b.header("Cookie", "$COOKIE=$it") }
         val rb = body?.toRequestBody(jsonType)
         when (method) {

@@ -49,7 +49,11 @@ fun InkDock(
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(28.dp)
-    Row(
+    // Fixed-height bar: cap text scaling so labels never clip at large system font sizes (the full label stays as the content description).
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    androidx.compose.runtime.CompositionLocalProvider(
+        androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density, fontScale = density.fontScale.coerceAtMost(1.0f)),
+    ) { Row(
         modifier = modifier
             .fillMaxWidth()
             .height(68.dp)
@@ -63,7 +67,7 @@ fun InkDock(
         Tab.entries.forEach { tab ->
             DockItem(tab, selected = tab == current, onClick = { onSelect(tab) }, modifier = Modifier.weight(1f))
         }
-    }
+    } }
 }
 
 @Composable

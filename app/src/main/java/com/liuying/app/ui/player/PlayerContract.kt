@@ -6,6 +6,7 @@ import androidx.activity.result.contract.ActivityResultContract
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -90,6 +91,14 @@ data class PlayerSettings(
     val longPressSpeedEnabled: Boolean = true,
     val seekStepSeconds: Int = 10,
     val autoPlayNext: Boolean = true,
+    /** Seconds of the auto-advance countdown (5..30). */
+    val nextCountdownSec: Int = 10,
+    /** When true the next episode is only offered ("Play now"); it never starts by itself. */
+    val askBeforeNext: Boolean = false,
+    val pauseOnHeadphoneUnplug: Boolean = true,
+    val keepScreenOn: Boolean = true,
+    /** False = locked to sensor landscape; true = follows the device rotation. */
+    val autoRotate: Boolean = false,
     val pipOnHome: Boolean = true,
 )
 
@@ -127,6 +136,12 @@ object PlayerDependencies {
     /** Invoked (main thread) whenever PlayerActivity finishes. */
     @Volatile var onExit: ((PlayerExit) -> Unit)? = null
 
+    /**
+     * Invoked (main thread) when a player starts, including when Android recreates the activity after the process died,
+     * so the app can re-register whatever it needs to attribute progress reports to the right title.
+     */
+    @Volatile var onPlaybackStarting: ((PlaybackRequest) -> Unit)? = null
+
     /** Shared client for stream and subtitle traffic; replace to share a pool/cache with the app. */
     @Volatile var httpClient: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -137,6 +152,15 @@ object PlayerDependencies {
 
     /** Process-wide scope used for final progress reports that must outlive the activity. */
     internal val appScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    private val reportQueue = kotlinx.coroutines.channels.Channel<suspend () -> Unit>(kotlinx.coroutines.channels.Channel.UNLIMITED)
+    init {
+        // One consumer: reports are applied strictly in the order the player produced them (a late 10 s tick can no
+        // longer overwrite the final position, and read-modify-write in the repository never interleaves).
+        appScope.launch { for (job in reportQueue) runCatching { job() } }
+    }
+
+    internal fun enqueueReport(job: suspend () -> Unit) { reportQueue.trySend(job) }
 }
 
 object PlayerLauncher {

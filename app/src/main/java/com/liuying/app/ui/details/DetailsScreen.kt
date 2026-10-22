@@ -274,7 +274,7 @@ private fun DetailsBody(vm: DetailsViewModel, ui: DetailsUi, navigator: Navigato
                 }
             }
             val nextId = ui.playTarget?.episode?.takeIf { !it.watched }?.videoId
-            items(ui.episodes, key = { it.videoId }) { e -> EpisodeRow(e, isNext = e.videoId == nextId, onPlay = { vm.playEpisode(e) }, onToggleWatched = { vm.setEpisodeWatched(e, !e.watched) }) }
+            items(ui.episodes, key = { "${it.season}:${it.episode}:${it.videoId}" }) { e -> EpisodeRow(e, isNext = e.videoId == nextId, onPlay = { vm.playEpisode(e) }, onToggleWatched = { vm.setEpisodeWatched(e, !e.watched) }) }
         }
     }
 }
