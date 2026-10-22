@@ -1,9 +1,9 @@
 {
-  "versionName": "0.5.2",
-  "versionCode": 8,
-  "apkUrl": "https://www.liuyingapp.com/downloads/Liuying-0.5.2.apk",
-  "sha256": "16fffe428cb0c8565245ea264d2299493ca155f3c7bf76e02a5e8a908a19e045",
+  "versionName": "0.5.3",
+  "versionCode": 9,
+  "apkUrl": "https://www.liuyingapp.com/downloads/Liuying-0.5.3.apk",
+  "sha256": "2437563741efeb73759a83dfd5b471b368dc2a7f1a9f5be1844aa7741a1349de",
   "sizeBytes": 12849574,
-  "releasedAt": "2026-10-22T14:25:25Z",
-  "notes": "Chinese usernames, encrypted metadata key, background audio with notification"
+  "releasedAt": "2026-10-22T15:45:27Z",
+  "notes": "Fix: Settings tab unreachable after opening Calendar"
 }
