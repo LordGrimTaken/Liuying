@@ -66,6 +66,10 @@ const ICONS = {
   calendar: '<rect x="4" y="5.5" width="16" height="14.5" rx="1.5"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/>',
   right: '<path d="m9 5 7 7-7 7"/>',
   info: '<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5M12 7.8v.4"/>',
+  film: '<rect x="4" y="4.5" width="16" height="15" rx="2"/><path d="M8.5 4.5v15M15.5 4.5v15M4 9h4.5M4 12h4.5M4 15h4.5M15.5 9H20M15.5 12H20M15.5 15H20"/>',
+  tv: '<rect x="3.5" y="7.5" width="17" height="12" rx="2"/><path d="m8.5 3.5 3.5 4 3.5-4"/>',
+  user: '<circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/>',
+  list: '<circle cx="5" cy="7" r="1.1" fill="currentColor"/><circle cx="5" cy="12" r="1.1" fill="currentColor"/><circle cx="5" cy="17" r="1.1" fill="currentColor"/><path d="M9.5 7h10M9.5 12h10M9.5 17h10" stroke-width="2.4"/>',
   gear: '<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/>',
 };
 export function icon(name, size = 22) {

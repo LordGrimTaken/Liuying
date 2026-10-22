@@ -13,8 +13,10 @@ export function titleHref(item, srcId) {
 export function artImg(url, alt = '') {
   const u = imgUrl(url);
   if (!u) return null;
-  const img = h('img', { src: u, alt, loading: 'lazy', decoding: 'async', referrerpolicy: 'no-referrer' });
+  const img = h('img', { class: 'lz', src: u, alt, loading: 'lazy', decoding: 'async', referrerpolicy: 'no-referrer' });
+  img.addEventListener('load', () => img.classList.add('ld'), { once: true });
   img.addEventListener('error', () => img.remove(), { once: true });
+  if (img.complete && img.naturalWidth) img.classList.add('ld');
   return img;
 }
 
@@ -121,6 +123,11 @@ export function errorCard(title, message, onRetry, extra) {
 
 export function emptyState(title, text, ...actions) {
   return h('div', { class: 'state' }, h('h3', { text: title }), h('p', { text }), h('div', {}, actions));
+}
+
+/** Page-level empty state: large muted icon, title, hint and one button. */
+export function emptyPage(iconName, title, text, ...actions) {
+  return h('div', { class: 'empty', role: 'status' }, icon(iconName, 84), h('h2', { text: title }), h('p', { text }), actions.length ? h('div', { class: 'eacts' }, actions) : null);
 }
 
 export function pageHeader(title, ...actions) {
