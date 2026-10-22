@@ -1,7 +1,8 @@
 import { h, icon, clear, toast, confirmDialog, modal } from './dom.js';
 import * as store from '../store.js';
 import * as sync from '../sync.js';
-import { homeRows } from './today.js';
+import { allHomeRows } from './today.js';
+import { moveKey, parsePluginUrl } from '../ux.js';
 import { catalogTitle } from '../addon/protocol.js';
 import { COMMON_LANGS, languageName } from '../player/subtitles.js';
 import { VERSION } from '../util.js';
@@ -39,16 +40,25 @@ export function settings() {
   const rerender = () => { const y = scrollY; build(); scrollTo(0, y); };
 
   function build() {
-    const rows = homeRows();
+    const rows = allHomeRows();
     const langOpts = COMMON_LANGS.map((c) => [c, languageName(c)]);
     const subLangs = S().subLangs || ['en'];
     const status = sync.getStatus();
     const storageNote = h('span', { text: 'Calculating…' });
     const root = h('div', {},
       h('div', { class: 'page-h' }, h('h1', { text: 'Settings' })),
+      jump(),
+      group('Account',
+        status.user
+          ? h('div', {}, h('p', { text: `Signed in as ${status.user.username}. Sources, shelf, progress and settings sync.` }), h('p', { class: 'mute', text: `Status: ${syncLabel(status)}` }),
+            h('div', { class: 'actions', style: { 'margin-top': '12px' } }, h('button', { class: 'btn sm', type: 'button', text: 'Sync now', onClick: async () => { await sync.pull(); sync.schedulePush.flush?.(); sync.push(); toast('Syncing…'); } }),
+              h('a', { class: 'btn sm', href: '/account', text: 'Account' }), h('button', { class: 'btn sm', type: 'button', text: 'Delete synced data', onClick: delRemote })))
+          : h('div', {}, h('p', { class: 'mute', text: 'You are using Liuying signed out. Everything is saved in this browser only.' }), h('a', { class: 'btn pri', href: '/login', text: 'Sign in to sync', style: { 'margin-top': '12px' } }))),
       group('Appearance',
         select('Theme', 'Ink is the default.', 'theme', [['dark', 'Ink'], ['black', 'Pure black'], ['paper', 'Paper (light)']]),
         toggle('Reduce motion', 'Stops the rotating banner, shimmer and other movement.', 'reduceMotion'),
+        select('Accent colour', 'Used for buttons, selected chips and the seal.', 'accent', [['vermilion', 'Vermilion'], ['gold', 'Gold'], ['jade', 'Jade'], ['indigo', 'Indigo']]),
+        select('Text size', 'Scales the page content.', 'fontScale', [['s', 'Small'], ['m', 'Medium'], ['l', 'Large']]),
         select('Poster size', null, 'posterSize', [['s', 'Small'], ['m', 'Medium'], ['l', 'Large']]),
         toggle('Titles under posters', null, 'titlesUnder'),
         toggle('Watched and shelf badges', null, 'showBadges')),
@@ -58,7 +68,8 @@ export function settings() {
         toggle('Featured banner', null, 'hero'),
         select('Banner catalog', 'Which catalog feeds the banner.', 'heroCatalog', [['', 'First row'], ...rows.map((r) => [r.key, `${catalogTitle(r.cat)} (${r.src.manifest.name})`])]),
         toggle('Hide adult-flagged sources', null, 'hideAdult'),
-        row('Rows', 'Choose which catalogs appear in Sources › Details.', h('button', { class: 'btn sm', type: 'button', text: 'Show all rows again', onClick: () => { store.setSettings({ hiddenCatalogs: {}, heroCatalog: '' }); toast('Today layout reset'); rerender(); } }))),
+        layoutList(rows),
+        row('Reset layout', 'Show every catalog again, in the sources\u2019 own order.', h('button', { class: 'btn sm', type: 'button', text: 'Reset layout', onClick: () => { store.setSettings({ hiddenCatalogs: {}, homeOrder: [], heroCatalog: '' }); toast('Today layout reset'); rerender(); } }))),
       group('Playback',
         select('When a title has progress', null, 'resume', [['auto', 'Resume automatically'], ['ask', 'Ask me'], ['never', 'Always start over']]),
         range('Mark watched at', 'Share of the runtime after which a title counts as watched.', 'threshold', 0.8, 0.98, 0.01, (v) => `${Math.round(v * 100)}%`),
@@ -87,12 +98,13 @@ export function settings() {
         toggle('Remember recent searches', null, 'recentSearches'),
         row('Clear all progress', 'Resume points, watched marks and Continue Watching.', h('button', { class: 'btn sm', type: 'button', text: 'Clear progress', onClick: clearProg })),
         row('Backup', 'Sources, shelf, progress and settings in one file.', h('div', { class: 'actions' }, h('button', { class: 'btn sm', type: 'button', text: 'Export', onClick: exportBackup }), h('button', { class: 'btn sm', type: 'button', text: 'Import', onClick: importBackup })))),
-      group('Account and sync',
-        status.user
-          ? h('div', {}, h('p', { text: `Signed in as ${status.user.username}. Sources, shelf, progress and settings sync.` }), h('p', { class: 'mute', text: `Status: ${syncLabel(status)}` }),
-            h('div', { class: 'actions', style: { 'margin-top': '12px' } }, h('button', { class: 'btn sm', type: 'button', text: 'Sync now', onClick: async () => { await sync.pull(); sync.schedulePush.flush?.(); sync.push(); toast('Syncing…'); } }),
-              h('a', { class: 'btn sm', href: '/account', text: 'Account' }), h('button', { class: 'btn sm', type: 'button', text: 'Delete synced data', onClick: delRemote })))
-          : h('div', {}, h('p', { class: 'mute', text: 'You are using Liuying signed out. Everything is saved in this browser only.' }), h('a', { class: 'btn pri', href: '/login', text: 'Sign in to sync', style: { 'margin-top': '12px' } }))),
+      group('Repositories and plugins',
+        h('p', { class: 'mute', text: 'Plugin repositories add new kinds of sources, like on the Android app. Plugins cannot run in the web player yet: you can save a manifest link here, but nothing is installed or executed.' }),
+        pluginForm(),
+        pluginList()),
+      group('Integrations',
+        h('div', { class: 'intgrid' }, [['Trakt', 'Sync watch history and ratings.'], ['Simkl', 'Track what you watch across apps.'], ['TMDb', 'Richer artwork and cast details.']].map(([n, d]) =>
+          h('div', { class: 'intcard', 'aria-disabled': 'true' }, h('div', { class: 'intn', 'aria-hidden': 'true', text: n[0] }), h('div', { class: 'grow' }, h('b', { text: n }), h('span', { class: 'mute', text: d })), h('span', { class: 'badge', text: 'Coming soon' }))))),
       group('Storage',
         row('Cached details', 'Titles remembered so cards and Continue Watching load fast.', h('div', { class: 'actions' }, storageNote, h('button', { class: 'btn sm', type: 'button', text: 'Clear cache', onClick: () => { store.clearMetaCache(); toast('Cache cleared'); rerender(); } }))),
         row('Recent searches', null, h('button', { class: 'btn sm', type: 'button', text: 'Clear', onClick: () => { store.clearRecent(); toast('Recent searches cleared'); } })),
@@ -105,6 +117,49 @@ export function settings() {
         h('div', { class: 'actions', style: { 'margin-top': '12px' } }, h('button', { class: 'btn sm', type: 'button', text: 'Copy debug info', onClick: copyDebug }), h('a', { class: 'btn sm', href: '/', text: 'Liuying home' }))));
     clear(page).append(root);
     storageNote.textContent = `${(store.metaCacheSize() / 1024).toFixed(0)} KB`;
+  }
+
+  const SECTIONS = ['Account', 'Appearance', 'Today layout', 'Playback', 'Shelf and history', 'Repositories and plugins', 'Integrations', 'About'];
+  function jump() {
+    return h('nav', { class: 'chips jump', 'aria-label': 'Settings sections' }, SECTIONS.map((t) => h('button', { class: 'chip', type: 'button', text: t.replace('Repositories and plugins', 'Plugins'), onClick: () => {
+      const el = [...document.querySelectorAll('.setgroup')].find((g) => g.getAttribute('aria-label')?.startsWith(t));
+      el?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+      el?.querySelector('h2')?.setAttribute('tabindex', '-1'); el?.querySelector('h2')?.focus({ preventScroll: true });
+    } })));
+  }
+
+  function layoutList(rows) {
+    if (!rows.length) return h('p', { class: 'mute', text: 'Add a source to arrange its catalogs here.' });
+    const keys = rows.map((r) => r.key);
+    return h('div', { class: 'layout' }, h('p', { class: 'mute', text: 'Order the catalogs on Today and hide the ones you do not want.' }),
+      h('ol', { class: 'lrows' }, rows.map((r, i) => h('li', { class: r.hidden ? 'off' : '' },
+        h('div', { class: 'grow' }, h('b', { text: catalogTitle(r.cat) }), h('span', { class: 'mute', text: r.src.manifest.name })),
+        h('button', { class: 'ibtn', type: 'button', 'aria-label': `Move ${catalogTitle(r.cat)} up`, disabled: i === 0, onClick: () => { store.setSettings({ homeOrder: moveKey(keys, r.key, -1) }); rerender(); } }, icon('up', 18)),
+        h('button', { class: 'ibtn', type: 'button', 'aria-label': `Move ${catalogTitle(r.cat)} down`, disabled: i === rows.length - 1, onClick: () => { store.setSettings({ homeOrder: moveKey(keys, r.key, 1) }); rerender(); } }, icon('down', 18)),
+        h('input', { class: 'tg', type: 'checkbox', checked: !r.hidden, 'aria-label': `Show ${catalogTitle(r.cat)} on Today`, onChange: (e) => { store.setSettings({ hiddenCatalogs: { ...S().hiddenCatalogs, [r.key]: !e.target.checked } }); rerender(); } })))));
+  }
+
+  const plugins = () => (Array.isArray(store.prefs().plugins) ? store.prefs().plugins : []);
+  function pluginForm() {
+    const inp = h('input', { class: 'inp', type: 'url', id: 'plug-url', placeholder: 'https://example.com/plugin/manifest.json', 'aria-label': 'Plugin manifest link', autocomplete: 'off' });
+    const add = async () => {
+      const url = parsePluginUrl(inp.value);
+      if (!url) { toast('Enter a full https:// link to a plugin manifest.'); inp.focus(); return; }
+      if (plugins().some((p) => p.url === url)) { toast('That link is already saved.'); return; }
+      const ok = await confirmDialog('Save this plugin link?', `Plugins are code written by third parties and Liuying does not review them. Saving only records the link ${new URL(url).host}; nothing is downloaded or run, and the web player cannot run plugins yet.`, 'Save link');
+      if (!ok) return;
+      store.setPref('plugins', [...plugins(), { url, addedAt: Date.now() }]);
+      toast('Link saved. Not yet runnable.'); rerender();
+    };
+    return h('form', { class: 'plug-form', onSubmit: (e) => { e.preventDefault(); add(); } }, h('label', { class: 'lbl', for: 'plug-url', text: 'Add by manifest link' }), h('div', { class: 'plug-in' }, inp, h('button', { class: 'btn pri', type: 'submit', text: 'Add' })));
+  }
+  function pluginList() {
+    const list = plugins();
+    if (!list.length) return h('p', { class: 'mute', text: 'No plugin links saved.' });
+    return h('ul', { class: 'plist' }, list.map((p) => h('li', {},
+      h('div', { class: 'grow' }, h('b', { text: new URL(p.url).host }), h('span', { class: 'mute purl', text: p.url })),
+      h('span', { class: 'badge warn', text: 'Not yet runnable' }),
+      h('button', { class: 'ibtn', type: 'button', 'aria-label': `Remove ${p.url}`, onClick: () => { store.setPref('plugins', plugins().filter((x) => x.url !== p.url)); rerender(); } }, icon('trash', 18)))));
   }
 
   const syncLabel = (st) => ({ idle: 'up to date', syncing: 'syncing', offline: 'offline, will retry', error: `problem (${st.error || 'will retry'})`, checking: 'checking', signedout: 'signed out' }[st.state] || st.state);
