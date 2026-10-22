@@ -19,7 +19,7 @@ export function shelf() {
   const sortSel = h('select', { class: 'inp', style: { 'max-width': '190px' }, 'aria-label': 'Sort', onChange: (e) => { sort = e.target.value; store.setSettings({ libSort: sort }); draw(); } },
     [['added', 'Recently added'], ['title', 'Title A–Z'], ['year', 'Year'], ['watched', 'Last watched'], ['unwatched', 'Unwatched first']].map(([v, l]) => h('option', { value: v, selected: v === sort, text: l })));
   const viewBtn = h('button', { class: 'ibtn ring', type: 'button', 'aria-label': 'Toggle grid or list view', onClick: () => { mode = mode === 'grid' ? 'list' : 'grid'; store.setSettings({ libView: mode }); draw(); } }, icon('shelf'));
-  const typeChips = h('div', { class: 'chips', role: 'group', 'aria-label': 'Filters' });
+  const typeChips = h('div', { class: 'chipgroups' });
   tb.append(search, sortSel, viewBtn);
   page.append(h('div', { class: 'page-h' }, h('h1', { text: 'Shelf' })), contBox, tb, typeChips, out);
 
@@ -35,10 +35,12 @@ export function shelf() {
   function draw() {
     const lib = store.library();
     clear(typeChips);
+    const g1 = h('div', { class: 'chips', role: 'group', 'aria-label': 'Type' });
+    const g2 = h('div', { class: 'chips', role: 'group', 'aria-label': 'Status' });
+    typeChips.append(g1, g2);
     const chip = (label, active, on) => h('button', { class: 'chip', type: 'button', 'aria-pressed': String(active), onClick: on }, label);
-    for (const [v, l] of [['all', 'All'], ['movie', 'Movies'], ['series', 'Series']]) typeChips.append(chip(l, type === v, () => { type = v; draw(); }));
-    typeChips.append(h('span', { class: 'sr' }, 'Status'));
-    for (const [v, l] of [['all', 'Any status'], ['unwatched', 'Unwatched'], ['progress', 'In progress'], ['watched', 'Watched']]) typeChips.append(chip(l, filter === v, () => { filter = v; draw(); }));
+    for (const [v, l] of [['all', 'All'], ['movie', 'Movies'], ['series', 'Series']]) g1.append(chip(l, type === v, () => { type = v; draw(); }));
+    for (const [v, l] of [['all', 'Any'], ['unwatched', 'Unwatched'], ['progress', 'In progress'], ['watched', 'Watched']]) g2.append(chip(l, filter === v, () => { filter = v; draw(); }));
     let items = lib.map((i) => ({ i, st: state(i) }));
     if (text) items = items.filter(({ i }) => (i.name || '').toLowerCase().includes(text));
     if (type !== 'all') items = items.filter(({ i }) => i.type === type);

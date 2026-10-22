@@ -4,7 +4,7 @@ import { catalogCapabilities, isHomeEligible, catalogKey, catalogTitle, isAdult 
 import { loadCatalog } from '../addon/service.js';
 import { describeError } from '../addon/client.js';
 import { posterCard, rowSection, showSkeletons, errorCard, emptyState, artImg, titleHref, toggleLibrary } from './components.js';
-import { renderContinueRow } from './continue.js';
+import { renderContinueRow, streamsHref } from './continue.js';
 import { href, enc, restoreScroll } from '../router.js';
 import { imgUrl, yearOf } from '../util.js';
 
@@ -137,11 +137,13 @@ export function today() {
       const genres = (it.genres || it.genre || []).slice?.(0, 3) || [];
       clear(copy).append(
         h('p', { class: 'eyebrow', text: 'Featured' }),
-        h('h2', { text: it.name || it.id }),
+        h('h2', {}, h('a', { href: titleHref(it, store.sourceId(r.src)), text: it.name || it.id })),
         h('div', { class: 'meta' }, yearOf(it) ? h('span', { text: yearOf(it) }) : null, it.imdbRating ? h('span', { class: 'rate', text: `★ ${it.imdbRating}` }) : null, ...genres.map((g) => h('span', { text: g }))),
         it.description ? h('p', { class: 'desc', text: it.description }) : null,
         h('div', { class: 'acts' },
-          h('a', { class: 'btn pri', href: titleHref(it, store.sourceId(r.src)) }, icon('play', 18), 'Play / More info'),
+          it.type === 'series'
+            ? h('a', { class: 'btn pri', href: titleHref(it, store.sourceId(r.src)) }, icon('eye', 18), 'Details')
+            : h('a', { class: 'btn pri', href: streamsHref(it.type || 'movie', it.id) }, icon('play', 18), 'Play'),
           h('button', { class: 'btn', type: 'button', 'aria-pressed': String(inLib), onClick: () => { toggleLibrary(it); show(i); } }, icon(inLib ? 'bookmarkOn' : 'bookmark', 18), inLib ? 'On shelf' : 'Add to shelf')));
     }
     const stopAuto = () => clearInterval(timer);

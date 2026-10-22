@@ -7,6 +7,7 @@ import { pickAutoSubtitle, languageName, langCode, fmtDelay, COMMON_LANGS } from
 import { SubtitleController } from './subs-controller.js';
 import { fmtTime, clamp } from '../util.js';
 import { streamsHref } from '../ui/continue.js';
+import { loadMeta } from '../addon/service.js';
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 const SWATCHES = [['#ffffff', 'c1', 'White'], ['#ffe27a', 'c2', 'Yellow'], ['#8de0ff', 'c3', 'Cyan'], ['#9be58f', 'c4', 'Green'], ['#ffb3a8', 'c5', 'Rose']];
@@ -68,7 +69,7 @@ export function player({ params, query }) {
     h('div', { class: 'pl-shade top' }), h('div', { class: 'pl-shade bot' }),
     h('div', { class: 'pl-top' },
       h('button', { class: 'ibtn', type: 'button', 'aria-label': 'Back to details', onClick: exit }, icon('back')),
-      h('div', { class: 'ttl' }, h('b', { text: title }), epLabel ? h('span', { text: epLabel }) : null),
+      h('div', { class: 'ttl' }, h('b', { id: 'pl-title', text: title }), h('span', { id: 'pl-ep', text: epLabel })),
       h('a', { class: 'btn sm', href: streamsHref(type, id, videoId), onClick: () => saveProgress() }, 'Streams')),
     h('div', { class: 'pl-center' }, loadEl, errEl),
     resumeEl,
@@ -505,6 +506,16 @@ export function player({ params, query }) {
   const getWake = async () => { try { wake = await navigator.wakeLock?.request('screen'); } catch { /* ignore */ } };
   getWake();
   on(document, 'visibilitychange', () => { if (document.visibilityState === 'visible') getWake(); });
+
+  // ---------- late metadata (direct links, reloads) ----------
+  if (!meta || (videoId && !episodes.length)) {
+    loadMeta(type, id, { signal: ctl.signal }).then((r) => {
+      if (!r.meta || ctl.signal.aborted) return;
+      meta = r.meta; title = meta.name || title; poster = meta.poster || poster; episodes = normalizeVideos(meta.videos); epLabel = makeLabel();
+      root.querySelector('#pl-title').textContent = title; root.querySelector('#pl-ep').textContent = epLabel;
+    }).catch(() => {});
+  }
+  document.getElementById('toast').hidden = true;
 
   // ---------- go ----------
   const vol = store.prefs().volume;

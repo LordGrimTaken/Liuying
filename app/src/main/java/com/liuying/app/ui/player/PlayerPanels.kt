@@ -210,13 +210,13 @@ private fun TimingTab(c: PlayerController) {
 @Composable
 private fun SpeedTab(c: PlayerController) {
     Text("%.2fx".format(c.speed), color = Paper, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
-    LabeledSlider("", c.speed, 0.25f..3f, 54, onChange = { v -> c.setSpeed((v * 20f).roundToInt() / 20f) }, onDone = {})
+    LabeledSlider("", c.speed, 0.25f..3f, 54, onChange = { v -> c.changeSpeed((v * 20f).roundToInt() / 20f) }, onDone = {})
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f).forEach { v -> Chip("${v}x", c.speed == v) { c.setSpeed(v) } }
+        listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f).forEach { v -> Chip("${v}x", c.speed == v) { c.changeSpeed(v) } }
     }
     Spacer(Modifier.height(6.dp))
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        listOf(1.75f, 2f, 2.5f, 3f).forEach { v -> Chip("${v}x", c.speed == v) { c.setSpeed(v) } }
+        listOf(1.75f, 2f, 2.5f, 3f).forEach { v -> Chip("${v}x", c.speed == v) { c.changeSpeed(v) } }
     }
     Spacer(Modifier.height(10.dp))
     Muted("Hold a finger on the video for temporary 2x.")

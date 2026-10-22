@@ -536,7 +536,7 @@ class PlayerController(private val activity: PlayerActivity, val request: Playba
         seekBy(if (forward) sec * 1000L else -sec * 1000L)
         seekFeedback = SeekFeedback(forward, sec, ++feedbackId)
     }
-    fun setSpeed(v: Float) {
+    fun changeSpeed(v: Float) {
         speed = v.coerceIn(0.25f, 3f)
         player.playbackParameters = PlaybackParameters(speed)
     }

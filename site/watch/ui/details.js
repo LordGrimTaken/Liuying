@@ -15,7 +15,7 @@ export function details({ params, query }) {
   const { type, id } = params;
   const view = document.getElementById('view');
   const ctl = new AbortController();
-  const page = h('div', { class: 'page' });
+  const page = h('div', { class: 'page det' });
   clear(view).append(page);
   const origin = query.src ? store.sourceById(query.src) : null;
   const snap = store.library().find((i) => i.id === id);
@@ -104,7 +104,7 @@ export function details({ params, query }) {
     if (state === 'loading') body.append(h('div', {}, h('div', { class: 'sk line' }), h('div', { class: 'sk line' }), h('div', { class: 'sk line' })));
     if (state === 'error') body.append(errorCard("Couldn't load details", errors.length ? describeError(errors[0].error) : 'Your sources did not respond.', () => { errors = []; fetchIt(); }));
     if (state === 'missing') body.append(h('div', { class: 'state compact' }, 'Limited info available. No source returned details for this title, but you can still look for streams.'));
-    if (state === 'ok' && errors.length) body.append(h('div', { class: 'state compact' }, `${errors.length} source${errors.length > 1 ? 's' : ''} couldn't provide details; showing what the others returned.`));
+    
 
     // synopsis
     if (m.description) {
@@ -121,6 +121,7 @@ export function details({ params, query }) {
     if (cast.length) body.append(h('section', {}, h('h2', { class: 'sec', text: 'Cast' }), h('div', { class: 'cast', role: 'list' }, cast.map((n) => h('div', { class: 'p', role: 'listitem' }, h('div', { class: 'av', 'aria-hidden': 'true', text: String(n).split(/\s+/).slice(0, 2).map((x) => x[0]).join('').toUpperCase() }), h('span', { text: n }))))));
     // episodes
     if (m.type === 'series') body.append(episodes(videos, getRec));
+    if (state === 'ok' && errors.length) body.append(h('p', { class: 'det-note' }, icon('warn', 14), `${errors.length} source${errors.length > 1 ? 's' : ''} couldn't provide details; showing what the others returned.`));
     root.append(body);
     clear(page).append(root);
   }
