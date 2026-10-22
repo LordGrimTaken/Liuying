@@ -48,8 +48,8 @@ class SettingsSyncLogicTest {
         val dirty = setOf("homeOrder", "hero")
         val merged = SettingsSyncLogic.merge(local, webSettings, dirty)
         val p = SettingsSyncLogic.payload(webSettings, merged, dirty)
-        // known + dirty: replaced
-        assertEquals(listOf("l1", "l2"), p["homeOrder"]!!.jsonArray.map { it.jsonPrimitive.content })
+        // known + dirty: ours first, server-only entries kept
+        assertEquals(listOf("l1", "l2", "r2", "r1"), p["homeOrder"]!!.jsonArray.map { it.jsonPrimitive.content })
         assertEquals(false, p["hero"]!!.jsonPrimitive.boolean)
         // known + clean: exactly as on the server
         assertEquals("jade", p["accent"]!!.jsonPrimitive.content)
