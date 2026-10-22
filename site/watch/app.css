@@ -89,6 +89,7 @@ body.playing #topbar{display:none}
   .navlink[data-nav="sources"]{display:flex}
 }
 .seal{display:inline-grid;place-items:center;background:var(--red);color:#f6e9d6;font:700 14px/1.05 var(--serif);border-radius:3px;box-shadow:inset 0 0 0 2px rgba(246,233,214,.25),0 2px 10px rgba(200,55,45,.35);text-align:center;width:40px;height:40px}
+img.seal{background:none;box-shadow:none;border-radius:0;object-fit:contain;filter:drop-shadow(0 2px 10px rgba(200,55,45,.35))}
 .seal.sm{width:30px;height:30px;font-size:11px}
 .sync{display:inline-flex;align-items:center;gap:6px;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);text-decoration:none;text-align:center;flex-direction:column}
 .sync .dot{width:8px;height:8px;border-radius:50%;background:var(--mute)}
@@ -775,3 +776,79 @@ body.reduce-motion .scroller{scroll-behavior:auto}
 @media(prefers-reduced-motion:reduce){.acc-body,.acc-h .ico{transition:none}}
 .layout .subh{margin-top:18px;padding-top:14px;border-top:1px solid var(--line2)}
 @media(max-width:520px){.ltools .inp{flex:1 1 100%}}
+
+/* ================= QA pass (web) ================= */
+/* hit targets: grow the touch area without changing the look */
+.tbtn{width:44px;height:44px}
+.avatar{width:36px;height:36px}
+.avatar::after,.hero .hbtn::after,.hero .dots button::after,.row-h a.all::after,.sortbtn::after,.chip::after{content:"";position:absolute;inset:-4px}
+.hero .hbtn{position:relative}
+.hero .dots button{position:relative;width:22px;height:44px}
+.hero .dots button::after{inset:0}
+.row-h a.all{position:relative;padding:12px 2px}
+.row-h a.all::after{inset:0}
+.sortbtn{position:relative}
+.sortbtn::after{inset:-4px 0}
+.linkbtn{min-height:44px;display:inline-flex;align-items:center}
+.pcard .quick::after,.pcard .more::after,.wcard .more::after{content:"";position:absolute;inset:-5px}
+.chip{position:relative}
+.tb-brand{min-height:44px}
+@media(pointer:coarse){
+  .btn.sm,.chip,.seg button,.gtab,.sortbtn{min-height:44px}
+  .chip{padding-top:9px;padding-bottom:9px}
+  .tg{width:52px;height:30px}.tg::after{top:4px;left:4px;width:20px;height:20px}.tg:checked::after{transform:translateX(22px)}
+}
+/* long unbroken titles never blow a grid/flex track open */
+.grid>*,.scroller>*,.s-head>*,.lrow>*,.cal-item>*{min-width:0}
+.pcard .ttl,.pcard .sub,.wcard .ttl,.s-head h1,.det-top h1,.lrow .serif{overflow-wrap:anywhere}
+.s-head{min-width:0}.s-head>div{min-width:0}
+.hero h2{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+/* hero text is always light: keep its base dark in every theme (also while artwork loads or fails) */
+.hero{background:#241d18}
+.hero .eyebrow,.wcard .tag,.hrate,.pcard .mk span:not(.w){color:#d6b36a}
+.hero .eyebrow::before{background:#d6b36a}
+.wcard .tag{border-color:#d6b36a}
+.hrate{border-color:rgba(214,179,106,.55)}
+/* brand seal and primary hover: enough contrast for white text */
+.seal{color:#fff}
+.btn.pri:hover,.hb.pri:hover{background:#b02e25;border-color:#b02e25}
+:root[data-accent="gold"] .btn.pri:hover,:root[data-accent="gold"] .hb.pri:hover{background:#d9b970;border-color:#d9b970}
+:root[data-accent="jade"] .btn.pri:hover,:root[data-accent="jade"] .hb.pri:hover{background:#27695a;border-color:#27695a}
+:root[data-accent="indigo"] .btn.pri:hover,:root[data-accent="indigo"] .hb.pri:hover{background:#3d4f8f;border-color:#3d4f8f}
+/* paper theme: status colours designed for dark surfaces need darker twins */
+:root[data-theme="paper"]{--ok:#2c6b3c;--warnc:#a3241b;--hdr:#2b5a96}
+.badge.hdr{color:var(--hdr,#9dbfe8)}
+.badge.ok{color:var(--ok,#9fd2ac)}
+.badge.warn,.srow .note{color:var(--warnc,#ff9a8e)}
+:root[data-theme="paper"] .badge.hdr{border-color:var(--hdr)}
+:root[data-theme="paper"] .badge.ok{border-color:var(--ok)}
+:root[data-theme="paper"] .badge.warn{border-color:var(--warnc)}
+:root[data-theme="paper"] .badge.res{color:#6b4f12}
+:root[data-theme="paper"] .cal-day.today .cdate{background:var(--red);border-color:var(--red);color:#fff}
+:root[data-theme="paper"] .linkbtn,:root[data-theme="paper"] .row-h a.all,:root[data-theme="paper"] .banner a,:root[data-theme="paper"] .eyebrow:not(.x),:root[data-theme="paper"] .field label,:root[data-theme="paper"] .lbl,:root[data-theme="paper"] .sgroup>h3,:root[data-theme="paper"] .lbl-sort{color:#6b4f12}
+:root[data-theme="paper"] .hero .eyebrow{color:#d6b36a}
+:root[data-theme="paper"] .tbtn[aria-current="page"],:root[data-theme="paper"] .navlink[aria-current="page"]{color:#a3241b}
+:root[data-theme="paper"] .navlink[aria-current="page"]{background:rgba(163,36,27,.12)}
+@media(max-width:899px){.navlink{font-size:10px}}
+.more-eps{width:100%;margin-top:12px}
+.more-eps .mute{font-weight:400}
+.end-note{text-align:center;padding:20px}
+.sentinel{grid-column:1/-1;height:1px}
+
+/* ---- player: wave 1 (long skip, suggestions, stats, sleep chip, errors) ---- */
+.pl-err .why{color:#d7cdb9;margin-bottom:6px}
+.pl-err .next{color:#b3a893;font-size:14px}
+.pl-suggest{position:absolute;z-index:8;left:50%;bottom:112px;transform:translateX(-50%);display:flex;align-items:center;gap:10px;max-width:calc(100vw - 24px);padding:8px 8px 8px 16px;background:rgba(20,17,15,.95);border:1px solid var(--gold);font-size:14px;box-shadow:0 8px 30px #000}
+.pl-suggest[hidden],.pl-stats[hidden]{display:none}
+.pl-stats{position:absolute;z-index:7;left:max(12px,env(safe-area-inset-left));top:72px;padding:10px 14px;background:rgba(10,8,7,.82);border:1px solid var(--line);font:12.5px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;color:#e8dfcc;pointer-events:none}
+.pl-stats dl{display:grid;grid-template-columns:auto auto;gap:0 14px;margin:0}
+.pl-stats dt{color:#b3a893}.pl-stats dd{margin:0;text-align:right}
+.sleepchip{gap:6px;min-height:36px}
+.sleepchip[hidden]{display:none}
+.lskip{position:relative}
+.lskip .lk{position:absolute;right:1px;bottom:3px;font:700 9.5px var(--sans);color:var(--gold);pointer-events:none}
+.pl-panel .encl{display:block;padding:2px 8px 6px;font-size:13px;color:#b3a893}
+.pl-panel .presets{padding:4px 0 8px}
+.pl-panel .sk.line{height:34px;margin:6px 8px;background:rgba(242,233,218,.08)}
+@media(max-width:600px){.pl-suggest{bottom:128px;flex-wrap:wrap}.pl-stats{top:64px}.pl-panel .tabs button{padding:0 5px;font-size:10.5px}}
+@media(prefers-reduced-motion:reduce){.pl-suggest,.pl-stats{transition:none;animation:none}}
