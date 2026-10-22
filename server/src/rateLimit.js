@@ -14,7 +14,11 @@ export function createLimiter({ limit, windowMs, now = () => Date.now(), maxKeys
       const t = now();
       let arr = hits.get(key);
       if (!arr) {
-        if (hits.size >= maxKeys) this.sweep();
+        if (hits.size >= maxKeys) {
+          this.sweep();
+          // Still full of live entries: evict the oldest key rather than grow without bound.
+          if (hits.size >= maxKeys) hits.delete(hits.keys().next().value);
+        }
         arr = [];
         hits.set(key, arr);
       }

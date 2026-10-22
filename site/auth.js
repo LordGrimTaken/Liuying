@@ -108,6 +108,7 @@
       loading.hidden = true; card.hidden = false;
       document.title = u.username + ' | Liuying';
       document.getElementById('h').focus && document.getElementById('h').setAttribute('tabindex', '-1');
+      initSecurity();
     }).catch(function () { loading.textContent = NET; });
     out.addEventListener('click', function () {
       clearError(); busy(out, true);
@@ -115,6 +116,77 @@
         if (r.res.status === 204 || r.res.status === 200 || r.res.status === 401) location.assign('/login');
         else { busy(out, false); showError(friendly(r.res, r.data)); }
       }).catch(function () { busy(out, false); showError(NET); });
+    });
+  }
+
+  function note(el, msg, ok) {
+    el.hidden = !msg; el.textContent = msg || '';
+    el.className = 'note ' + (ok ? 'ok' : 'err');
+  }
+  function when(iso) { try { return new Date(iso).toLocaleString(); } catch (e) { return iso; } }
+
+  function initSecurity() {
+    var pwForm = document.getElementById('pw-form');
+    if (!pwForm || pwForm.getAttribute('data-ready')) return;
+    pwForm.setAttribute('data-ready', '1');
+    var pwMsg = document.getElementById('pw-msg'), save = document.getElementById('pw-save');
+    pwForm.addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      var cur = document.getElementById('cur-pw'), nw = document.getElementById('new-pw');
+      if (!cur.value) { note(pwMsg, 'Enter your current password.'); cur.focus(); return; }
+      if (nw.value.length < 8 || nw.value.length > 128) { note(pwMsg, 'Use between 8 and 128 characters.'); nw.focus(); return; }
+      busy(save, true); note(pwMsg, '');
+      api('POST', '/api/auth/password', { currentPassword: cur.value, newPassword: nw.value }).then(function (r) {
+        busy(save, false);
+        if (r.res.status === 200) { cur.value = ''; nw.value = ''; note(pwMsg, 'Password changed. Other devices were signed out.', true); loadSessions(); }
+        else note(pwMsg, friendly(r.res, r.data));
+      }).catch(function () { busy(save, false); note(pwMsg, NET); });
+    });
+
+    var list = document.getElementById('sess-list'), sMsg = document.getElementById('sess-msg');
+    function loadSessions() {
+      api('GET', '/api/auth/sessions').then(function (r) {
+        if (r.res.status !== 200 || !r.data) return;
+        list.textContent = '';
+        r.data.sessions.forEach(function (s) {
+          var li = document.createElement('li'), t = document.createElement('span');
+          t.textContent = (s.current ? 'This device' : 'Signed in') + ' - ' + when(s.createdAt);
+          li.appendChild(t);
+          if (!s.current) {
+            var b = document.createElement('button');
+            b.type = 'button'; b.textContent = 'Sign out';
+            b.setAttribute('aria-label', 'Sign out the session from ' + when(s.createdAt));
+            b.addEventListener('click', function () {
+              api('DELETE', '/api/auth/sessions/' + s.id).then(loadSessions).catch(function () { note(sMsg, NET); });
+            });
+            li.appendChild(b);
+          }
+          list.appendChild(li);
+        });
+      }).catch(function () { note(sMsg, NET); });
+    }
+    document.getElementById('sess-det').addEventListener('toggle', function (e) { if (e.target.open) loadSessions(); });
+    var others = document.getElementById('sess-others');
+    others.addEventListener('click', function () {
+      busy(others, true);
+      api('POST', '/api/auth/sessions/revoke-others', {}).then(function (r) {
+        busy(others, false);
+        if (r.res.status === 204) { note(sMsg, 'Other devices were signed out.', true); loadSessions(); }
+        else note(sMsg, friendly(r.res, r.data));
+      }).catch(function () { busy(others, false); note(sMsg, NET); });
+    });
+
+    var delForm = document.getElementById('del-form'), dMsg = document.getElementById('del-msg'), go = document.getElementById('del-go');
+    delForm.addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      var p = document.getElementById('del-pw');
+      if (!p.value) { note(dMsg, 'Enter your password to confirm.'); p.focus(); return; }
+      if (!window.confirm('Delete your account and all synced data permanently?')) return;
+      busy(go, true); note(dMsg, '');
+      api('POST', '/api/auth/delete', { password: p.value }).then(function (r) {
+        if (r.res.status === 204) { location.assign('/'); return; }
+        busy(go, false); note(dMsg, friendly(r.res, r.data));
+      }).catch(function () { busy(go, false); note(dMsg, NET); });
     });
   }
 })();

@@ -14,10 +14,23 @@ import { createSyncRouter } from './sync.js';
 
 const DEFAULT_SITE = fileURLToPath(new URL('../../site', import.meta.url));
 const MIN = 60 * 1000;
+const MAX_SESSIONS = 20;
 
+// Never let a connection string (or its password) reach the logs, whatever an error message contains.
+function redactor() {
+  const secrets = [];
+  const url = process.env.DATABASE_URL;
+  if (url) {
+    secrets.push(url);
+    try { const u = new URL(url); if (u.password) secrets.push(decodeURIComponent(u.password), u.password); } catch { /* not a URL */ }
+  }
+  return (text) => secrets.reduce((t, sec) => (sec.length >= 4 ? t.split(sec).join('[redacted]') : t), text)
+    .replace(/postgres(?:ql)?:\/\/[^\s"']+/gi, 'postgres://[redacted]');
+}
+const redact = redactor();
 const jsonLogger = {
-  info: (o) => console.log(JSON.stringify({ level: 'info', ...o })),
-  error: (o) => console.error(JSON.stringify({ level: 'error', ...o })),
+  info: (o) => console.log(redact(JSON.stringify({ level: 'info', ...o }))),
+  error: (o) => console.error(redact(JSON.stringify({ level: 'error', ...o }))),
 };
 
 export function createApp({
@@ -31,12 +44,18 @@ export function createApp({
 } = {}) {
   const app = express();
   app.disable('x-powered-by');
-  if (production) app.set('trust proxy', 1);
+  // Render terminates TLS and appends the peer to X-Forwarded-For. TRUST_PROXY_HOPS lets the owner raise
+  // the hop count if another proxy (e.g. Cloudflare in front of Render) is ever confirmed to append too.
+  const hops = Math.min(5, Math.max(0, Number.parseInt(process.env.TRUST_PROXY_HOPS ?? '1', 10) || 0));
+  if (production) app.set('trust proxy', hops);
 
   const loginPair = createLimiter({ limit: 10, windowMs: 15 * MIN, now, ...limits.loginPair });
   const loginIp = createLimiter({ limit: 30, windowMs: 15 * MIN, now, ...limits.loginIp });
   const signupIp = createLimiter({ limit: 5, windowMs: 60 * MIN, now, ...limits.signupIp });
 
+  // Distributed guessing against one account is capped regardless of source IP.
+  const loginUser = createLimiter({ limit: 40, windowMs: 15 * MIN, now, ...limits.loginUser });
+  const pwChange = createLimiter({ limit: 10, windowMs: 15 * MIN, now, ...limits.pwChange });
   const syncLimiter = createLimiter({ limit: 60, windowMs: MIN, now, ...limits.sync });
 
   const cookieOpts = cookieOptions(production);
@@ -66,6 +85,7 @@ export function createApp({
   const helmetWith = (directives) => helmet({
     contentSecurityPolicy: { useDefaults: false, directives },
     strictTransportSecurity: production,
+    frameguard: { action: 'deny' }, // matches frame-ancestors 'none'
   });
   const strictSecurity = helmetWith(cspDirectives());
   const watchSecurity = helmetWith(cspDirectives({
@@ -94,6 +114,9 @@ export function createApp({
   // CSRF: Origin (when present) must match Host; JSON content type required on POST.
   api.use((req, res, next) => {
     if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return next();
+    if (req.get('sec-fetch-site') === 'cross-site') {
+      return next(new ApiError(403, 'forbidden', 'Cross-origin request rejected.'));
+    }
     const origin = req.get('origin');
     if (origin !== undefined) {
       let ok = false;
@@ -139,6 +162,12 @@ export function createApp({
     );
     setSessionCookie(res, token);
     purgeExpired();
+    // Keep at most MAX_SESSIONS per user: drop the oldest beyond the cap.
+    await db.query(
+      `DELETE FROM sessions WHERE user_id = $1 AND token_hash NOT IN
+         (SELECT token_hash FROM sessions WHERE user_id = $1 ORDER BY created_at DESC LIMIT ${MAX_SESSIONS})`,
+      [userId],
+    );
   }
 
   api.post('/auth/signup', async (req, res) => {
@@ -181,7 +210,10 @@ export function createApp({
     const key = `${ip}|${username.toLowerCase().slice(0, 64)}`;
     const a = loginPair.check(key);
     const b = loginIp.check(ip);
-    if (!a.allowed || !b.allowed) throw limited(Math.max(a.retryAfterSec, b.retryAfterSec));
+    const c = loginUser.check(username.toLowerCase().slice(0, 64));
+    if (!a.allowed || !b.allowed || !c.allowed) {
+      throw limited(Math.max(a.retryAfterSec, b.retryAfterSec, c.retryAfterSec));
+    }
 
     const bad = new ApiError(401, 'invalid_credentials', 'Incorrect username or password.');
     const validShape = !validateUsername(username) && password.length >= 1 && password.length <= 128;
@@ -227,6 +259,99 @@ export function createApp({
     res.status(401).json({ error: 'unauthenticated', message: 'You are not signed in.' });
   });
 
+  // ---- Authenticated account management ----
+  async function sessionUser(req) {
+    const token = parseCookies(req.headers.cookie)[SESSION_COOKIE];
+    if (!token) return null;
+    const r = await db.query(
+      `SELECT u.id, u.username, u.password_hash, s.token_hash FROM sessions s JOIN users u ON u.id = s.user_id
+       WHERE s.token_hash = $1 AND s.expires_at > $2`, [hashToken(token), new Date(now())]);
+    return r.rows[0] || null;
+  }
+  async function requireUser(req) {
+    const u = await sessionUser(req);
+    if (!u) throw new ApiError(401, 'unauthenticated', 'You are not signed in.');
+    return u;
+  }
+  const publicId = (tokenHash) => tokenHash.slice(0, 16);
+  async function checkPassword(u, password, req) {
+    const rl = pwChange.check(String(u.id));
+    if (!rl.allowed) throw limited(rl.retryAfterSec);
+    if (typeof password !== 'string' || !password || password.length > 128
+        || !(await verifyPassword(password, u.password_hash))) {
+      throw new ApiError(403, 'invalid_credentials', 'Incorrect password.');
+    }
+  }
+
+  // Change password: requires the current password; every other session is revoked and the current one rotated.
+  api.post('/auth/password', async (req, res) => {
+    const u = await requireUser(req);
+    const { currentPassword, newPassword } = bodyObject(req);
+    await checkPassword(u, currentPassword, req);
+    const pErr = validatePassword(newPassword, u.username);
+    if (pErr) throw new ApiError(400, 'invalid_password', pErr);
+    if (newPassword === currentPassword) {
+      throw new ApiError(400, 'invalid_password', 'Choose a password different from your current one.');
+    }
+    await db.query('UPDATE users SET password_hash = $1 WHERE id = $2', [await hashPassword(newPassword, hashParams), u.id]);
+    await db.query('DELETE FROM sessions WHERE user_id = $1', [u.id]);
+    await createSession(res, u.id, { headers: {} });
+    res.status(200).json({ user: { username: u.username } });
+  });
+
+  // Delete account: requires the password; removes every row owned by the user and all sessions.
+  api.post('/auth/delete', async (req, res) => {
+    const u = await requireUser(req);
+    const { password } = bodyObject(req);
+    await checkPassword(u, password, req);
+    const run = (q) => (async () => {
+      for (const t of ['sessions', 'user_sources', 'user_library', 'user_progress', 'user_settings']) {
+        await q.query(`DELETE FROM ${t} WHERE user_id = $1`, [u.id]);
+      }
+      await q.query('DELETE FROM users WHERE id = $1', [u.id]);
+    })();
+    await (db.transaction ? db.transaction(run) : run(db));
+    clearSessionCookie(res);
+    res.status(204).end();
+  });
+
+  api.get('/auth/sessions', async (req, res) => {
+    const u = await requireUser(req);
+    const r = await db.query(
+      'SELECT token_hash, created_at, expires_at FROM sessions WHERE user_id = $1 AND expires_at > $2 ORDER BY created_at DESC',
+      [u.id, new Date(now())]);
+    res.status(200).json({ sessions: r.rows.map((x) => ({
+      id: publicId(x.token_hash), current: x.token_hash === u.token_hash,
+      createdAt: new Date(x.created_at).toISOString(), expiresAt: new Date(x.expires_at).toISOString(),
+    })) });
+  });
+
+  // Revoke every session except the current one ("sign out other devices").
+  api.post('/auth/sessions/revoke-others', async (req, res) => {
+    const u = await requireUser(req);
+    await db.query('DELETE FROM sessions WHERE user_id = $1 AND token_hash <> $2', [u.id, u.token_hash]);
+    res.status(204).end();
+  });
+
+  // Revoke everything including this browser.
+  api.post('/auth/logout-all', async (req, res) => {
+    const u = await requireUser(req);
+    await db.query('DELETE FROM sessions WHERE user_id = $1', [u.id]);
+    clearSessionCookie(res);
+    res.status(204).end();
+  });
+
+  api.delete('/auth/sessions/:id', async (req, res) => {
+    const u = await requireUser(req);
+    if (!/^[0-9a-f]{16}$/.test(req.params.id)) throw new ApiError(404, 'not_found', 'Session not found.');
+    const r = await db.query('SELECT token_hash FROM sessions WHERE user_id = $1', [u.id]);
+    const hit = r.rows.find((x) => publicId(x.token_hash) === req.params.id);
+    if (!hit) throw new ApiError(404, 'not_found', 'Session not found.');
+    await db.query('DELETE FROM sessions WHERE token_hash = $1 AND user_id = $2', [hit.token_hash, u.id]);
+    if (hit.token_hash === u.token_hash) clearSessionCookie(res);
+    res.status(204).end();
+  });
+
   api.use((req, res) => {
     res.status(404).json({ error: 'not_found', message: 'Not found.' });
   });
@@ -255,6 +380,7 @@ export function createApp({
   }
   // Web player: /watch and /watch/* serve the SPA shell; real files under site/watch are served as-is.
   const watchDir = path.join(siteDir, 'watch');
+  app.use('/watch/test', (req, res) => notFound(req, res)); // unit tests are not part of the product
   app.use('/watch', express.static(watchDir, {
     index: false, dotfiles: 'ignore', redirect: false,
     setHeaders(res, file) {

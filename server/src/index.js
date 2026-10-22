@@ -23,5 +23,9 @@ const server = app.listen(port, () => {
 });
 
 for (const sig of ['SIGTERM', 'SIGINT']) {
-  process.on(sig, () => server.close(() => db.close().finally(() => process.exit(0))));
+  process.on(sig, () => { server.close(() => db.close().finally(() => process.exit(0))); setTimeout(() => process.exit(0), 8000).unref(); });
 }
+
+process.on('unhandledRejection', (err) => {
+  console.error(JSON.stringify({ level: 'error', msg: 'unhandled rejection', error: String(err?.message ?? err).replace(/postgres(?:ql)?:\/\/\S+/gi, 'postgres://[redacted]') }));
+});

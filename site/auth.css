@@ -77,3 +77,19 @@ footer.slim .wrap{display:block;text-align:center}
 .nav a.link:focus-visible{outline:2px solid var(--gold);outline-offset:3px}
 @media(min-width:700px){.auth{padding:120px 0 80px}.scroll-body{padding:66px 36px 38px}.moon{width:128px;height:128px}.moon>.seal{width:52px;height:52px;font-size:22px}}
 @media(prefers-reduced-motion:reduce){.moon .ring::after,.spin{animation:none}.spin{border-top-color:rgba(255,255,255,.35)}.field input{transition:none}}
+
+/* account security */
+.acct-det{border-top:1px solid var(--line);padding:12px 0}
+.acct-det summary{cursor:pointer;font:600 15px system-ui,sans-serif;color:var(--paper);min-height:32px;display:flex;align-items:center}
+.acct-det summary:focus-visible{outline:2px solid var(--gold);outline-offset:3px}
+.acct-det[open] summary{margin-bottom:12px}
+.acct-det p{color:var(--mute)}
+.acct-det .btn{width:100%;justify-content:center;min-height:48px;cursor:pointer}
+.acct-det .field{margin-bottom:14px}
+.note{font:14px/1.5 system-ui,sans-serif;margin:0 0 12px}
+.note.err{color:#ff9a8e}.note.ok{color:#9fd3a0}
+.sess{list-style:none;margin:0 0 12px;padding:0}
+.sess li{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line);font:14px system-ui,sans-serif;color:var(--paper)}
+.sess button{background:transparent;border:1px solid var(--line);color:var(--paper);min-height:40px;padding:0 12px;cursor:pointer}
+.sess button:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.dangerbtn{border:1px solid #ff8a7d!important;color:#ff9a8e!important;background:transparent}
