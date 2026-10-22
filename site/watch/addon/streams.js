@@ -110,6 +110,7 @@ export function describeStream(raw, source, index, opts) {
     title: first || desc.split('\n')[0] || 'Stream',
     desc: first ? desc : desc.split('\n').slice(1).join('\n'),
     badges: parseBadges(text),
+    langs: streamLanguages(text),
     res: parseResolution(text),
     size: parseSizeBytes(text),
     bingeGroup: raw.behaviorHints?.bingeGroup || '',
@@ -134,7 +135,27 @@ export function pickSimilar(streams, prev) {
 export function sortStreams(list, how) {
   const a = [...list];
   if (how === 'resolution') a.sort((x, y) => (RES_RANK[y.res] || 0) - (RES_RANK[x.res] || 0));
+  else if (how === 'resolution-size') a.sort((x, y) => (RES_RANK[y.res] || 0) - (RES_RANK[x.res] || 0) || y.size - x.size);
   else if (how === 'size') a.sort((x, y) => y.size - x.size);
   else if (how === 'name') a.sort((x, y) => x.title.localeCompare(y.title));
   return a;
+}
+
+// ---------- languages (L065) ----------
+const FLAG_LANG = { '🇬🇧': 'English', '🇺🇸': 'English', '🇪🇸': 'Spanish', '🇲🇽': 'Spanish', '🇫🇷': 'French', '🇩🇪': 'German', '🇮🇹': 'Italian', '🇵🇹': 'Portuguese', '🇧🇷': 'Portuguese', '🇷🇺': 'Russian', '🇯🇵': 'Japanese', '🇰🇷': 'Korean', '🇨🇳': 'Chinese', '🇹🇼': 'Chinese', '🇮🇳': 'Hindi', '🇸🇦': 'Arabic', '🇹🇷': 'Turkish', '🇳🇱': 'Dutch', '🇵🇱': 'Polish' };
+const LANG_WORDS = [[/\b(english|eng)\b/i, 'English'], [/\b(spanish|espa[nñ]ol|castellano|latino)\b/i, 'Spanish'], [/\b(french|fran[cç]ais|vff|vostfr|truefrench)\b/i, 'French'], [/\b(german|deutsch|ger)\b/i, 'German'], [/\b(italian|italiano|ita)\b/i, 'Italian'], [/\b(portuguese|portugu[eê]s|dublado)\b/i, 'Portuguese'], [/\b(russian|rus)\b/i, 'Russian'], [/\b(japanese|jpn|jap)\b/i, 'Japanese'], [/\b(korean|kor)\b/i, 'Korean'], [/\b(chinese|mandarin|cantonese|chi)\b/i, 'Chinese'], [/\bhindi\b/i, 'Hindi'], [/\barabic\b/i, 'Arabic'], [/\bturkish\b/i, 'Turkish']];
+/** Languages a stream advertises (flag emoji or language words in its text), plus "Multi audio". */
+export function streamLanguages(text) {
+  const t = String(text || '');
+  const out = [];
+  for (const f of t.match(/[\u{1F1E6}-\u{1F1FF}]{2}/gu) || []) if (FLAG_LANG[f] && !out.includes(FLAG_LANG[f])) out.push(FLAG_LANG[f]);
+  for (const [re, name] of LANG_WORDS) if (re.test(t) && !out.includes(name)) out.push(name);
+  if (/\bmulti[\s-]?(audio|lang)|\bdual[\s-]?audio\b/i.test(t) && !out.includes('Multi audio')) out.push('Multi audio');
+  return out;
+}
+
+/** Best playable stream for an automatic pick: highest resolution, then largest size. */
+export function pickBestPlayable(list) {
+  const playable = list.filter((s) => s.cls.playable);
+  return sortStreams(playable, 'resolution-size')[0] || null;
 }

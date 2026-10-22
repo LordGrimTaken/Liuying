@@ -115,7 +115,7 @@ const usability = (s) => (s.cls?.playable ? 0 : s.cls?.openUrl ? 1 : 2);
 export function sortStreamsBy(list, key, dir = SORT_DEFAULT_DIR[key] || 'desc') {
   const sign = dir === 'asc' ? 1 : -1;
   const val = {
-    quality: (s) => RES_RANK[s.res] || 0,
+    quality: (s) => (RES_RANK[s.res] || 0) * 1e13 + Math.min(s.size || 0, 9e12), // resolution first, size breaks ties (L064)
     size: (s) => s.size || 0,
     source: (s) => String(s.source?.manifest?.name || '').toLowerCase(),
   }[key];
@@ -192,3 +192,172 @@ export function parsePluginUrl(text) {
     return u.href;
   } catch { return null; }
 }
+
+// ---------- search ranking (L006) ----------
+/** Lowercase, accents and punctuation folded, whitespace collapsed: "Alien³" and "alien 3" compare alike. */
+export const foldTitle = (s) => String(s ?? '').normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+
+/** 0 exact title, 1 starts with the query as whole words ("Alien 3"), 2 starts with it ("Aliens"), 3 contains it as whole words, 4 contains it, 5 no textual match (a source may match on other fields). */
+export function titleScore(name, query) {
+  const n = foldTitle(name), q = foldTitle(query);
+  if (!q || !n) return 5;
+  if (n === q) return 0;
+  if (n.startsWith(q + ' ')) return 1;
+  if (n.startsWith(q)) return 2;
+  if ((' ' + n + ' ').includes(' ' + q + ' ')) return 3;
+  if (n.includes(q)) return 4;
+  return 5;
+}
+
+/** Stable sort: best title match first, source order kept inside a tier. */
+export function rankByQuery(items, query) {
+  return (Array.isArray(items) ? items : []).map((it, i) => ({ it, i, s: titleScore(it?.name, query) }))
+    .sort((a, b) => a.s - b.s || a.i - b.i).map((x) => x.it);
+}
+
+/** Exact-title hits across all result sections, de-duplicated by id: the "Best match" row. */
+export function exactMatches(lists, query) {
+  const seen = new Set();
+  const out = [];
+  for (const items of lists) for (const it of items || []) {
+    if (!it?.id || seen.has(it.id) || titleScore(it.name, query) !== 0) continue;
+    seen.add(it.id); out.push(it);
+  }
+  return out;
+}
+
+/** Concrete suggestions for an empty result: shorter query, no year, fewer words. Never repeats the query. */
+export function searchTips(query, { sources = 0, searchable = 0 } = {}) {
+  const q = String(query || '').trim();
+  const tips = [];
+  const noYear = q.replace(/\(?\b(19|20)\d{2}\b\)?/g, '').replace(/\s+/g, ' ').trim();
+  if (noYear && noYear !== q) tips.push(`Remove the year: try “${noYear}”.`);
+  const words = (noYear || q).split(/\s+/).filter(Boolean);
+  if (words.length > 2) tips.push(`Use fewer words: try “${words.slice(0, 2).join(' ')}”.`);
+  else if (words.length === 1 && words[0].length > 4) tips.push(`Try a shorter start: “${words[0].slice(0, Math.max(3, words[0].length - 2))}”.`);
+  tips.push('Check the spelling, or search the original title.');
+  const src = !searchable ? (sources ? 'None of your sources has a searchable catalog. Add one that supports search.' : 'Add a source that supports search.')
+    : `Only ${searchable} searchable catalog${searchable === 1 ? '' : 's'} answered. Another source may have it.`;
+  return [...tips.slice(0, 2), src];
+}
+
+// ---------- surprise me (L010) ----------
+/** Random unwatched title (falls back to anything). rng is injectable for tests. */
+export function pickSurprise(items, { isWatched = () => false, rng = Math.random, avoid = '' } = {}) {
+  const all = (Array.isArray(items) ? items : []).filter((i) => i && i.id);
+  if (!all.length) return null;
+  let pool = all.filter((i) => !isWatched(i));
+  if (!pool.length) pool = all;
+  if (pool.length > 1 && avoid) pool = pool.filter((i) => i.id !== avoid);
+  return pool[Math.min(pool.length - 1, Math.floor(rng() * pool.length))];
+}
+
+// ---------- theme (L099) ----------
+export const THEME_CHOICES = ['system', 'dark', 'black', 'paper'];
+/** 'system' follows the OS: dark -> Ink, light -> Paper. */
+export const resolveTheme = (theme, prefersDark) => (theme === 'system' ? (prefersDark ? 'dark' : 'paper') : (THEME_CHOICES.includes(theme) ? theme : 'dark'));
+
+// ---------- history (L023) and exports (L031) ----------
+/** Records that count as "watched or started": hidden entries (position 0, unwatched) are the removed ones. */
+export const isHistoryRecord = (r) => !!r && !!r.mediaId && (r.watched || r.positionMs > 0);
+
+/**
+ * Chronological history, newest first, grouped by local day.
+ * hint(mediaId) -> {name, poster, type}. Returns [{key, label, items:[{rec, name, type, ep:{season,episode}|null}]}].
+ */
+export function buildHistory(progress, hint, now = new Date(), parseEp = () => null) {
+  const recs = (Array.isArray(progress) ? progress : []).filter(isHistoryRecord).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  const days = new Map();
+  for (const rec of recs) {
+    const d = new Date(rec.updatedAt || 0);
+    const key = keyOf(d);
+    if (!days.has(key)) days.set(key, { key, label: dayLabel(midnight(d), now), items: [] });
+    const h = hint(rec.mediaId) || {};
+    const pe = rec.episodeId ? parseEp(rec.episodeId) : null;
+    days.get(key).items.push({ rec, name: rec.name || h.name || rec.mediaId, type: rec.type || h.type || (rec.episodeId ? 'series' : 'movie'), ep: pe ? { season: pe.season, episode: pe.episode } : null });
+  }
+  return [...days.values()];
+}
+
+/** RFC 4180 CSV. Cells starting with = + - @ are prefixed with ' so spreadsheets never run them as formulas. */
+export function toCsv(headers, rows) {
+  const cell = (v) => {
+    let s = v === null || v === undefined ? '' : String(v);
+    if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+    return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  return [headers, ...rows].map((r) => r.map(cell).join(',')).join('\r\n') + '\r\n';
+}
+const iso = (ms) => (ms ? new Date(ms).toISOString() : '');
+export const LIBRARY_COLUMNS = ['id', 'type', 'title', 'year', 'added'];
+export const libraryCsvRows = (library) => library.map((i) => [i.id, i.type, i.name, i.year || '', iso(i.addedAt)]);
+export const HISTORY_COLUMNS = ['title', 'type', 'media_id', 'episode_id', 'season', 'episode', 'watched', 'position_seconds', 'duration_seconds', 'last_played'];
+export function historyCsvRows(days) {
+  return days.flatMap((d) => d.items.map(({ rec, name, type, ep }) => [name, type, rec.mediaId, rec.episodeId || '', ep?.season ?? '', ep?.episode ?? '', rec.watched ? 'yes' : 'no', Math.round((rec.positionMs || 0) / 1000), Math.round((rec.durationMs || 0) / 1000), iso(rec.updatedAt)]));
+}
+export const historyJson = (days) => days.flatMap((d) => d.items.map(({ rec, name, type, ep }) => ({ title: name, type, mediaId: rec.mediaId, episodeId: rec.episodeId || null, season: ep?.season ?? null, episode: ep?.episode ?? null, watched: !!rec.watched, positionMs: rec.positionMs || 0, durationMs: rec.durationMs || 0, lastPlayed: iso(rec.updatedAt) })));
+
+// ---------- stream list filters (L065) ----------
+/** Distinct qualities present, best first. */
+export const qualityOptions = (list) => [...new Set(list.map((s) => s.res).filter(Boolean))].sort((a, b) => (RES_RANK[b] || 0) - (RES_RANK[a] || 0));
+/** Distinct languages present (see streamLanguages in addon/streams.js), most common first. */
+export function languageOptions(list) {
+  const n = new Map();
+  for (const s of list) for (const l of s.langs || []) n.set(l, (n.get(l) || 0) + 1);
+  return [...n.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([l]) => l);
+}
+export const filterStreams = (list, { quality = '', lang = '' } = {}) => list.filter((s) => (!quality || s.res === quality) && (!lang || (s.langs || []).includes(lang)));
+
+// ---------- shelf status (L005) ----------
+export const SHELF_STATUS = [['all', 'All'], ['planned', 'Planned'], ['watching', 'Watching'], ['completed', 'Completed']];
+/** Planned = nothing played, Watching = started, Completed = watched. state: {any, prog}. */
+export const shelfStatus = (st) => (st.prog ? 'watching' : st.any ? 'completed' : 'planned');
+
+// ---------- calendar badge (L115) ----------
+/** Count for the nav badge: unwatched episodes that aired in the last 7 days or air today. */
+export function calendarBadgeCount(agenda, isWatched = () => false) {
+  let n = 0;
+  for (const d of [...(agenda.recent || []), ...(agenda.upcoming || [])]) {
+    if (d.diff > 0) continue;
+    for (const it of d.items) if (!isWatched(it.mediaId, it.ep.id)) n++;
+  }
+  return n;
+}
+/** Apply the calendar toggles to an agenda without mutating it. */
+export function filterAgenda(agenda, { hideWatched = false, isWatched = () => false } = {}) {
+  if (!hideWatched) return agenda;
+  const f = (days) => days.map((d) => ({ ...d, items: d.items.filter((it) => !isWatched(it.mediaId, it.ep.id)) })).filter((d) => d.items.length);
+  return { ...agenda, upcoming: f(agenda.upcoming), recent: f(agenda.recent) };
+}
+
+// ---------- sync status (L032) ----------
+/** "just now", "3 min ago", "2 h ago", "yesterday" or a date. */
+export function relTime(ts, now = Date.now()) {
+  if (!ts) return 'never';
+  const s = Math.max(0, Math.round((now - ts) / 1000));
+  if (s < 45) return 'just now';
+  if (s < 90) return '1 min ago';
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m} min ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h} h ago`;
+  const d = Math.round(h / 24);
+  if (d === 1) return 'yesterday';
+  if (d < 14) return `${d} days ago`;
+  return new Date(ts).toLocaleDateString();
+}
+/** Number of things waiting to upload, from the store's sync markers. */
+export function pendingCount(s) {
+  return (s.sources ? 1 : 0) + (s.settings ? 1 : 0) + Object.keys(s.libAdd || {}).length + (s.libRemove || []).length + Object.keys(s.progress || {}).length;
+}
+/** Colour-independent sync state: a glyph, a short word and a sentence for screen readers (L104). */
+export const SYNC_FACE = {
+  idle: { glyph: '✓', word: 'Synced', sr: 'Synced' },
+  syncing: { glyph: '↻', word: 'Syncing', sr: 'Syncing now' },
+  offline: { glyph: '–', word: 'Offline', sr: 'Offline, will retry' },
+  error: { glyph: '!', word: 'Problem', sr: 'Sync problem, will retry' },
+  waking: { glyph: '…', word: 'Waking', sr: 'Waking the server, this can take up to a minute' },
+  checking: { glyph: '…', word: 'Checking', sr: 'Checking sign-in' },
+  signedout: { glyph: '', word: 'Signed out', sr: 'Signed out' },
+};
+export const syncFace = (state, waking = false) => SYNC_FACE[waking && state !== 'idle' ? 'waking' : state] || SYNC_FACE.idle;

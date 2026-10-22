@@ -31,13 +31,83 @@ function escapeVttBody(s) {
     .replace(/&(?!(amp|lt|gt|nbsp|lrm|rlm);)/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'))).join('');
 }
 
-/** Decode subtitle bytes: UTF-8 (with/without BOM), UTF-16 BOM, else Windows-1252. */
-export function decodeSubtitleBytes(buf, override) {
-  const u8 = new Uint8Array(buf);
-  if (override) { try { return new TextDecoder(override).decode(u8); } catch { /* fall through */ } }
-  if (u8[0] === 0xff && u8[1] === 0xfe) return new TextDecoder('utf-16le').decode(u8);
-  if (u8[0] === 0xfe && u8[1] === 0xff) return new TextDecoder('utf-16be').decode(u8);
-  try { return new TextDecoder('utf-8', { fatal: true }).decode(u8); } catch { return new TextDecoder('windows-1252').decode(u8); }
+// ---------- encoding detection (L069) ----------
+const SCRIPTS = {
+  kana: /[぀-ヿ]/g, han: /[一-鿿]/g, hangul: /[가-힣]/g, cyr: /[Ѐ-ӿ]/g,
+  greek: /[Ͱ-Ͽ]/g, hebrew: /[֐-׿]/g, arabic: /[؀-ۿ]/g, thai: /[฀-๿]/g,
+};
+const count = (s, re) => (s.match(re) || []).length;
+/** Language code -> the legacy encoding such subtitle files usually use. */
+const LANG_ENCODING = [[/^(zh-?(tw|hk|hant)|zht|big5)$/, 'big5'], [/^(zh|zh-?(cn|hans)|zhs|chi|zho|gbk)$/, 'gb18030'], [/^(ja|jpn)$/, 'shift_jis'], [/^(ko|kor)$/, 'euc-kr'],
+  [/^(ru|rus|uk|ukr|bg|bul|sr|srp|be|mk)$/, 'windows-1251'], [/^(el|gre|ell)$/, 'windows-1253'], [/^(tr|tur)$/, 'windows-1254'], [/^(he|heb)$/, 'windows-1255'], [/^(ar|ara|fa|per|fas)$/, 'windows-1256'],
+  [/^(pl|pol|cs|cze|ces|hu|hun|ro|rum|ron|hr|hrv|sk|slo|sl|slv)$/, 'windows-1250'], [/^(th|tha)$/, 'windows-874'], [/^(vi|vie)$/, 'windows-1258']];
+export const lang2encoding = (lang) => { const l = String(lang || '').toLowerCase(); const m = LANG_ENCODING.find(([re]) => re.test(l)); return m ? m[1] : ''; };
+export const ENCODING_CHOICES = [['', 'Automatic'], ['utf-8', 'Unicode (UTF-8)'], ['utf-16le', 'Unicode (UTF-16)'], ['windows-1252', 'Western (Windows-1252)'], ['windows-1250', 'Central European (1250)'], ['windows-1251', 'Cyrillic (1251)'],
+  ['windows-1253', 'Greek (1253)'], ['windows-1254', 'Turkish (1254)'], ['windows-1255', 'Hebrew (1255)'], ['windows-1256', 'Arabic (1256)'], ['gb18030', 'Chinese, simplified (GBK)'], ['big5', 'Chinese, traditional (Big5)'], ['shift_jis', 'Japanese (Shift-JIS)'], ['euc-kr', 'Korean (EUC-KR)']];
+
+function tryDecode(u8, enc, fatal = false) { try { return new TextDecoder(enc, { fatal }).decode(u8); } catch { return null; } }
+/** Share of characters that are U+FFFD or control junk. */
+const junk = (t) => (t.length ? (count(t, /�/g) + count(t, /[\u0000-\u0008\u000e-\u001f]/g)) / t.length : 1);
+
+/**
+ * Guess the text encoding of subtitle bytes. BOMs first, then BOM-less UTF-16, then valid UTF-8, then the encoding the
+ * subtitle's language usually uses (verified by decoding), then statistics over the common legacy encodings.
+ * Returns an encoding label accepted by TextDecoder.
+ */
+export function detectEncoding(buf, { lang = '' } = {}) {
+  const u8 = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+  if (u8[0] === 0xef && u8[1] === 0xbb && u8[2] === 0xbf) return 'utf-8';
+  if (u8[0] === 0xff && u8[1] === 0xfe) return 'utf-16le';
+  if (u8[0] === 0xfe && u8[1] === 0xff) return 'utf-16be';
+  const head = u8.subarray(0, 4096);
+  let even0 = 0, odd0 = 0;
+  for (let i = 0; i < head.length; i++) if (head[i] === 0) { if (i % 2) odd0++; else even0++; }
+  const pairs = head.length / 2;
+  if (pairs > 8 && odd0 / pairs > 0.3 && even0 / pairs < 0.05) return 'utf-16le';
+  if (pairs > 8 && even0 / pairs > 0.3 && odd0 / pairs < 0.05) return 'utf-16be';
+  if (tryDecode(u8, 'utf-8', true) !== null) return 'utf-8';
+  const hinted = lang2encoding(lang);
+  if (hinted) { const t = tryDecode(u8, hinted); if (t !== null && junk(t) < 0.02) return hinted; }
+  // no usable hint: look at how much of the file is high bytes
+  let high = 0, lowCyr = 0, cyr = 0;
+  for (const b of u8) { if (b >= 0x80) high++; if (b >= 0xc0) { cyr++; if (b >= 0xe0) lowCyr++; } }
+  const ratio = high / Math.max(1, u8.length);
+  if (ratio < 0.25) return 'windows-1252'; // some accented letters (accent-heavy Latin text tops out near 20%): Western European
+  if (cyr > 20 && lowCyr / cyr > 0.72) return 'windows-1251'; // mostly lowercase Cyrillic bytes
+  const wide = (t) => Math.max(1, t.replace(/[\u0000-\u007f]/g, '').length); // non-ASCII characters
+  const cand = ['shift_jis', 'euc-kr', 'big5', 'gb18030'].map((enc) => ({ enc, t: tryDecode(u8, enc, true) })).filter((c) => c.t !== null);
+  const sj = cand.find((c) => c.enc === 'shift_jis');
+  if (sj && count(sj.t, SCRIPTS.kana) / wide(sj.t) > 0.3) return 'shift_jis'; // real Japanese is mostly kana
+  const kr = cand.find((c) => c.enc === 'euc-kr');
+  if (kr && count(kr.t, SCRIPTS.hangul) / wide(kr.t) > 0.9) return 'euc-kr'; // real Korean is almost all Hangul
+  // Big5 uses trail bytes 0x40-0x7e often; GBK trail bytes are almost always >= 0x80 for common characters
+  let trailLow = 0, trailAll = 0;
+  for (let i = 0; i < u8.length - 1; i++) if (u8[i] >= 0x81 && u8[i] <= 0xfe) { trailAll++; if (u8[i + 1] < 0x7f) trailLow++; i++; }
+  if (cand.find((c) => c.enc === 'big5') && trailAll && trailLow / trailAll > 0.25) return 'big5';
+  if (cand.find((c) => c.enc === 'gb18030')) return 'gb18030';
+  return 'windows-1252';
+}
+
+/** Decode subtitle bytes. `override` forces an encoding; otherwise it is detected (the language hint sharpens the guess). */
+export function decodeSubtitleBytes(buf, override, lang = '') {
+  const u8 = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+  const enc = override || detectEncoding(u8, { lang });
+  let text = tryDecode(u8, enc);
+  if (text === null) text = new TextDecoder('windows-1252').decode(u8);
+  return text.replace(/^﻿/, '');
+}
+
+// ---------- style presets (L070) ----------
+export const SUB_PRESETS = [
+  { id: 'standard', label: 'Standard', hint: 'White with an outline shadow', values: { subSize: 100, subColor: '#ffffff', subBg: 'shadow', subBold: false, subBgOpacity: 0.6 } },
+  { id: 'contrast', label: 'High contrast', hint: 'Bold white on solid black', values: { subSize: 120, subColor: '#ffffff', subBg: 'box', subBold: true, subBgOpacity: 1 } },
+  { id: 'yellow', label: 'Yellow on black', hint: 'Bold yellow on solid black', values: { subSize: 120, subColor: '#ffe27a', subBg: 'box', subBold: true, subBgOpacity: 1 } },
+  { id: 'large', label: 'Large print', hint: 'Bigger white text on a dark box', values: { subSize: 160, subColor: '#ffffff', subBg: 'box', subBold: true, subBgOpacity: 0.8 } },
+];
+/** The preset whose values all match the settings, or 'custom'. */
+export function presetOf(s) {
+  const hit = SUB_PRESETS.find((p) => Object.entries(p.values).every(([k, v]) => (k === 'subBgOpacity' && p.values.subBg !== 'box') ? true : s[k] === v));
+  return hit ? hit.id : 'custom';
 }
 
 const LANGS = {

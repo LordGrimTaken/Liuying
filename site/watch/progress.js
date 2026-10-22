@@ -50,6 +50,12 @@ export function resumePosition(r, newDurationMs, threshold = DEFAULT_THRESHOLD) 
   return r.positionMs;
 }
 
+/** Where playback starts, in seconds: the resume point backed up by `rewind` seconds (L037), never below 0. */
+export function resumeStartSec(r, newDurationMs, threshold = DEFAULT_THRESHOLD, rewind = 0) {
+  const pos = resumePosition(r, newDurationMs, threshold) / 1000;
+  return pos > 0 ? Math.max(0, pos - Math.max(0, Number(rewind) || 0)) : 0;
+}
+
 // ---------- episodes ----------
 
 const num = (x) => (x === undefined || x === null || x === '' ? NaN : Number(x));
@@ -115,6 +121,15 @@ export function followingEpisode(episodes, epId, now = Date.now()) {
     if (isReleased(episodes[j], now)) return episodes[j];
     return null;
   }
+  return null;
+}
+
+/** The episode before `epId` (specials are skipped unless the current one is a special). */
+export function previousEpisode(episodes, epId) {
+  const i = episodes.findIndex((e) => e.id === epId);
+  if (i <= 0) return null;
+  const cur = episodes[i];
+  for (let j = i - 1; j >= 0; j--) if (cur.season === 0 || episodes[j].season !== 0) return episodes[j];
   return null;
 }
 
