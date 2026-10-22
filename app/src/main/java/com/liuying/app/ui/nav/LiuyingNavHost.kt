@@ -68,10 +68,17 @@ class Navigator(private val nav: NavHostController, private val container: AppCo
     fun back() { nav.popBackStack() }
     /** The full-screen search overlay: it covers the dock and Back returns to where the user was. */
     fun openSearch() { nav.navigate(Overlay.SEARCH) { launchSingleTop = true } }
-    fun goTab(tab: Tab) = nav.navigate(tab.route) {
-        popUpTo(nav.graph.findStartDestination().id) { saveState = true }
-        launchSingleTop = true
-        restoreState = true
+    fun goTab(tab: Tab) {
+        // If the tab is already in the back stack (e.g. You -> Calendar), close whatever sits on top of it instead of
+        // restoring its saved state, which would re-open the overlay and make the tab unreachable.
+        if (nav.popBackStack(tab.route, inclusive = false)) return
+        // Overlays on top of another tab must not be swept into that tab's saved state either.
+        while (nav.currentDestination?.route in setOf(Overlay.CALENDAR, Overlay.HISTORY, Overlay.SEARCH) && nav.popBackStack()) { }
+        nav.navigate(tab.route) {
+            popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
     }
 }
 
