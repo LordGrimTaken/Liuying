@@ -1,0 +1,9 @@
+{
+  "versionName": "0.2.0",
+  "versionCode": 2,
+  "apkUrl": "https://www.liuyingapp.com/downloads/Liuying-0.2.0.apk",
+  "sha256": "c528a8e853dda37e44ee2cde836883feb57e6a9a53b1e69b262d64ae5e442a0b",
+  "sizeBytes": 3301420,
+  "releasedAt": "2026-10-22T10:33:22Z",
+  "notes": "In-app updates: Liuying now checks this site for new versions and installs them over your current copy. Smaller, faster release build."
+}
