@@ -10,6 +10,7 @@ import {
 } from './auth.js';
 import { createLimiter } from './rateLimit.js';
 import { ApiError } from './errors.js';
+import { clientIp } from './clientIp.js';
 import { createSyncRouter } from './sync.js';
 
 const DEFAULT_SITE = fileURLToPath(new URL('../../site', import.meta.url));
@@ -48,6 +49,8 @@ export function createApp({
   // the hop count if another proxy (e.g. Cloudflare in front of Render) is ever confirmed to append too.
   const hops = Math.min(5, Math.max(0, Number.parseInt(process.env.TRUST_PROXY_HOPS ?? '1', 10) || 0));
   if (production) app.set('trust proxy', hops);
+  // Rate-limit key: the real client address (skips Cloudflare/private proxy hops, ignores forged leftmost entries).
+  const ipOf = (req) => clientIp(req, { behindProxy: production });
 
   const loginPair = createLimiter({ limit: 10, windowMs: 15 * MIN, now, ...limits.loginPair });
   const loginIp = createLimiter({ limit: 30, windowMs: 15 * MIN, now, ...limits.loginIp });
@@ -171,7 +174,7 @@ export function createApp({
   }
 
   api.post('/auth/signup', async (req, res) => {
-    const ip = req.ip;
+    const ip = ipOf(req);
     const rl = signupIp.check(ip);
     if (!rl.allowed) throw limited(rl.retryAfterSec);
 
@@ -206,7 +209,7 @@ export function createApp({
     if (typeof username !== 'string' || typeof password !== 'string') {
       throw new ApiError(400, 'bad_request', 'Username and password are required.');
     }
-    const ip = req.ip;
+    const ip = ipOf(req);
     const key = `${ip}|${username.toLowerCase().slice(0, 64)}`;
     const a = loginPair.check(key);
     const b = loginIp.check(ip);
