@@ -77,6 +77,10 @@ class YouViewModel(private val c: AppContainer) : ViewModel() {
         synced(SettingsSyncLogic.HOME_ORDER) { it.copy(homeOrder = Ux.moveKey(keys, key, delta)) }
     }
 
+    /** Show or hide a whole group of catalogs at once (one synced write). */
+    fun setCatalogsHidden(keys: Collection<String>, hidden: Boolean) =
+        synced(SettingsSyncLogic.HIDDEN) { s -> s.copy(hiddenCatalogs = s.hiddenCatalogs + keys.associateWith { hidden }) }
+
     fun setCatalogHidden(key: String, hidden: Boolean) =
         synced(SettingsSyncLogic.HIDDEN) { it.copy(hiddenCatalogs = it.hiddenCatalogs + (key to hidden)) }
 
@@ -179,6 +183,10 @@ class YouViewModel(private val c: AppContainer) : ViewModel() {
             c.plugins.recordConsent(r.id)
             if (thenEnable != null) c.plugins.setEnabled(r.id, thenEnable, true)
         }
+    }
+    /** Enable/disable several plugins of one repository. Enabling needs the repository's consent (the screen asks first). */
+    fun setPluginsEnabled(repoId: Long, pluginIds: List<String>, on: Boolean) {
+        viewModelScope.launch { pluginIds.forEach { c.plugins.setEnabled(repoId, it, on) } }
     }
     fun setPluginEnabled(repoId: Long, pluginId: String, on: Boolean) { viewModelScope.launch { c.plugins.setEnabled(repoId, pluginId, on) } }
     val updates = c.updates

@@ -19,6 +19,12 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import com.liuying.app.ui.theme.Gold
+import com.liuying.app.ui.common.InkTextButton
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -77,7 +83,7 @@ fun AppearanceSettings(s: AppSettings, vm: YouViewModel) {
     }
 }
 
-/** Catalog order, per-catalog visibility, hero on/off and reset. Synced with the account. */
+/** Catalog order, per-catalog visibility, hero on/off and reset. Synced with the account. Catalogs sit under one dropdown per source. */
 @Composable
 fun TodayLayoutSettings(s: AppSettings, rows: List<LayoutRow>, vm: YouViewModel) {
     Column(Modifier.fillMaxWidth()) {
@@ -87,24 +93,35 @@ fun TodayLayoutSettings(s: AppSettings, rows: List<LayoutRow>, vm: YouViewModel)
             if (rows.isEmpty()) "Add a source to arrange its catalogs here." else "Order the catalogs on Today and hide the ones you do not want.",
             color = PaperMuted, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
         )
-        rows.forEachIndexed { i, r ->
-            val shape = RoundedCornerShape(10.dp)
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).clip(shape).background(InkSurface, shape).border(BorderStroke(0.5.dp, GoldHairline), shape)
-                    .padding(start = 12.dp).heightIn(min = 56.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f).padding(end = 4.dp)) {
-                    Text(r.title, color = if (r.hidden) PaperMuted else Paper, style = MaterialTheme.typography.bodyLarge, maxLines = 2)
-                    Text(r.source, color = PaperMuted, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+        val allKeys = rows.map { it.key }
+        YouLogic.groupBySource(rows) { it.source }.forEach { group ->
+            var open by rememberSaveable(group.source) { mutableStateOf(false) }
+            val hidden = group.rows.count { it.hidden }
+            val groupKeys = group.rows.map { it.key }
+            SubSection(group.source, YouLogic.layoutSummary(group.rows.size, hidden), open, { open = !open }) {
+                Row(Modifier.padding(horizontal = 8.dp)) {
+                    InkTextButton("Show all", { vm.setCatalogsHidden(groupKeys, false) }, color = if (hidden > 0) Gold else PaperMuted)
+                    InkTextButton("Hide all", { vm.setCatalogsHidden(groupKeys, true) }, color = if (hidden < group.rows.size) Gold else PaperMuted)
                 }
-                IconCircleButton(GlyphKind.ChevronUp, "Move ${r.title} up", { vm.moveCatalog(r.key, -1) }, enabled = i > 0, diameter = 44.dp, tint = PaperMuted)
-                IconCircleButton(GlyphKind.ChevronDown, "Move ${r.title} down", { vm.moveCatalog(r.key, 1) }, enabled = i < rows.lastIndex, diameter = 44.dp, tint = PaperMuted)
-                Switch(
-                    !r.hidden, { vm.setCatalogHidden(r.key, !it) },
-                    modifier = Modifier.padding(horizontal = 6.dp).semantics { contentDescription = "Show ${r.title} on Today" },
-                    colors = SwitchDefaults.colors(checkedTrackColor = com.liuying.app.ui.theme.Vermilion, checkedThumbColor = OnAccent, uncheckedTrackColor = Ink, uncheckedThumbColor = PaperMuted, uncheckedBorderColor = GoldHairline),
-                )
+                group.rows.forEachIndexed { i, r ->
+                    val up = YouLogic.moveDeltaWithinGroup(allKeys, groupKeys, r.key, -1)
+                    val down = YouLogic.moveDeltaWithinGroup(allKeys, groupKeys, r.key, 1)
+                    val shape = RoundedCornerShape(10.dp)
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 3.dp).clip(shape).background(InkSurface, shape).border(BorderStroke(0.5.dp, GoldHairline), shape)
+                            .padding(start = 12.dp).heightIn(min = 52.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(r.title, color = if (r.hidden) PaperMuted else Paper, style = MaterialTheme.typography.bodyMedium, maxLines = 2, modifier = Modifier.weight(1f).padding(end = 4.dp))
+                        IconCircleButton(GlyphKind.ChevronUp, "Move ${r.title} up", { up?.let { vm.moveCatalog(r.key, it) } }, enabled = up != null, diameter = 44.dp, tint = PaperMuted)
+                        IconCircleButton(GlyphKind.ChevronDown, "Move ${r.title} down", { down?.let { vm.moveCatalog(r.key, it) } }, enabled = down != null, diameter = 44.dp, tint = PaperMuted)
+                        Switch(
+                            !r.hidden, { vm.setCatalogHidden(r.key, !it) },
+                            modifier = Modifier.padding(horizontal = 6.dp).semantics { contentDescription = "Show ${r.title} on Today" },
+                            colors = SwitchDefaults.colors(checkedTrackColor = com.liuying.app.ui.theme.Vermilion, checkedThumbColor = OnAccent, uncheckedTrackColor = Ink, uncheckedThumbColor = PaperMuted, uncheckedBorderColor = GoldHairline),
+                        )
+                    }
+                }
             }
         }
         Column(Modifier.padding(horizontal = 20.dp, vertical = 10.dp)) {
@@ -114,4 +131,3 @@ fun TodayLayoutSettings(s: AppSettings, rows: List<LayoutRow>, vm: YouViewModel)
         }
     }
 }
-

@@ -2,6 +2,8 @@ package com.liuying.app.ui.settings
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -63,6 +65,8 @@ import com.liuying.app.ui.theme.Paper
 import com.liuying.app.ui.theme.PaperMuted
 import com.liuying.app.ui.theme.Vermilion
 import com.liuying.app.data.update.UpdateState
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.runtime.saveable.rememberSaveable
 import java.text.DateFormat
 import java.util.Date
 
@@ -83,207 +87,129 @@ fun YouScreen(navigator: Navigator) {
     var removing by remember { mutableStateOf<Source?>(null) }
     var removingRepo by remember { mutableStateOf<PluginRepo?>(null) }
     var consenting by remember { mutableStateOf<Pair<PluginRepo, String?>?>(null) }
+    var enableAllAfterConsent by remember { mutableStateOf<List<String>?>(null) }
     var confirmReset by remember { mutableStateOf(false) }
+    val sections = rememberExpandedSections()
 
     val container = com.liuying.app.ui.common.LocalContainer.current
     val pendingLink by container.pendingLink.collectAsStateWithLifecycle()
     LaunchedEffect(pendingLink) {
-        pendingLink?.let { vm.setAddInput(it); vm.previewSource(); container.pendingLink.value = null }
+        // an install link opens the Sources section with the preview already running
+        pendingLink?.let { if (!sections.isOpen("sources")) sections.toggle("sources"); vm.setAddInput(it); vm.previewSource(); container.pendingLink.value = null }
     }
 
     LaunchedEffect(message) {
         message?.let { Toast.makeText(context, it, Toast.LENGTH_SHORT).show(); vm.clearMessage() }
     }
 
+    val enabledPlugins = repos.sumOf { r -> r.plugins.count { it.enabled } }
+    val pluginCount = repos.sumOf { it.plugins.size }
+
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = com.liuying.app.ui.nav.topBarInset(), bottom = DockClearance)) {
         item { ScreenTitle("You") }
 
-        // ---------------------------------------------------------------- account
-        item { SectionHeader("Liuying account") }
-        item {
-            if (account.signedIn) {
-                Column(Modifier.padding(horizontal = 20.dp)) {
-                    Text("Signed in as ${account.username}", color = Paper, style = MaterialTheme.typography.bodyLarge)
-                    val panel = com.liuying.app.domain.SyncPanelText.lines(
-                        account.status == SyncStatus.Syncing, (account.status as? SyncStatus.Failed)?.message,
-                        (account.status as? SyncStatus.Done)?.at, System.currentTimeMillis(), account.pending, 0,
-                    )
-                    Text(panel.headline, color = if (panel.problem) Vermilion else Paper, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 2.dp))
-                    Text(panel.detail, color = if (panel.problem) Vermilion else PaperMuted, style = MaterialTheme.typography.bodyMedium)
-                    Text("Your shelf, sources and progress sync best-effort. Everything works offline first.", color = PaperMuted, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 6.dp))
-                    Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        InkButton("Sync now", vm::syncNow, enabled = account.status != SyncStatus.Syncing)
-                        InkButton("Sign out", vm::signOut, filled = false)
-                    }
-                }
-            } else {
-                Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Optional. Sign in to keep your shelf, sources and progress in step with liuyingapp.com.", color = PaperMuted, style = MaterialTheme.typography.bodyMedium)
-                    if (account.status is SyncStatus.Failed) Text(syncLine(account.status), color = Vermilion, style = MaterialTheme.typography.bodyMedium)
-                    OutlinedTextField(form.username, vm::setUsername, label = { Text("Username") }, singleLine = true, colors = fieldColors(), modifier = Modifier.fillMaxWidth(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii))
-                    OutlinedTextField(form.password, vm::setPassword, label = { Text("Password") }, singleLine = true, colors = fieldColors(), modifier = Modifier.fillMaxWidth(),
-                        visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
-                    form.error?.let { Text(it, color = Vermilion, style = MaterialTheme.typography.bodyMedium) }
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        InkButton(if (form.busy) "Please wait" else "Sign in", { vm.submitAccount(false) }, enabled = !form.busy)
-                        InkButton("Create account", { vm.submitAccount(true) }, enabled = !form.busy, filled = false)
-                    }
-                }
-            }
-        }
-
-        // ---------------------------------------------------------------- sources
-        item { SectionHeader("Sources") }
-        item {
-            Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Paste a manifest link from any compatible source. Liuying ships with none and never adds one for you.", color = PaperMuted, style = MaterialTheme.typography.bodyMedium)
-                OutlinedTextField(add.input, vm::setAddInput, label = { Text("Manifest URL") }, singleLine = true, colors = fieldColors(), modifier = Modifier.fillMaxWidth(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
-                add.error?.let { Text(it, color = Vermilion, style = MaterialTheme.typography.bodyMedium) }
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    InkButton(if (add.busy && add.preview == null) "Checking" else "Check link", vm::previewSource, enabled = !add.busy && add.input.isNotBlank())
-                    InkButton("Paste", {
-                        val clip = (context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager)
-                            ?.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()?.trim()
-                        if (!clip.isNullOrEmpty()) vm.setAddInput(clip) else Toast.makeText(context, "Nothing to paste.", Toast.LENGTH_SHORT).show()
-                    }, filled = false)
-                }
-                add.preview?.let { p ->
-                    Column(Modifier.fillMaxWidth().border(BorderStroke(0.5.dp, GoldHairline), RoundedCornerShape(10.dp)).padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(p.manifest.name, color = Paper, style = MaterialTheme.typography.titleMedium)
-                        Text("${p.host}  ·  v${p.manifest.version.ifBlank { "?" }}", color = PaperMuted, style = MaterialTheme.typography.labelMedium)
-                        if (p.manifest.description.isNotBlank()) Text(p.manifest.description, color = PaperMuted, style = MaterialTheme.typography.bodyMedium, maxLines = 4)
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            if (p.manifest.catalogs.isNotEmpty()) Badge("${p.manifest.catalogs.size} catalogs")
-                            p.manifest.resources.map { it.name }.distinct().forEach { Badge(it) }
+        item(key = "account") {
+            SettingsSection("Account", YouLogic.accountSummary(account.username), sections.isOpen("account"), { sections.toggle("account") }) {
+                if (account.signedIn) {
+                    Column(Modifier.padding(horizontal = 16.dp)) {
+                        Text("Signed in as ${account.username}", color = Paper, style = MaterialTheme.typography.bodyLarge)
+                        val panel = com.liuying.app.domain.SyncPanelText.lines(
+                            account.status == SyncStatus.Syncing, (account.status as? SyncStatus.Failed)?.message,
+                            (account.status as? SyncStatus.Done)?.at, System.currentTimeMillis(), account.pending, 0,
+                        )
+                        Text(panel.headline, color = if (panel.problem) Vermilion else Paper, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 2.dp))
+                        Text(panel.detail, color = if (panel.problem) Vermilion else PaperMuted, style = MaterialTheme.typography.bodyMedium)
+                        Text("Your shelf, sources and progress sync best-effort. Everything works offline first.", color = PaperMuted, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 6.dp))
+                        Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            InkButton("Sync now", vm::syncNow, enabled = account.status != SyncStatus.Syncing)
+                            InkButton("Sign out", vm::signOut, filled = false)
                         }
-                        p.warnings.forEach { w -> warningText(w)?.let { Text(it, color = Gold, style = MaterialTheme.typography.bodyMedium) } }
-                        Text("The operator of a source can see your IP address and what you ask it for.", color = PaperMuted, style = MaterialTheme.typography.labelMedium)
-                        if (p.requiresExtraConfirmation) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Switch(add.confirmRisky, vm::setRiskyConfirmed)
-                                Text("I understand and want to add it", color = Paper, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 10.dp))
-                            }
-                        }
+                    }
+                } else {
+                    Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Optional. Sign in to keep your shelf, sources and progress in step with liuyingapp.com.", color = PaperMuted, style = MaterialTheme.typography.bodyMedium)
+                        if (account.status is SyncStatus.Failed) Text(syncLine(account.status), color = Vermilion, style = MaterialTheme.typography.bodyMedium)
+                        OutlinedTextField(form.username, vm::setUsername, label = { Text("Username") }, singleLine = true, colors = fieldColors(), modifier = Modifier.fillMaxWidth(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii))
+                        OutlinedTextField(form.password, vm::setPassword, label = { Text("Password") }, singleLine = true, colors = fieldColors(), modifier = Modifier.fillMaxWidth(),
+                            visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
+                        form.error?.let { Text(it, color = Vermilion, style = MaterialTheme.typography.bodyMedium) }
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            if (p.isDuplicate) InkButton("Replace", { vm.install(true) }, enabled = !add.busy && (!p.requiresExtraConfirmation || add.confirmRisky))
-                            else InkButton("Add source", { vm.install(false) }, enabled = !add.busy && (!p.requiresExtraConfirmation || add.confirmRisky))
-                            InkButton("Cancel", vm::cancelPreview, filled = false)
+                            InkButton(if (form.busy) "Please wait" else "Sign in", { vm.submitAccount(false) }, enabled = !form.busy)
+                            InkButton("Create account", { vm.submitAccount(true) }, enabled = !form.busy, filled = false)
                         }
                     }
                 }
             }
         }
-        if (sources.isEmpty()) {
-            item { Text("No sources yet.", color = PaperMuted, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) }
-        }
-        sources.forEachIndexed { idx, s ->
-            item(key = "src${s.id}") {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f).padding(end = 10.dp)) {
-                            Text(s.displayName, color = if (s.enabled) Paper else PaperMuted, style = MaterialTheme.typography.titleMedium)
-                            Text(s.host + (if (s.isHttp) "  ·  plain http" else ""), color = PaperMuted, style = MaterialTheme.typography.labelMedium)
-                        }
-                        Switch(s.enabled, { vm.setSourceEnabled(s, it) })
-                    }
-                    s.lastError?.let { Text("Last refresh failed: $it", color = Vermilion, style = MaterialTheme.typography.labelMedium) }
-                    if (s.needsConfiguration) Text("This source needs configuring on its own page before it works.", color = Gold, style = MaterialTheme.typography.labelMedium)
-                    s.manifest.noBrowsableCatalogsNotice?.let { Text(it, color = Gold, style = MaterialTheme.typography.labelMedium) }
-                    Row {
-                        InkTextButton("Up", { vm.moveSource(s, -1) }, color = if (idx > 0) Gold else PaperMuted)
-                        InkTextButton("Down", { vm.moveSource(s, 1) }, color = if (idx < sources.lastIndex) Gold else PaperMuted)
-                        InkTextButton("Details", { navigator.openSource(s.id) })
-                        InkTextButton("Refresh", { vm.refreshSource(s) })
-                        InkTextButton("Remove", { removing = s }, color = Vermilion)
-                    }
-                }
+
+        item(key = "sources") {
+            SettingsSection("Sources", YouLogic.sourcesSummary(sources.size, sources.count { it.enabled }), sections.isOpen("sources"), { sections.toggle("sources") }) {
+                SourcesContent(sources, add, vm, navigator, context) { removing = it }
             }
         }
 
-        // ---------------------------------------------------------------- appearance and Today layout
-        item { SectionHeader("Appearance") }
-        item { AppearanceSettings(settings, vm) }
-        item { SectionHeader("Today layout") }
-        item { TodayLayoutSettings(settings, layoutRows, vm) }
+        item(key = "appearance") {
+            val accentLabel = com.liuying.app.ui.theme.AccentChoice.of(settings.accent).label
+            val sizeLabel = when (settings.fontScale) { "s" -> "Small"; "l" -> "Large"; else -> "Medium" }
+            SettingsSection("Appearance", YouLogic.appearanceSummary(accentLabel, sizeLabel), sections.isOpen("appearance"), { sections.toggle("appearance") }) {
+                AppearanceSettings(settings, vm)
+            }
+        }
 
-        // ---------------------------------------------------------------- playback
-        item { SectionHeader("Playback") }
-        item { PlaybackSettings(settings, vm) }
+        item(key = "layout") {
+            SettingsSection("Today layout", YouLogic.layoutSummary(layoutRows.size, layoutRows.count { it.hidden }), sections.isOpen("layout"), { sections.toggle("layout") }) {
+                TodayLayoutSettings(settings, layoutRows, vm)
+            }
+        }
 
-        item { SectionHeader("Content") }
-        item { ContentSettings(settings, vm) }
+        item(key = "playback") {
+            SettingsSection("Playback", YouLogic.playbackSummary(enumLabel(settings.streamSelection.name), settings.seekStepSec), sections.isOpen("playback"), { sections.toggle("playback") }) {
+                PlaybackSettings(settings, vm)
+            }
+        }
 
-        // ---------------------------------------------------------------- repositories
-        item { SectionHeader("Repositories", trailing = { Badge("Not yet runnable") }) }
-        item {
-            Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    "Add a plugin repository to see which plugins it lists. This version only lists and stores them: plugin scripts are not downloaded or run, " +
-                        "so turning a plugin on has no effect yet.",
-                    color = PaperMuted, style = MaterialTheme.typography.bodyMedium,
-                )
-                Text(
-                    "Risk notice: plugins are third-party code written by other people, not by Liuying. Liuying does not review, host or endorse them or the " +
-                        "content they point to. Anything a plugin does is decided by its author, and using plugins is entirely at your own risk. " +
-                        "Only add repositories from people you trust, and make sure you are allowed to access what they link to.",
-                    color = Vermilion, style = MaterialTheme.typography.bodyMedium,
+        item(key = "content") {
+            SettingsSection("Content", YouLogic.contentSummary(settings.hideAdultCatalogs, settings.rowItemCount.count), sections.isOpen("content"), { sections.toggle("content") }) {
+                ContentSettings(settings, vm)
+            }
+        }
+
+        item(key = "repos") {
+            SettingsSection(
+                "Repositories", YouLogic.reposSummary(repos.size, pluginCount, enabledPlugins), sections.isOpen("repos"), { sections.toggle("repos") },
+                badge = { Badge("Not yet runnable") },
+            ) {
+                RepositoriesContent(
+                    repos, settings, repoAdd, vm,
+                    onRemove = { removingRepo = it },
+                    onEnable = { r, id -> if (r.consented) vm.setPluginEnabled(r.id, id, true) else consenting = r to id },
+                    onEnableAll = { r, ids -> if (r.consented) vm.setPluginsEnabled(r.id, ids, true) else { enableAllAfterConsent = ids; consenting = r to null } },
                 )
             }
         }
-        item { ToggleRow("Allow scraper plugins", "Global off switch. Off by default.", settings.pluginsEnabled) { v -> vm.update { it.copy(pluginsEnabled = v) } } }
-        item {
-            Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(repoAdd.input, vm::setRepoInput, label = { Text("Repository manifest URL") }, singleLine = true, colors = fieldColors(), modifier = Modifier.fillMaxWidth(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
-                repoAdd.error?.let { Text(it, color = Vermilion, style = MaterialTheme.typography.bodyMedium) }
-                InkButton(if (repoAdd.busy) "Fetching" else "Add repository", vm::addRepo, enabled = !repoAdd.busy && repoAdd.input.isNotBlank())
+
+        item(key = "integrations") {
+            SettingsSection("Integrations", YouLogic.integrationsSummary(settings.metadataApiKey.isNotBlank()), sections.isOpen("integrations"), { sections.toggle("integrations") }) {
+                IntegrationsContent(settings.metadataApiKey) { key -> vm.update { it.copy(metadataApiKey = key.trim()) } }
             }
         }
-        repos.forEach { r ->
-            item(key = "repo${r.id}") {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
-                    Text(r.name + (if (r.version.isNotBlank()) "  v${r.version}" else ""), color = Paper, style = MaterialTheme.typography.titleMedium)
-                    Text(listOfNotNull(r.author?.let { "by $it" }, "${r.plugins.size} plugins", if (r.consented) "permissions accepted" else "permissions not yet accepted").joinToString("  ·  "),
-                        color = PaperMuted, style = MaterialTheme.typography.labelMedium)
-                    if (r.description.isNotBlank()) Text(r.description, color = PaperMuted, style = MaterialTheme.typography.bodyMedium, maxLines = 3)
-                    r.lastError?.let { Text("Last update failed: $it", color = Vermilion, style = MaterialTheme.typography.labelMedium) }
-                    r.plugins.forEach { p ->
-                        Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f).padding(end = 10.dp)) {
-                                Text(p.info.name + (if (p.info.version.isNotBlank()) "  v${p.info.version}" else ""), color = Paper, style = MaterialTheme.typography.bodyLarge)
-                                if (p.info.description.isNotBlank()) Text(p.info.description, color = PaperMuted, style = MaterialTheme.typography.bodyMedium, maxLines = 2)
-                                Text(if (p.info.permissions.isEmpty()) "No permissions" else p.info.permissions.joinToString("; ") { PluginPermissions.describe(it) }, color = Gold, style = MaterialTheme.typography.labelMedium)
-                            }
-                            Switch(p.enabled && settings.pluginsEnabled, { on ->
-                                if (!on) vm.setPluginEnabled(r.id, p.info.id, false)
-                                else if (!r.consented) consenting = r to p.info.id
-                                else vm.setPluginEnabled(r.id, p.info.id, true)
-                            }, enabled = settings.pluginsEnabled)
-                        }
-                    }
-                    Row {
-                        InkTextButton("Update", { vm.refreshRepo(r) })
-                        InkTextButton("Remove", { removingRepo = r }, color = Vermilion)
-                    }
+
+        item(key = "data") {
+            SettingsSection("Data and storage", "Cache, watch history, reset", sections.isOpen("data"), { sections.toggle("data") }) { DataSettings(onOpenHistory = navigator::openHistory) }
+        }
+
+        item(key = "about") {
+            SettingsSection("About", "Version ${vm.updates.installedVersionName}", sections.isOpen("about"), { sections.toggle("about") }) {
+                ToggleRow("Check for updates automatically", "Looks at liuyingapp.com at most every 12 hours", settings.autoUpdateCheck) { v -> vm.update { it.copy(autoUpdateCheck = v) } }
+                Column(Modifier.padding(horizontal = 16.dp)) {
+                    Text("Liuying", color = Paper, style = MaterialTheme.typography.bodyLarge)
+                    Text("An independent player for sources you add yourself. It hosts no content.", color = PaperMuted, style = MaterialTheme.typography.bodyMedium)
+                    Text("Version ${vm.updates.installedVersionName} (${vm.updates.installedVersionCode})", color = PaperMuted, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 6.dp))
+                    Text(updateLine(updateState), color = if (updateState is UpdateState.Failed) Vermilion else PaperMuted, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 2.dp))
+                    InkTextButton("Check for updates", vm::checkForUpdates, color = if (updateState is UpdateState.Checking || updateState is UpdateState.Downloading) PaperMuted else Gold)
+                    InkTextButton("Reset all settings", { confirmReset = true }, color = Vermilion)
                 }
-            }
-        }
-
-        item { SectionHeader("Data and storage") }
-        item { DataSettings(onOpenHistory = navigator::openHistory) }
-
-        item { SectionHeader("About") }
-        item { ToggleRow("Check for updates automatically", "Looks at liuyingapp.com at most every 12 hours", settings.autoUpdateCheck) { v -> vm.update { it.copy(autoUpdateCheck = v) } } }
-        item {
-            Column(Modifier.padding(horizontal = 20.dp)) {
-                Text("Liuying", color = Paper, style = MaterialTheme.typography.bodyLarge)
-                Text("An independent player for sources you add yourself. It hosts no content.", color = PaperMuted, style = MaterialTheme.typography.bodyMedium)
-                Text("Version ${vm.updates.installedVersionName} (${vm.updates.installedVersionCode})", color = PaperMuted, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 6.dp))
-                Text(updateLine(updateState), color = if (updateState is UpdateState.Failed) Vermilion else PaperMuted, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 2.dp))
-                InkTextButton("Check for updates", vm::checkForUpdates, color = if (updateState is UpdateState.Checking || updateState is UpdateState.Downloading) PaperMuted else Gold)
-                InkTextButton("Reset all settings", { confirmReset = true }, color = Vermilion)
             }
         }
     }
@@ -298,7 +224,7 @@ fun YouScreen(navigator: Navigator) {
     consenting?.let { (r, pluginId) ->
         val plugin = r.plugins.firstOrNull { it.info.id == pluginId }
         AlertDialog(
-            onDismissRequest = { consenting = null }, containerColor = InkSurface, titleContentColor = Paper, textContentColor = PaperMuted,
+            onDismissRequest = { consenting = null; enableAllAfterConsent = null }, containerColor = InkSurface, titleContentColor = Paper, textContentColor = PaperMuted,
             title = { Text("Allow plugins from ${r.name}?") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -310,11 +236,169 @@ fun YouScreen(navigator: Navigator) {
                     Text("Nothing runs in this version. You can turn plugins off at any time, here or with the global switch.")
                 }
             },
-            confirmButton = { InkTextButton("Allow", { vm.consent(r, pluginId); consenting = null }) },
-            dismissButton = { InkTextButton("Not now", { consenting = null }, color = PaperMuted) },
+            confirmButton = {
+                InkTextButton("Allow", {
+                    vm.consent(r, pluginId)
+                    enableAllAfterConsent?.let { ids -> vm.setPluginsEnabled(r.id, ids, true) }
+                    enableAllAfterConsent = null; consenting = null
+                })
+            },
+            dismissButton = { InkTextButton("Not now", { consenting = null; enableAllAfterConsent = null }, color = PaperMuted) },
         )
     }
 }
+
+@Composable
+private fun SourcesContent(
+    sources: List<Source>, add: AddSourceUi, vm: YouViewModel, navigator: Navigator, context: android.content.Context, onRemove: (Source) -> Unit,
+) {
+    Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Paste a manifest link from any compatible source. Liuying ships with none and never adds one for you.", color = PaperMuted, style = MaterialTheme.typography.bodyMedium)
+        OutlinedTextField(add.input, vm::setAddInput, label = { Text("Manifest URL") }, singleLine = true, colors = fieldColors(), modifier = Modifier.fillMaxWidth(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
+        add.error?.let { Text(it, color = Vermilion, style = MaterialTheme.typography.bodyMedium) }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            InkButton(if (add.busy && add.preview == null) "Checking" else "Check link", vm::previewSource, enabled = !add.busy && add.input.isNotBlank())
+            InkButton("Paste", {
+                val clip = (context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager)
+                    ?.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()?.trim()
+                if (!clip.isNullOrEmpty()) vm.setAddInput(clip) else Toast.makeText(context, "Nothing to paste.", Toast.LENGTH_SHORT).show()
+            }, filled = false)
+        }
+        add.preview?.let { p ->
+            Column(Modifier.fillMaxWidth().border(BorderStroke(0.5.dp, GoldHairline), RoundedCornerShape(10.dp)).padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(p.manifest.name, color = Paper, style = MaterialTheme.typography.titleMedium)
+                Text("${p.host}  ·  v${p.manifest.version.ifBlank { "?" }}", color = PaperMuted, style = MaterialTheme.typography.labelMedium)
+                if (p.manifest.description.isNotBlank()) Text(p.manifest.description, color = PaperMuted, style = MaterialTheme.typography.bodyMedium, maxLines = 4)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (p.manifest.catalogs.isNotEmpty()) Badge("${p.manifest.catalogs.size} catalogs")
+                    p.manifest.resources.map { it.name }.distinct().forEach { Badge(it) }
+                }
+                p.warnings.forEach { w -> warningText(w)?.let { Text(it, color = Gold, style = MaterialTheme.typography.bodyMedium) } }
+                Text("The operator of a source can see your IP address and what you ask it for.", color = PaperMuted, style = MaterialTheme.typography.labelMedium)
+                if (p.requiresExtraConfirmation) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Switch(add.confirmRisky, vm::setRiskyConfirmed)
+                        Text("I understand and want to add it", color = Paper, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 10.dp))
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (p.isDuplicate) InkButton("Replace", { vm.install(true) }, enabled = !add.busy && (!p.requiresExtraConfirmation || add.confirmRisky))
+                    else InkButton("Add source", { vm.install(false) }, enabled = !add.busy && (!p.requiresExtraConfirmation || add.confirmRisky))
+                    InkButton("Cancel", vm::cancelPreview, filled = false)
+                }
+            }
+        }
+    }
+    if (sources.isEmpty()) Text("No sources yet.", color = PaperMuted, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp))
+    sources.forEachIndexed { idx, s ->
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f).padding(end = 10.dp)) {
+                    Text(s.displayName, color = if (s.enabled) Paper else PaperMuted, style = MaterialTheme.typography.titleMedium)
+                    Text(s.host + (if (s.isHttp) "  ·  plain http" else ""), color = PaperMuted, style = MaterialTheme.typography.labelMedium)
+                }
+                Switch(s.enabled, { vm.setSourceEnabled(s, it) })
+            }
+            s.lastError?.let { Text("Last refresh failed: $it", color = Vermilion, style = MaterialTheme.typography.labelMedium) }
+            if (s.needsConfiguration) Text("This source needs configuring on its own page before it works.", color = Gold, style = MaterialTheme.typography.labelMedium)
+            s.manifest.noBrowsableCatalogsNotice?.let { Text(it, color = Gold, style = MaterialTheme.typography.labelMedium) }
+            Row {
+                InkTextButton("Up", { vm.moveSource(s, -1) }, color = if (idx > 0) Gold else PaperMuted)
+                InkTextButton("Down", { vm.moveSource(s, 1) }, color = if (idx < sources.lastIndex) Gold else PaperMuted)
+                InkTextButton("Details", { navigator.openSource(s.id) })
+                InkTextButton("Refresh", { vm.refreshSource(s) })
+                InkTextButton("Remove", { onRemove(s) }, color = Vermilion)
+            }
+        }
+    }
+}
+
+@Composable
+private fun RepositoriesContent(
+    repos: List<PluginRepo>, settings: AppSettings, repoAdd: RepoAddUi, vm: YouViewModel,
+    onRemove: (PluginRepo) -> Unit, onEnable: (PluginRepo, String) -> Unit, onEnableAll: (PluginRepo, List<String>) -> Unit,
+) {
+    Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        // the risk notice always comes first in this section
+        Text(
+            "Risk notice: plugins are third-party code written by other people, not by Liuying. Liuying does not review, host or endorse them or the " +
+                "content they point to. Anything a plugin does is decided by its author, and using plugins is entirely at your own risk. " +
+                "Only add repositories from people you trust, and make sure you are allowed to access what they link to.",
+            color = Vermilion, style = MaterialTheme.typography.bodyMedium,
+        )
+        Text(
+            "Add a plugin repository to see which plugins it lists. This version only lists and stores them: plugin scripts are not downloaded or run, " +
+                "so turning a plugin on has no effect yet.",
+            color = PaperMuted, style = MaterialTheme.typography.bodyMedium,
+        )
+    }
+    ToggleRow("Allow scraper plugins", "Global off switch. Off by default.", settings.pluginsEnabled) { v -> vm.update { it.copy(pluginsEnabled = v) } }
+    Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedTextField(repoAdd.input, vm::setRepoInput, label = { Text("Repository manifest URL") }, singleLine = true, colors = fieldColors(), modifier = Modifier.fillMaxWidth(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
+        repoAdd.error?.let { Text(it, color = Vermilion, style = MaterialTheme.typography.bodyMedium) }
+        InkButton(if (repoAdd.busy) "Fetching" else "Add repository", vm::addRepo, enabled = !repoAdd.busy && repoAdd.input.isNotBlank())
+    }
+    repos.forEach { r ->
+        var open by rememberSaveable("repo${r.id}") { mutableStateOf(false) }
+        var query by rememberSaveable("repoq${r.id}") { mutableStateOf("") }
+        val expandedPlugins = rememberSavableIds("repop${r.id}")
+        val enabledCount = r.plugins.count { it.enabled }
+        SubSection(
+            r.name + (if (r.version.isNotBlank()) "  v${r.version}" else ""),
+            listOfNotNull(r.author?.let { "by $it" }, "${r.plugins.size} plugins", "$enabledCount enabled").joinToString("  ·  "),
+            open, { open = !open },
+        ) {
+            Column(Modifier.padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (r.description.isNotBlank()) Text(r.description, color = PaperMuted, style = MaterialTheme.typography.bodyMedium, maxLines = 3)
+                Text(if (r.consented) "Permissions accepted" else "Permissions not yet accepted", color = PaperMuted, style = MaterialTheme.typography.labelMedium)
+                r.lastError?.let { Text("Last update failed: $it", color = Vermilion, style = MaterialTheme.typography.labelMedium) }
+                OutlinedTextField(query, { query = it }, label = { Text("Search ${r.plugins.size} plugins") }, singleLine = true, colors = fieldColors(), modifier = Modifier.fillMaxWidth())
+            }
+            val shown = YouLogic.filterPlugins(r.plugins, query)
+            Row(Modifier.padding(horizontal = 4.dp)) {
+                InkTextButton("Enable all" + if (query.isNotBlank()) " (${shown.size})" else "", { onEnableAll(r, shown.filter { !it.enabled }.map { it.info.id }) }, color = if (settings.pluginsEnabled) Gold else PaperMuted)
+                InkTextButton("Disable all" + if (query.isNotBlank()) " (${shown.size})" else "", { vm.setPluginsEnabled(r.id, shown.filter { it.enabled }.map { it.info.id }, false) })
+                InkTextButton("Update", { vm.refreshRepo(r) })
+                InkTextButton("Remove", { onRemove(r) }, color = Vermilion)
+            }
+            if (shown.isEmpty() && query.isNotBlank()) Text("No plugin matches \"${query.trim()}\".", color = PaperMuted, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+            shown.forEach { p ->
+                val isOpen = p.info.id in expandedPlugins.value
+                Column(Modifier.fillMaxWidth()) {
+                    Row(
+                        Modifier.fillMaxWidth().clickable { expandedPlugins.value = if (isOpen) expandedPlugins.value - p.info.id else expandedPlugins.value + p.info.id }
+                            .padding(start = 16.dp, end = 8.dp).heightIn(min = 48.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(p.info.name + (if (p.info.version.isNotBlank()) "  v${p.info.version}" else ""), color = Paper, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(end = 8.dp))
+                        Switch(p.enabled && settings.pluginsEnabled, { on -> if (!on) vm.setPluginEnabled(r.id, p.info.id, false) else onEnable(r, p.info.id) }, enabled = settings.pluginsEnabled)
+                    }
+                    if (isOpen) Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp)) {
+                        if (p.info.description.isNotBlank()) Text(p.info.description, color = PaperMuted, style = MaterialTheme.typography.bodyMedium)
+                        Text(if (p.info.permissions.isEmpty()) "No permissions" else p.info.permissions.joinToString("; ") { PluginPermissions.describe(it) }, color = Gold, style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun IntegrationsContent(currentKey: String, onSave: (String) -> Unit) {
+    var text by rememberSaveable(currentKey) { mutableStateOf(currentKey) }
+    Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Metadata API key (for example TMDB). Optional. It stays on this device and is never synced to your account.", color = PaperMuted, style = MaterialTheme.typography.bodyMedium)
+        OutlinedTextField(text, { text = it }, label = { Text("API key") }, singleLine = true, colors = fieldColors(), modifier = Modifier.fillMaxWidth(),
+            visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            InkButton("Save", { onSave(text) }, enabled = text.trim() != currentKey)
+            InkButton("Clear", { text = ""; onSave("") }, filled = false, enabled = currentKey.isNotEmpty() || text.isNotEmpty())
+        }
+    }
+}
+
 
 @Composable
 private fun ConfirmDialog(title: String, text: String, action: String, onDismiss: () -> Unit, onConfirm: () -> Unit) {
