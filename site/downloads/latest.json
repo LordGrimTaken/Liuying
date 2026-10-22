@@ -1,9 +1,9 @@
 {
-  "versionName": "0.5.1",
-  "versionCode": 7,
-  "apkUrl": "https://www.liuyingapp.com/downloads/Liuying-0.5.1.apk",
-  "sha256": "66545821f27329d17eee56d3b606bf0c52272784545b097c295961caf15c6a64",
-  "sizeBytes": 12849370,
-  "releasedAt": "2026-10-22T14:09:46Z",
-  "notes": "QA fixes: faster playback start, offline error wording, backup exclusions, accessibility, back buttons, restore fixes"
+  "versionName": "0.5.2",
+  "versionCode": 8,
+  "apkUrl": "https://www.liuyingapp.com/downloads/Liuying-0.5.2.apk",
+  "sha256": "16fffe428cb0c8565245ea264d2299493ca155f3c7bf76e02a5e8a908a19e045",
+  "sizeBytes": 12849574,
+  "releasedAt": "2026-10-22T14:25:25Z",
+  "notes": "Chinese usernames, encrypted metadata key, background audio with notification"
 }
