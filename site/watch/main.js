@@ -5,7 +5,7 @@ import { h, icon, clear, toast } from './ui/dom.js';
 import { today } from './ui/today.js';
 import { search } from './ui/search.js';
 import { shelf } from './ui/shelf.js';
-import { history } from './ui/history.js';
+import { history as historyPage } from './ui/history.js';
 import { sources } from './ui/sources.js';
 import { settings } from './ui/settings.js';
 import { browse } from './ui/browse.js';
@@ -149,7 +149,7 @@ async function main() {
   route('/series', series, 'series');
   route('/search', search, 'search');
   route('/shelf', shelf, 'shelf');
-  route('/history', history, 'history');
+  route('/history', historyPage, 'history');
   route('/calendar', calendar, 'calendar');
   route('/sources', sources, 'sources');
   route('/settings', settings, 'settings');

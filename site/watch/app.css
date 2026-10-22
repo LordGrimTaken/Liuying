@@ -919,3 +919,5 @@ html{scroll-padding-top:calc(var(--tb) + env(safe-area-inset-top) + 16px);scroll
 /* ---- spoiler protection ---- */
 .ep.spoil .th img{filter:blur(14px) saturate(.6);transform:scale(1.15)}
 .ep.spoil .o .blur{filter:blur(6px);user-select:none}
+/* the fixed sign-in banner must never cover the last buttons on a page */
+body:has(#banner:not([hidden])) #view{padding-bottom:110px}
