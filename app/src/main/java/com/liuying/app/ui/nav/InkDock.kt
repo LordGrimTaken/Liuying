@@ -21,6 +21,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -28,6 +33,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.liuying.app.ui.theme.Gold
 import com.liuying.app.ui.theme.GoldHairline
 import com.liuying.app.ui.theme.InkSurface
@@ -50,7 +56,7 @@ fun InkDock(
             .shadow(12.dp, shape, clip = false)
             .background(InkSurface, shape)
             .border(BorderStroke(0.5.dp, GoldHairline), shape)
-            .padding(horizontal = 8.dp),
+            .padding(horizontal = 4.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -65,13 +71,14 @@ private fun DockItem(tab: Tab, selected: Boolean, onClick: () -> Unit, modifier:
     val tint = if (selected) Paper else PaperMuted
     Column(
         modifier = modifier
+            .semantics { role = Role.Tab; this.selected = selected; contentDescription = tab.label }
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick)
             .padding(vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
         TabGlyph(tab, selected, tint)
-        Text(tab.label, style = MaterialTheme.typography.labelMedium, color = tint)
+        Text(tab.label, style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.sp), color = tint, maxLines = 1, softWrap = false)
         // vermilion seal-dot under the active tab
         Canvas(Modifier.padding(top = 3.dp).size(width = 14.dp, height = 2.dp)) {
             if (selected) drawRect(Vermilion, size = Size(size.width, size.height))
@@ -104,6 +111,12 @@ private fun TabGlyph(tab: Tab, selected: Boolean, tint: Color) {
                 drawRect(color, Offset(w * 0.2f, h * 0.2f), Size(w * 0.14f, h * 0.62f), style = stroke)
                 drawRect(color, Offset(w * 0.44f, h * 0.12f), Size(w * 0.14f, h * 0.7f), style = stroke)
                 drawLine(color, Offset(w * 0.72f, h * 0.82f), Offset(w * 0.86f, h * 0.24f), stroke.width, StrokeCap.Round)
+            }
+            Tab.Calendar -> {
+                drawRoundRect(color, Offset(w * 0.12f, h * 0.2f), Size(w * 0.76f, h * 0.68f), androidx.compose.ui.geometry.CornerRadius(w * 0.08f), style = stroke)
+                drawLine(color, Offset(w * 0.12f, h * 0.44f), Offset(w * 0.88f, h * 0.44f), stroke.width, StrokeCap.Round)
+                drawLine(color, Offset(w * 0.34f, h * 0.08f), Offset(w * 0.34f, h * 0.3f), stroke.width, StrokeCap.Round)
+                drawLine(color, Offset(w * 0.66f, h * 0.08f), Offset(w * 0.66f, h * 0.3f), stroke.width, StrokeCap.Round)
             }
             Tab.You -> {
                 drawCircle(color, radius = w * 0.17f, center = Offset(w / 2, h * 0.32f), style = stroke)

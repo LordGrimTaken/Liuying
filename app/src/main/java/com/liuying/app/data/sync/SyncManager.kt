@@ -12,7 +12,9 @@ import com.liuying.app.domain.Clock
 import com.liuying.app.domain.SystemClock
 import com.liuying.app.domain.model.LibraryItem
 import com.liuying.app.domain.sync.RemoteSource
+import com.liuying.app.domain.sync.SettingsSyncLogic
 import com.liuying.app.domain.sync.SyncLogic
+import com.liuying.app.domain.sync.SyncedSettings
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -60,6 +62,9 @@ class SyncManager(
         library.onLocalChange = { syncSoon(1_500) }
         progress.onLocalChange = { syncSoon(20_000) }
     }
+
+    /** Call after editing a synced setting (the repository already marked its key dirty). */
+    fun settingsChanged() = syncSoon(1_500)
 
     /** Call once at app start. */
     fun start() { if (api.signedIn) syncSoon(1_000) }
@@ -121,7 +126,29 @@ class SyncManager(
         val now = clock.nowMs()
         if (!syncLibrary(remote, first)) return false
         if (!syncSources(remote, first)) return false
-        return syncProgress(remote, now)
+        if (!syncProgress(remote, now)) return false
+        return syncSettings(remote)
+    }
+
+    // ------------------------------------------------------------------------------------ settings
+
+    /** Pull-merge-push of the shared settings object; only keys this app owns are touched, others pass through. */
+    private suspend fun syncSettings(remote: RemoteState): Boolean {
+        val cur = settings.current()
+        val dirty = cur.syncDirtyKeys.filter { it in SettingsSyncLogic.KEYS }.toSet()
+        val local = SyncedSettings(cur.homeOrder, cur.hiddenCatalogs, cur.heroEnabled, cur.accent, cur.fontScale)
+        val merged = SettingsSyncLogic.merge(local, remote.settings, dirty)
+        if (merged != local) {
+            settings.update { it.copy(homeOrder = merged.homeOrder, hiddenCatalogs = merged.hiddenCatalogs, heroEnabled = merged.hero, accent = merged.accent, fontScale = merged.fontScale) }
+        }
+        if (dirty.isEmpty()) return true
+        val payload = SettingsSyncLogic.payload(remote.settings, merged, dirty)
+        if (payload != remote.settings) {
+            val r = api.putSettings(payload)
+            if (r is ApiResult.Err) return failErr(r)
+        }
+        settings.update { it.copy(syncDirtyKeys = it.syncDirtyKeys - dirty) }
+        return true
     }
 
     // ------------------------------------------------------------------------------------ library

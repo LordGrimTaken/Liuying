@@ -24,6 +24,7 @@ import com.liuying.app.domain.model.MetaPreview
 import com.liuying.app.ui.common.LocalContainer
 import com.liuying.app.ui.details.DetailsScreen
 import com.liuying.app.ui.home.TodayScreen
+import com.liuying.app.ui.calendar.CalendarScreen
 import com.liuying.app.ui.library.ShelfScreen
 import com.liuying.app.ui.search.SearchScreen
 import com.liuying.app.ui.settings.YouScreen
@@ -41,6 +42,8 @@ class Navigator(private val nav: NavHostController, private val container: AppCo
 
     fun openTitle(type: String, id: String, play: String? = null) = nav.navigate(Routes.details(type, id, play))
     fun back() { nav.popBackStack() }
+    /** The full-screen search overlay: it covers the dock and Back returns to where the user was. */
+    fun openSearch() { nav.navigate(Tab.Search.route) { launchSingleTop = true } }
     fun goTab(tab: Tab) = nav.navigate(tab.route) {
         popUpTo(nav.graph.findStartDestination().id) { saveState = true }
         launchSingleTop = true
@@ -65,6 +68,7 @@ fun LiuyingApp() {
             composable(Tab.Today.route) { TodayScreen(navigator) }
             composable(Tab.Search.route) { SearchScreen(navigator) }
             composable(Tab.Shelf.route) { ShelfScreen(navigator) }
+            composable(Tab.Calendar.route) { CalendarScreen(navigator) }
             composable(Tab.You.route) { YouScreen(navigator) }
             composable(
                 Routes.DETAILS,
@@ -82,10 +86,10 @@ fun LiuyingApp() {
                 )
             }
         }
-        if (current != null) {
+        if (current != null && current != Tab.Search) {
             InkDock(
                 current = current,
-                onSelect = navigator::goTab,
+                onSelect = { if (it == Tab.Search) navigator.openSearch() else navigator.goTab(it) },
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .navigationBarsPadding()

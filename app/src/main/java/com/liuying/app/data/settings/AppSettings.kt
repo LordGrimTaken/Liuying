@@ -21,7 +21,10 @@ enum class RowItemCount(val count: Int) { Short(12), Normal(24), Long(40) }
 data class AppSettings(
     // Appearance
     val theme: ThemeMode = ThemeMode.Dark,
-    val accent: String = "gold",
+    /** vermilion | gold | jade | indigo (same names as the web player). */
+    val accent: String = "vermilion",
+    /** s | m | l */
+    val fontScale: String = "m",
     /** "system", "en" or "zh-Hans". */
     val language: String = "system",
     val posterSize: PosterSize = PosterSize.Medium,
@@ -34,6 +37,12 @@ data class AppSettings(
     val heroEnabled: Boolean = true,
     /** CatalogEntry.key feeding the hero; null = first eligible catalog. */
     val heroCatalogKey: String? = null,
+    /** Saved Today order, as web-style catalog keys ("manifestUrl#type/id"). Unlisted catalogs follow in source order. */
+    val homeOrder: List<String> = emptyList(),
+    /** Web-style catalog key to hidden flag. */
+    val hiddenCatalogs: Map<String, Boolean> = emptyMap(),
+    /** Synced settings keys changed here and not yet pushed to the account (see SettingsSyncLogic). */
+    val syncDirtyKeys: Set<String> = emptySet(),
     val hideAdultCatalogs: Boolean = true,
     val rowItemCount: RowItemCount = RowItemCount.Normal,
     // Playback

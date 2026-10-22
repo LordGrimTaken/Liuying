@@ -10,6 +10,10 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.liuying.app.domain.ProgressRules
+import com.liuying.app.domain.sync.SettingsSyncLogic
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -35,6 +39,13 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         store.edit { prefs -> write(prefs, transform(read(prefs))) }
     }
 
+    /**
+     * Edit settings that sync with the account: [transform] runs, then [keys] are marked unsynced so the next sync pushes
+     * them (and so a pull does not overwrite them first).
+     */
+    suspend fun updateSynced(vararg keys: String, transform: (AppSettings) -> AppSettings) =
+        update { transform(it).let { n -> n.copy(syncDirtyKeys = n.syncDirtyKeys + keys) } }
+
     /** Back to defaults (does not touch sources, library or progress). */
     suspend fun resetToDefaults() {
         store.edit { it.clear() }
@@ -45,6 +56,10 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
     private object K {
         val theme = stringPreferencesKey("theme")
         val accent = stringPreferencesKey("accent")
+        val fontScale = stringPreferencesKey("font_scale")
+        val homeOrder = stringPreferencesKey("home_order")
+        val hiddenCatalogs = stringPreferencesKey("hidden_catalogs")
+        val syncDirty = stringPreferencesKey("sync_dirty_keys")
         val language = stringPreferencesKey("language")
         val posterSize = stringPreferencesKey("poster_size")
         val titlesUnder = booleanPreferencesKey("titles_under_posters")
@@ -113,6 +128,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         val schema = intPreferencesKey("schema_version")
     }
 
+    private val jsonParser = Json { ignoreUnknownKeys = true }
     private val sep = "\n"
     private fun split(s: String?) = s?.split(sep)?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
 
@@ -124,6 +140,11 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         return AppSettings(
             theme = p.enum(K.theme, d.theme),
             accent = p[K.accent] ?: d.accent,
+            fontScale = p[K.fontScale]?.takeIf { it in SettingsSyncLogic.FONT_SCALES } ?: d.fontScale,
+            homeOrder = split(p[K.homeOrder]),
+            hiddenCatalogs = p[K.hiddenCatalogs]?.let { runCatching { jsonParser.parseToJsonElement(it) }.getOrNull() }
+                ?.let { SettingsSyncLogic.parseHidden(it) }.orEmpty(),
+            syncDirtyKeys = split(p[K.syncDirty]).toSet(),
             language = p[K.language] ?: d.language,
             posterSize = p.enum(K.posterSize, d.posterSize),
             titlesUnderPosters = p[K.titlesUnder] ?: d.titlesUnderPosters,
@@ -200,6 +221,10 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
     internal fun write(p: androidx.datastore.preferences.core.MutablePreferences, s: AppSettings) {
         p[K.theme] = s.theme.name
         p[K.accent] = s.accent
+        p[K.fontScale] = s.fontScale
+        p[K.homeOrder] = s.homeOrder.joinToString(sep)
+        p[K.hiddenCatalogs] = JsonObject(s.hiddenCatalogs.mapValues { JsonPrimitive(it.value) }).toString()
+        p[K.syncDirty] = s.syncDirtyKeys.joinToString(sep)
         p[K.language] = s.language
         p[K.posterSize] = s.posterSize.name
         p[K.titlesUnder] = s.titlesUnderPosters

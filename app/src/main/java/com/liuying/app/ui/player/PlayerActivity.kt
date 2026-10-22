@@ -47,7 +47,7 @@ class PlayerActivity : ComponentActivity() {
         controller = c
         c.start()
         setContent {
-            LiuyingTheme { PlayerScreen(c, onClose = { onPlayerFinished(PlayerExit.Closed) }) }
+            LiuyingTheme(com.liuying.app.ui.theme.Accent.choice.key) { PlayerScreen(c, onClose = { onPlayerFinished(PlayerExit.Closed) }) }
         }
         if (Build.VERSION.SDK_INT >= 26) registerPipReceiver()
     }

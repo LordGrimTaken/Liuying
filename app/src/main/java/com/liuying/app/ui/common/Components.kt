@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -30,6 +31,11 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -43,6 +49,7 @@ import com.liuying.app.ui.theme.Gold
 import com.liuying.app.ui.theme.GoldHairline
 import com.liuying.app.ui.theme.Ink
 import com.liuying.app.ui.theme.InkSurface
+import com.liuying.app.ui.theme.OnAccent
 import com.liuying.app.ui.theme.Paper
 import com.liuying.app.ui.theme.PaperMuted
 import com.liuying.app.ui.theme.Vermilion
@@ -63,11 +70,14 @@ fun ScreenTitle(text: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun SectionHeader(text: String, modifier: Modifier = Modifier, trailing: (@Composable () -> Unit)? = null) {
+fun SectionHeader(text: String, modifier: Modifier = Modifier, subtitle: String? = null, trailing: (@Composable () -> Unit)? = null) {
     Row(modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(width = 3.dp, height = 16.dp).background(Vermilion))
+        Box(Modifier.size(width = 3.dp, height = if (subtitle != null) 32.dp else 16.dp).background(Vermilion))
         Spacer(Modifier.width(10.dp))
-        Text(text, style = MaterialTheme.typography.titleMedium, color = Paper, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Column(Modifier.weight(1f)) {
+            Text(text, style = MaterialTheme.typography.titleMedium, color = Paper, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.labelMedium, color = PaperMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
         trailing?.invoke()
     }
 }
@@ -95,17 +105,41 @@ fun PosterCard(
     progress: Float? = null,
     watched: Boolean = false,
     onLongClick: (() -> Unit)? = null,
+    /** Non-null shows the quick-save button; true = already on the shelf. */
+    saved: Boolean? = null,
+    onToggleSave: (() -> Unit)? = null,
     onClick: () -> Unit,
 ) {
     Column(modifier.width(width).combinedClickable(onClick = onClick, onLongClick = onLongClick)) {
         Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(PosterShape).border(BorderStroke(0.5.dp, GoldHairline), PosterShape)) {
             ArtImage(poster, title, Modifier.fillMaxSize())
-            if (watched) Text("Seen", style = MaterialTheme.typography.labelMedium, color = Paper,
+            if (watched) Text("Seen", style = MaterialTheme.typography.labelMedium, color = OnAccent,
                 modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).background(Vermilion, RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 1.dp))
             if (progress != null) ProgressBar(progress, Modifier.align(Alignment.BottomCenter).fillMaxWidth())
+            if (saved != null && onToggleSave != null) {
+                QuickSave(saved, title, onToggleSave, Modifier.align(Alignment.BottomEnd).padding(4.dp))
+            }
         }
         Text(title, style = MaterialTheme.typography.labelLarge, color = Paper, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
         if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.labelMedium, color = PaperMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/** Quick save/unsave on a poster. The hit area is 48dp even though the disc is smaller. */
+@Composable
+fun QuickSave(saved: Boolean, title: String, onToggle: () -> Unit, modifier: Modifier = Modifier) {
+    Box(
+        modifier.size(48.dp).clip(androidx.compose.foundation.shape.CircleShape)
+            .semantics { contentDescription = if (saved) "Remove $title from shelf" else "Add $title to shelf"; role = Role.Button }
+            .clickable(onClick = onToggle),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            Modifier.size(32.dp).clip(androidx.compose.foundation.shape.CircleShape)
+                .background(if (saved) Vermilion else Ink.copy(alpha = 0.72f), androidx.compose.foundation.shape.CircleShape)
+                .border(BorderStroke(if (saved) 0.dp else 1.dp, GoldHairline), androidx.compose.foundation.shape.CircleShape),
+            contentAlignment = Alignment.Center,
+        ) { Glyph(if (saved) GlyphKind.Check else GlyphKind.Plus, tint = if (saved) OnAccent else Paper, size = 16.dp) }
     }
 }
 
@@ -156,16 +190,17 @@ fun InkButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, 
         modifier.clip(shape).background(bg, shape).then(if (filled) Modifier else Modifier.border(BorderStroke(1.dp, GoldHairline), shape))
             .clickable(enabled = enabled, onClick = onClick).padding(horizontal = 18.dp, vertical = 11.dp),
         contentAlignment = Alignment.Center,
-    ) { Text(text, color = if (enabled) Paper else PaperMuted, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center) }
+    ) { Text(text, color = if (!enabled) PaperMuted else if (filled) OnAccent else Paper, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center) }
 }
 
 @Composable
 fun InkChip(text: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val shape = RoundedCornerShape(50)
     Text(
-        text, style = MaterialTheme.typography.labelLarge, color = if (selected) Ink else Paper,
-        modifier = modifier.clip(shape).background(if (selected) Gold else InkSurface, shape).border(BorderStroke(0.5.dp, GoldHairline), shape)
-            .clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 7.dp),
+        text, style = MaterialTheme.typography.labelLarge, color = if (selected) OnAccent else Paper,
+        modifier = modifier.heightIn(min = 40.dp).clip(shape).background(if (selected) Vermilion else InkSurface, shape).border(BorderStroke(0.5.dp, GoldHairline), shape)
+            .semantics { role = Role.Button; this.selected = selected }
+            .clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 9.dp),
     )
 }
 

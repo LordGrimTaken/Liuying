@@ -54,6 +54,8 @@ data class RemoteState(
     val library: List<RemoteLibraryItem>,
     val progress: List<RemoteProgress>,
     val serverTime: Long,
+    /** Opaque settings object shared with the web player; `{}` when never saved. */
+    val settings: JsonObject = JsonObject(emptyMap()),
 )
 
 /**
@@ -110,6 +112,10 @@ class AccountApi(
         }.toString()
         return call("PUT", "/api/sync/sources", body).unit()
     }
+
+    /** PUT replaces the whole object on the server, so callers pass the full merged object (see SettingsSyncLogic). */
+    suspend fun putSettings(settings: JsonObject): ApiResult<Unit> =
+        call("PUT", "/api/sync/settings", buildJsonObject { put("settings", settings) }.toString()).unit()
 
     suspend fun postLibrary(adds: List<RemoteLibraryItem>, removes: List<String>): ApiResult<Unit> {
         val body = buildJsonObject {
@@ -226,7 +232,7 @@ class AccountApi(
                     so.lng("updatedAt") ?: return@mapNotNull null,
                 )
             }
-            return RemoteState(sources, library, progress, o.lng("serverTime") ?: 0)
+            return RemoteState(sources, library, progress, o.lng("serverTime") ?: 0, o["settings"] as? JsonObject ?: JsonObject(emptyMap()))
         }
 
         private fun JsonElement?.arr(): List<JsonElement> = (this as? JsonArray)?.toList().orEmpty()

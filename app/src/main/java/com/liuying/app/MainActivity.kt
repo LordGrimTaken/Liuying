@@ -8,6 +8,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.liuying.app.data.settings.AppSettings
 import com.liuying.app.ui.common.LocalContainer
 import com.liuying.app.ui.nav.LiuyingApp
 import com.liuying.app.ui.theme.LiuyingTheme
@@ -22,7 +25,8 @@ class MainActivity : ComponentActivity() {
         )
         val container = (application as LiuyingApplication).container
         setContent {
-            LiuyingTheme {
+            val settings by container.settings.settings.collectAsStateWithLifecycle(AppSettings())
+            LiuyingTheme(settings.accent, settings.fontScale) {
                 CompositionLocalProvider(LocalContainer provides container) { LiuyingApp()
                     com.liuying.app.ui.update.UpdateDialog(container.updates)
                 }

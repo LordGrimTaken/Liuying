@@ -5,6 +5,7 @@ import com.liuying.app.data.remote.AddonErrorKind
 import com.liuying.app.data.remote.AddonFailure
 import com.liuying.app.data.remote.toUserMessage
 import com.liuying.app.data.settings.AppSettings
+import com.liuying.app.domain.Ux
 import com.liuying.app.domain.model.CatalogEntry
 import com.liuying.app.domain.model.CatalogPref
 import com.liuying.app.domain.model.Extras
@@ -32,6 +33,7 @@ import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -117,16 +119,25 @@ class CatalogRepository(
 
     // ----------------------------------------------------------------------------- layout
 
-    private fun layoutFlow(browse: Boolean): Flow<List<CatalogEntry>> =
+    private fun browseFlow(): Flow<List<CatalogEntry>> =
         combine(sources.enabledSources, sources.catalogPrefs, settings.distinctUntilChanged { a, b -> a.hideAdultCatalogs == b.hideAdultCatalogs }) { srcs, prefs, s ->
-            catalogEntries(srcs, prefs, s.hideAdultCatalogs, browse)
+            catalogEntries(srcs, prefs, s.hideAdultCatalogs, true)
         }.distinctUntilChanged()
 
-    /** Catalog rows for Home: enabled sources in order, visible per prefs, browsable without user input. */
-    fun homeEntries(): Flow<List<CatalogEntry>> = layoutFlow(browse = false)
+    /** Every Today-eligible catalog in the user's saved order, hidden ones included (the layout editor lists these). */
+    fun allHomeEntries(): Flow<List<CatalogEntry>> =
+        combine(sources.enabledSources, settings.distinctUntilChanged { a, b -> a.hideAdultCatalogs == b.hideAdultCatalogs && a.homeOrder == b.homeOrder }) { srcs, s ->
+            Ux.orderRows(catalogEntries(srcs, emptyList(), s.hideAdultCatalogs, false), s.homeOrder) { it.webKey }
+        }.distinctUntilChanged()
+
+    /** Catalog rows for Today: saved order, minus the ones the user hid. */
+    fun homeEntries(): Flow<List<CatalogEntry>> =
+        combine(allHomeEntries(), settings.map { it.hiddenCatalogs }.distinctUntilChanged()) { all, hidden ->
+            all.filter { hidden[it.webKey] != true }
+        }.distinctUntilChanged()
 
     /** Catalogs for Browse/See all. */
-    fun browseEntries(): Flow<List<CatalogEntry>> = layoutFlow(browse = true)
+    fun browseEntries(): Flow<List<CatalogEntry>> = browseFlow()
 
     /** Catalogs that can be searched, as (source, catalog) pairs, optionally filtered to one type. */
     suspend fun searchEntries(type: String? = null): List<CatalogEntry> {
@@ -270,14 +281,12 @@ internal fun catalogEntries(srcs: List<Source>, prefs: List<CatalogPref>, hideAd
     val out = ArrayList<CatalogEntry>()
     for (s in srcs) {
         if (hideAdult && s.manifest.isAdult) continue
-        var eligibleIdx = 0
         for (c in s.manifest.usableCatalogs) {
             val eligible = c.isHomeEligible
             val pref = prefMap[Triple(s.id, c.type, c.id)]
             // Without a stored pref (e.g. not yet synced) fall back to the default: first three eligible on Home.
-            val visible = if (browse) (pref?.showInBrowse ?: true) && eligible
-            else (pref?.showOnHome ?: (eligible && eligibleIdx < 3)) && eligible
-            if (eligible) eligibleIdx++
+            // Today shows every eligible catalog; visibility and order are the user's layout settings, not per-catalog prefs.
+            val visible = if (browse) (pref?.showInBrowse ?: true) && eligible else eligible
             if (visible) out += CatalogEntry(s, c)
         }
     }
