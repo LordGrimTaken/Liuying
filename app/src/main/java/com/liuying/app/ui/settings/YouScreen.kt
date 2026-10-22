@@ -191,8 +191,8 @@ fun YouScreen(navigator: Navigator) {
         item {
             Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    "Plugin repositories list small scrapers that could add streams. This version only stores them: no plugin script is downloaded or run yet, " +
-                        "so nothing you enable here has any effect until the sandboxed runner ships.",
+                    "Add a plugin repository to see which plugins it lists. This version only lists and stores them: plugin scripts are not downloaded or run, " +
+                        "so turning a plugin on has no effect yet.",
                     color = PaperMuted, style = MaterialTheme.typography.bodyMedium,
                 )
             }
@@ -264,7 +264,7 @@ fun YouScreen(navigator: Navigator) {
             title = { Text("Allow plugins from ${r.name}?") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Plugins are small scripts written by ${r.author ?: "the repository owner"}. When the runner exists, a plugin you enable could:")
+                    Text("Plugins are small scripts written by ${r.author ?: "the repository owner"}. If plugins could run, a plugin you enable could:")
                     val perms = plugin?.info?.permissions.orEmpty()
                     if (perms.isEmpty()) Text("• Ask for nothing beyond the limits below") else perms.forEach { Text("• " + PluginPermissions.describe(it), color = Gold) }
                     Text("Always:")

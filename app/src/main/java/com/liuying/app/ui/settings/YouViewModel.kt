@@ -122,7 +122,7 @@ class YouViewModel(private val c: AppContainer) : ViewModel() {
         repoAdd.update { it.copy(busy = true, error = null) }
         viewModelScope.launch {
             c.plugins.add(input).fold(
-                onSuccess = { repoAdd.value = RepoAddUi(); message.value = "Repository added. Its plugins are off until you allow them." },
+                onSuccess = { repoAdd.value = RepoAddUi(); message.value = "Repository added. Its plugins are listed only; running them isn't available in this version." },
                 onFailure = { e -> repoAdd.update { it.copy(busy = false, error = e.message ?: "Could not add this repository.") } },
             )
         }

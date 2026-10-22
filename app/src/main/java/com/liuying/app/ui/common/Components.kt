@@ -179,7 +179,10 @@ fun ErrorNote(message: String, modifier: Modifier = Modifier, onRetry: (() -> Un
 
 @Composable
 fun InkTextButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, color: androidx.compose.ui.graphics.Color = Gold) {
-    Text(text, color = color, style = MaterialTheme.typography.labelLarge, modifier = modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = onClick).padding(horizontal = 10.dp, vertical = 8.dp))
+    Box(
+        modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(6.dp)).semantics { role = Role.Button }.clickable(onClick = onClick).padding(horizontal = 10.dp),
+        contentAlignment = Alignment.Center,
+    ) { Text(text, color = color, style = MaterialTheme.typography.labelLarge) }
 }
 
 @Composable
@@ -188,7 +191,7 @@ fun InkButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, 
     val bg = if (filled) (if (enabled) Vermilion else Vermilion.copy(alpha = 0.35f)) else androidx.compose.ui.graphics.Color.Transparent
     Box(
         modifier.clip(shape).background(bg, shape).then(if (filled) Modifier else Modifier.border(BorderStroke(1.dp, GoldHairline), shape))
-            .clickable(enabled = enabled, onClick = onClick).padding(horizontal = 18.dp, vertical = 11.dp),
+            .semantics { role = Role.Button }.clickable(enabled = enabled, onClick = onClick).heightIn(min = 48.dp).padding(horizontal = 18.dp, vertical = 11.dp),
         contentAlignment = Alignment.Center,
     ) { Text(text, color = if (!enabled) PaperMuted else if (filled) OnAccent else Paper, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center) }
 }

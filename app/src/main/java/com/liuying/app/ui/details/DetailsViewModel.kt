@@ -152,6 +152,13 @@ class DetailsViewModel(
         viewModelScope.launch { c.progress.setWatched(PlaybackRef.episode(type, id, e.videoId, e.season, e.episode), watched) }
     }
 
+    /** Marks every released episode in [episodes] (specials excluded by the caller) watched or unwatched. */
+    fun setEpisodesWatched(episodes: List<EpisodeState>, watched: Boolean) {
+        viewModelScope.launch {
+            episodes.forEach { e -> c.progress.setWatched(PlaybackRef.episode(type, id, e.videoId, e.season, e.episode), watched) }
+        }
+    }
+
     fun setMovieWatched(watched: Boolean) {
         viewModelScope.launch { c.progress.setWatched(PlaybackRef.movie(type, movieVideoId()), watched) }
     }

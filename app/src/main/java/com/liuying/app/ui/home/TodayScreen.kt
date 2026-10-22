@@ -41,9 +41,13 @@ import com.liuying.app.data.repo.RowState
 import com.liuying.app.domain.ContinueItem
 import com.liuying.app.domain.ContinueKind
 import com.liuying.app.domain.EpisodeLabels
+import com.liuying.app.domain.Ux
+import com.liuying.app.domain.model.MetaPreview
 import com.liuying.app.ui.common.ArtImage
 import com.liuying.app.ui.common.EmptyBlock
 import com.liuying.app.ui.common.ErrorNote
+import com.liuying.app.ui.common.GlyphKind
+import com.liuying.app.ui.common.IconCircleButton
 import com.liuying.app.ui.common.InkButton
 import com.liuying.app.ui.common.InkTextButton
 import com.liuying.app.ui.common.PosterCard
@@ -65,13 +69,33 @@ fun TodayScreen(navigator: Navigator) {
     val rows by vm.rows.collectAsStateWithLifecycle()
     val hasSources by vm.hasSources.collectAsStateWithLifecycle()
     val cw by vm.continueItems.collectAsStateWithLifecycle()
+    val settings by vm.settings.collectAsStateWithLifecycle()
+    val saved by vm.savedKeys.collectAsStateWithLifecycle()
 
     LazyColumn(Modifier.fillMaxSize().statusBarsPadding(), contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = DockClearance)) {
         item {
             Row(Modifier.fillMaxWidth().padding(end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Today", style = MaterialTheme.typography.headlineMedium, color = Paper, modifier = Modifier.weight(1f).padding(horizontal = 20.dp, vertical = 12.dp))
+                IconCircleButton(GlyphKind.Search, "Search", navigator::openSearch)
                 if (hasSources == true) InkTextButton("Refresh", vm::refresh)
             }
+        }
+        // the hero comes from the first catalog on Today
+        val first = rows?.firstOrNull()
+        val firstItems = (first?.state as? RowState.Loaded)?.items.orEmpty()
+        if (settings.heroEnabled && first != null) {
+            val featured = Ux.pickFeatured(firstItems, 5)
+            if (featured.isNotEmpty()) {
+                item(key = "hero") {
+                    FeaturedHero(
+                        featured, first.entry.catalog.type, saved = { (it.type.ifBlank { first.entry.catalog.type } + "|" + it.id) in saved },
+                        reduceMotion = settings.reduceMotion,
+                        onPlay = { navigator.playTitle(it, first.entry.catalog.type, first.entry.source.id) },
+                        onInfo = { navigator.openDetails(it, first.entry.catalog.type, first.entry.source.id) },
+                        onToggleSave = { vm.toggleSave(it, first.entry.catalog.type) },
+                    )
+                }
+            } else if (first.state == RowState.Loading) item(key = "hero-skeleton") { Box(Modifier.fillMaxWidth().height(470.dp).background(com.liuying.app.ui.theme.InkSurface)) }
         }
         if (hasSources == false) {
             item {
@@ -97,12 +121,20 @@ fun TodayScreen(navigator: Navigator) {
             item { SectionHeader("Loading") ; PlaceholderRow() }
         }
         rows?.let { list ->
-            items(list, key = { it.key }) { row -> CatalogRow(row, navigator, onRetry = { vm.retry(row.key) }) }
+            items(list, key = { it.key }) { row -> CatalogRow(row, navigator, saved, { vm.toggleSave(it, row.entry.catalog.type) }, onRetry = { vm.retry(row.key) }) }
             if (hasSources == true && list.isEmpty()) {
                 item { EmptyBlock("No rows to show", "Your sources have no catalogs turned on for Today. They may still be searchable.") }
             }
         }
     }
+}
+
+private val PLURAL = mapOf("movie" to "Movies", "series" to "Series", "tv" to "TV", "channel" to "Channels")
+
+/** "Movies from Some Addon". */
+private fun rowSubtitle(row: HomeRow): String {
+    val t = row.entry.catalog.type
+    return "${PLURAL[t] ?: t.replaceFirstChar { it.uppercase() }} from ${row.entry.source.displayName}"
 }
 
 @Composable
@@ -113,17 +145,18 @@ private fun PlaceholderRow() {
 }
 
 @Composable
-private fun CatalogRow(row: HomeRow, navigator: Navigator, onRetry: () -> Unit) {
+private fun CatalogRow(row: HomeRow, navigator: Navigator, saved: Set<String>, onToggleSave: (MetaPreview) -> Unit, onRetry: () -> Unit) {
     val state = row.state
     if (state is RowState.Loaded && state.items.isEmpty()) return
-    SectionHeader(row.entry.title)
+    SectionHeader(row.entry.title, subtitle = rowSubtitle(row))
     Column(Modifier.padding(bottom = 8.dp)) {
         when (state) {
             RowState.Loading -> PlaceholderRow()
             is RowState.Failed -> ErrorNote("${row.entry.source.displayName}: ${state.message}", onRetry = onRetry)
             is RowState.Loaded -> LazyRow(contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(state.items, key = { it.id }) { m ->
-                    PosterCard(m.title, m.poster, subtitle = m.displayYear) {
+                    val type = m.type.ifBlank { row.entry.catalog.type }
+                    PosterCard(m.title, m.poster, subtitle = m.displayYear, saved = (type + "|" + m.id) in saved, onToggleSave = { onToggleSave(m) }) {
                         navigator.openDetails(m, row.entry.catalog.type, row.entry.source.id)
                     }
                 }
@@ -141,7 +174,7 @@ private fun ContinueCard(item: ContinueItem, onOpen: () -> Unit, onDetails: () -
         Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(shape).border(BorderStroke(0.5.dp, GoldHairline), shape)) {
             ArtImage(item.thumbnail ?: item.poster, item.title ?: "?", Modifier.fillMaxSize())
             if (item.kind == ContinueKind.UpNext) {
-                Text("Up next", style = MaterialTheme.typography.labelMedium, color = Paper,
+                Text("Up next", style = MaterialTheme.typography.labelMedium, color = com.liuying.app.ui.theme.OnAccent,
                     modifier = Modifier.align(Alignment.TopStart).padding(6.dp).background(Vermilion, RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 1.dp))
             } else {
                 ProgressBar(item.fraction.toFloat(), Modifier.align(Alignment.BottomCenter).fillMaxWidth())

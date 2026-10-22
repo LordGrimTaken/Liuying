@@ -32,6 +32,30 @@ class PluginManifestParserTest {
         assertTrue(PluginManifestParser.parse(url, """{"name":"x"}""").isFailure)
     }
 
+    private val nuvioUrl = "https://raw.githubusercontent.com/D3adlyRocket/All-in-One-Nuvio/refs/heads/main/manifest.json"
+    private val nuvio = """{"name":"All-in-One Nuvio","version":"1.0.0","scrapers":[
+        {"id":"showbox","name":"ShowBox","description":"Streams from ShowBox","version":"1.2.0","author":"someone","supportedTypes":["movie","tv"],"filename":"providers/showbox.js","enabled":true,"hasSettings":true,"formats":["mp4"],"logo":"https://x.test/l.png","contentLanguage":["en"]},
+        {"id":"anime","name":"Anime","version":"2","supportedTypes":["tv"],"filename":"providers/anime.js","enabled":false},
+        {"name":"NoFile","id":"nofile"},
+        {"id":"bad","filename":"javascript:alert(1)"},
+        42,
+        {"id":"showbox","filename":"providers/dup.js"}]}"""
+
+    @Test fun parsesNuvioScrapersFormat() {
+        val m = PluginManifestParser.parse(nuvioUrl, nuvio).getOrThrow()
+        assertEquals("All-in-One Nuvio", m.name)
+        assertEquals("raw.githubusercontent.com/D3adlyRocket/All-in-One-Nuvio", m.id)
+        assertEquals(listOf("showbox", "anime"), m.plugins.map { it.id })
+        val p = m.plugins[0]
+        assertEquals("https://raw.githubusercontent.com/D3adlyRocket/All-in-One-Nuvio/refs/heads/main/providers/showbox.js", p.scriptUrl)
+        assertEquals(listOf("movie", "tv"), p.types); assertEquals("1.2.0", p.version)
+        assertTrue(p.description.contains("someone")); assertTrue(p.permissions.isEmpty())
+    }
+
+    @Test fun scrapersManifestStillNeedsName() {
+        assertTrue(PluginManifestParser.parse(nuvioUrl, """{"scrapers":[]}""").isFailure)
+    }
+
     @Test fun noopRunnerIsNotRunnable() {
         assertFalse(NoopPluginRunner.runnable)
         assertTrue(PluginPermissions.describe("network:a.com").contains("a.com"))

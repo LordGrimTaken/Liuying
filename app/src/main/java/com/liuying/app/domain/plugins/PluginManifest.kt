@@ -43,11 +43,14 @@ object PluginManifestParser {
         val root = try { json.parseToJsonElement(body) } catch (e: Exception) {
             return Result.failure(IllegalArgumentException("The repository did not return valid JSON."))
         } as? JsonObject ?: return Result.failure(IllegalArgumentException("The repository manifest should be a JSON object."))
-        val id = root.str("id")?.takeIf { it.isNotBlank() }
+        val scrapers = root["scrapers"] as? JsonArray
         val name = root.str("name")?.takeIf { it.isNotBlank() }
+        val id = root.str("id")?.takeIf { it.isNotBlank() } ?: if (scrapers != null) deriveId(manifestUrl) else null
         if (id == null || name == null) return Result.failure(IllegalArgumentException("The manifest is missing an id or a name."))
         val seen = HashSet<String>()
-        val plugins = (root["plugins"] as? JsonArray).orEmpty().mapNotNull { parsePlugin(manifestUrl, it) }
+        val entries = (root["plugins"] as? JsonArray).orEmpty().mapNotNull { parsePlugin(manifestUrl, it) } +
+            scrapers.orEmpty().mapNotNull { parseScraper(manifestUrl, it) }
+        val plugins = entries
             .filter { seen.add(it.id) }.take(MAX_PLUGINS)
         return Result.success(PluginRepoManifest(id, name, root.str("version").orEmpty(), root.str("description").orEmpty(), root.str("author"), plugins))
     }
@@ -62,6 +65,29 @@ object PluginManifestParser {
             types = o.strings("types"), permissions = o.strings("permissions").distinct(),
         )
     }
+
+    /** "Scrapers" format: filename is the script path, supportedTypes the addon types. Script is stored as a URL only. */
+    private fun parseScraper(manifestUrl: String, el: JsonElement): PluginInfo? {
+        val o = el as? JsonObject ?: return null
+        val file = o.str("filename")?.takeIf { it.isNotBlank() } ?: return null
+        val script = resolve(manifestUrl, file) ?: return null
+        val id = o.str("id")?.takeIf { it.isNotBlank() } ?: file.substringAfterLast('/').substringBeforeLast('.').takeIf { it.isNotBlank() } ?: return null
+        val desc = o.str("description").orEmpty()
+        val by = o.str("author")?.takeIf { it.isNotBlank() }
+        return PluginInfo(
+            id = id, name = o.str("name")?.takeIf { it.isNotBlank() } ?: id, version = o.str("version").orEmpty(),
+            description = if (by != null && desc.isNotBlank()) "$desc (by $by)" else desc.ifBlank { by?.let { "By $it" }.orEmpty() },
+            scriptUrl = script, types = o.strings("supportedTypes").map { it.lowercase() }.distinct(), permissions = emptyList(),
+        )
+    }
+
+    /** Repo id from the manifest URL, e.g. raw.githubusercontent.com/owner/repo/... -> "raw.githubusercontent.com/owner/repo". */
+    internal fun deriveId(manifestUrl: String): String? = try {
+        val u = URI(manifestUrl)
+        val parts = u.path.orEmpty().split('/').filter { it.isNotBlank() }
+        val base = if (u.host?.endsWith("githubusercontent.com") == true || u.host == "github.com") parts.take(2) else parts.dropLast(1)
+        (listOf(u.host) + base).filter { !it.isNullOrBlank() }.joinToString("/").takeIf { u.host != null }
+    } catch (e: Exception) { null }
 
     internal fun resolve(base: String, ref: String): String? = try {
         val u = URI(base).resolve(ref.trim())

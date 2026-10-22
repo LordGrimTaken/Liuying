@@ -117,6 +117,20 @@ class CatalogRepository(
 ) {
     private val retryRequests = MutableSharedFlow<String>(extraBufferCapacity = 16)
 
+    /** Titles seen in catalogs loaded this session; feeds search suggestions. Newest last, capped. */
+    private val seenTitles = java.util.Collections.synchronizedSet(LinkedHashSet<String>())
+    private val _titleVersion = MutableStateFlow(0)
+    val titleVersion: StateFlow<Int> = _titleVersion.asStateFlow()
+    fun knownTitles(): List<String> = synchronized(seenTitles) { seenTitles.toList() }
+
+    private fun noteTitles(metas: List<MetaPreview>) {
+        synchronized(seenTitles) {
+            for (m in metas) { if (m.name.isNotBlank()) seenTitles += m.name }
+            while (seenTitles.size > 600) seenTitles.remove(seenTitles.first())
+        }
+        _titleVersion.value += 1
+    }
+
     // ----------------------------------------------------------------------------- layout
 
     private fun browseFlow(): Flow<List<CatalogEntry>> =
@@ -209,7 +223,7 @@ class CatalogRepository(
         val cap = settings.first().rowItemCount.count
         val extras = entry.catalog.requiredExtraDefaults() ?: return RowState.Failed("This catalog needs input")
         return client.catalog(entry.source.baseUrl, entry.catalog.type, entry.catalog.id, extras, force).fold(
-            onSuccess = { RowState.Loaded(it.metas.distinctBy { m -> m.id }.take(cap)) },
+            onSuccess = { noteTitles(it.metas); RowState.Loaded(it.metas.distinctBy { m -> m.id }.take(cap)) },
             onFailure = { e -> RowState.Failed(e.toUserMessage(), (e as? AddonFailure)?.kind) },
         )
     }
