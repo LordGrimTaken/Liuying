@@ -1,6 +1,7 @@
 package com.liuying.app.ui.update
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -72,7 +73,7 @@ fun UpdateDialog(controller: UpdateController) {
 
 @Composable
 private fun Notes(m: UpdateManifest, installed: String) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text("Version ${m.versionName} is ready (you have $installed).", color = Paper)
         if (m.notes.isNotBlank()) Text(m.notes, style = MaterialTheme.typography.bodyMedium)
         if (m.sizeBytes > 0) Text("%.1f MB".format(m.sizeBytes / 1_048_576.0), color = Gold, style = MaterialTheme.typography.labelMedium)

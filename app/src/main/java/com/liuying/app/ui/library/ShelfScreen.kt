@@ -98,8 +98,9 @@ fun ShelfScreen(navigator: Navigator) {
 
     Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize().padding(top = com.liuying.app.ui.nav.topBarInset())) {
-        Row(Modifier.fillMaxWidth().padding(end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("Shelf", style = MaterialTheme.typography.headlineMedium, color = Paper, modifier = Modifier.weight(1f).padding(horizontal = 20.dp, vertical = 12.dp))
+        // title on its own line: beside the two buttons it wrapped letter by letter at large text sizes
+        Text("Shelf", style = MaterialTheme.typography.headlineMedium, color = Paper, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp))
+        Row(Modifier.fillMaxWidth().padding(end = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.End) {
             Box {
                 InkTextButton("Sort: " + settings.librarySort.label(), { sortMenu = true })
                 DropdownMenu(sortMenu, { sortMenu = false }) {
@@ -144,7 +145,7 @@ fun ShelfScreen(navigator: Navigator) {
                 GridCells.Adaptive(90.dp), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = DockClearance),
                 horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                items(entries, key = { it.item.type + it.item.id }) { e ->
+                items(entries, key = { it.item.type + "|" + it.item.id }) { e ->
                     ShelfCell(e, navigator, onRemove = { removeWithUndo(e.item) }, onSelect = { selected = selected + keyOf(e) }) { menu, openMenu ->
                         PosterCard(e.item.name, e.item.poster, fillWidth = true, subtitle = e.item.year, progress = e.progress, watched = e.watched || keyOf(e) in selected,
                             onLongClick = openMenu) { open(e) }
@@ -154,7 +155,7 @@ fun ShelfScreen(navigator: Navigator) {
             }
         } else {
             LazyColumn(contentPadding = PaddingValues(bottom = DockClearance)) {
-                items(entries, key = { it.item.type + it.item.id }) { e ->
+                items(entries, key = { it.item.type + "|" + it.item.id }) { e ->
                     ShelfCell(e, navigator, onRemove = { removeWithUndo(e.item) }, onSelect = { selected = selected + keyOf(e) }) { menu, openMenu ->
                         Row(
                             Modifier.fillMaxWidth().combinedClickable(onClick = { open(e) }, onLongClick = openMenu)

@@ -115,12 +115,17 @@ class UpdateController(
         val ready = _state.value as? UpdateState.Ready ?: return false
         if (!app.packageManager.canRequestPackageInstalls()) {
             awaitingInstallPermission = true
-            app.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${app.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            runCatching { app.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${app.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
             return false
         }
         val uri = FileProvider.getUriForFile(app, "${app.packageName}.fileprovider", ready.file)
-        app.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.android.package-archive")
-            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK))
+        try {
+            app.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.android.package-archive")
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (e: android.content.ActivityNotFoundException) {
+            _state.value = UpdateState.Failed("This device has no package installer to open the update with.")
+            return false
+        }
         return true
     }
 

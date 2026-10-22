@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withPermit
 
 class TodayViewModel(private val c: AppContainer) : ViewModel() {
     private val refreshTick = MutableStateFlow(0)
@@ -32,6 +33,8 @@ class TodayViewModel(private val c: AppContainer) : ViewModel() {
     val hasSources: StateFlow<Boolean?> = c.sources.sources.map { l -> l.any { it.enabled } }.stateIn(viewModelScope, eager, null)
     val settings: StateFlow<AppSettings> = c.settings.settings.stateIn(viewModelScope, eager, AppSettings())
 
+    private val metaFailedAt = java.util.concurrent.ConcurrentHashMap<Pair<String, String>, Long>()
+
     val continueItems: StateFlow<List<ContinueItem>> =
         combine(c.progress.observeAll(), c.progress.observeDismissed(), c.settings.settings) { p, d, s -> Triple(p, d, s) }
             .transformLatest { (progress, dismissed, s) ->
@@ -40,10 +43,14 @@ class TodayViewModel(private val c: AppContainer) : ViewModel() {
                 val metas = HashMap<Pair<String, String>, Meta>()
                 keys.forEach { k -> c.metas.cached(k.first, k.second)?.let { metas[k] = it } }
                 emit(build(progress, dismissed, s, metas))
-                val missing = keys.filter { it !in metas }
+                // progress is written every few seconds while playing and restarts this block each time: titles whose details
+                // failed to load are not asked again for 5 minutes, and at most 4 requests run at once
+                val nowMs = System.currentTimeMillis()
+                val missing = keys.filter { it !in metas && nowMs - (metaFailedAt[it] ?: 0L) > 300_000L }
                 if (missing.isNotEmpty()) {
-                    coroutineScope { missing.map { k -> async { k to c.metas.getOrFetch(k.first, k.second) } }.awaitAll() }
-                        .forEach { (k, m) -> if (m != null) metas[k] = m }
+                    val gate = kotlinx.coroutines.sync.Semaphore(4)
+                    coroutineScope { missing.map { k -> async { gate.withPermit { k to c.metas.getOrFetch(k.first, k.second) } } }.awaitAll() }
+                        .forEach { (k, m) -> if (m != null) metas[k] = m else metaFailedAt[k] = nowMs }
                     emit(build(progress, dismissed, s, metas))
                 }
             }

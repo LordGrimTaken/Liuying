@@ -67,6 +67,8 @@ class StreamRepository(
     private val sources: SourceProvider,
     private val client: AddonClient,
 ) {
+    private val sessionStamp = HashMap<String, Long>()
+
     /** Session-only cache: "type|videoId" -> sourceId -> items. Never persisted. */
     private val session = object : LinkedHashMap<String, ConcurrentHashMap<Long, List<StreamItem>>>(16, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ConcurrentHashMap<Long, List<StreamItem>>>?) = size > 40
@@ -84,7 +86,10 @@ class StreamRepository(
         val cands = candidates(sources.sources.first(), type, videoId)
         val cacheKey = "$type|$videoId"
         val cache = synchronized(session) {
-            if (force) session.remove(cacheKey)
+            val nowMs = System.currentTimeMillis()
+            // links from a stream source can expire (debrid, signed urls): an old answer is asked for again
+            if (force || nowMs - (sessionStamp[cacheKey] ?: nowMs) > SESSION_TTL_MS) { session.remove(cacheKey); sessionStamp.remove(cacheKey) }
+            sessionStamp.putIfAbsent(cacheKey, nowMs)
             session.getOrPut(cacheKey) { ConcurrentHashMap() }
         }
         val states = LinkedHashMap<Long, SourceStreamsState>()
@@ -151,6 +156,8 @@ class StreamRepository(
     }.conflate()
 
     companion object {
+        private const val SESSION_TTL_MS = 10 * 60 * 1000L
+
         fun toItem(source: Source, stream: Stream, index: Int): StreamItem {
             val kind = StreamQualityParser.kindOf(stream)
             val enabled = kind != StreamKind.Torrent && kind != StreamKind.Unsupported

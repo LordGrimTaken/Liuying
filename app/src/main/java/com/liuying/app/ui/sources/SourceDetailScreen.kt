@@ -25,6 +25,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -127,7 +129,7 @@ fun SourceDetailScreen(sourceId: Long, navigator: Navigator) {
                 Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(s.displayName, color = Paper, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                        Switch(s.enabled, { vm.setEnabled(s, it) })
+                        Switch(s.enabled, { vm.setEnabled(s, it) }, modifier = Modifier.semantics { contentDescription = "Enable ${s.displayName}" })
                     }
                     Text(s.host + (if (s.isHttp) "  ·  plain http" else "") + (s.manifest.version.takeIf { it.isNotBlank() }?.let { "  ·  v$it" } ?: ""), color = PaperMuted, style = MaterialTheme.typography.labelMedium)
                     if (s.manifest.description.isNotBlank()) Text(s.manifest.description, color = PaperMuted, style = MaterialTheme.typography.bodyMedium)
@@ -180,11 +182,11 @@ fun SourceDetailScreen(sourceId: Long, navigator: Navigator) {
                     } else {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("On Today", color = PaperMuted, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                            Switch(hidden[entry.webKey] != true, { vm.setTodayVisible(entry, it) })
+                            Switch(hidden[entry.webKey] != true, { vm.setTodayVisible(entry, it) }, modifier = Modifier.semantics { contentDescription = "Show ${cat.displayName} on Today" })
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("In Browse", color = PaperMuted, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                            Switch(pref?.showInBrowse ?: true, { vm.setBrowse(s, cat, it) })
+                            Switch(pref?.showInBrowse ?: true, { vm.setBrowse(s, cat, it) }, modifier = Modifier.semantics { contentDescription = "Show ${cat.displayName} in Browse" })
                         }
                     }
                 }

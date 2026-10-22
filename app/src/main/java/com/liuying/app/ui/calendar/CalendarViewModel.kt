@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withPermit
 
 data class CalendarUi(val loading: Boolean = true, val seriesOnShelf: Int = 0, val agenda: Ux.Agenda? = null)
 
@@ -25,18 +26,19 @@ data class CalendarUi(val loading: Boolean = true, val seriesOnShelf: Int = 0, v
 class CalendarViewModel(private val c: AppContainer) : ViewModel() {
     private val tick = MutableStateFlow(0)
 
-    val ui: StateFlow<CalendarUi> = kotlinx.coroutines.flow.combine(c.library.observeAll(), tick) { lib, _ -> lib }
-        .transformLatest { lib ->
+    val ui: StateFlow<CalendarUi> = kotlinx.coroutines.flow.combine(c.library.observeAll(), tick) { lib, t -> lib to t }
+        .transformLatest { (lib, t) ->
             val series = lib.filter { it.type.equals("series", true) }
             if (series.isEmpty()) { emit(CalendarUi(false, 0, null)); return@transformLatest }
             val metas = HashMap<String, Meta>()
             series.forEach { s -> c.metas.cached(s.type, s.id)?.let { metas[s.id] = it } }
             emit(CalendarUi(true, series.size, agenda(series, metas)))
-            val missing = series.filter { it.id !in metas }
-            if (missing.isNotEmpty()) {
-                coroutineScope { missing.map { s -> async { s to c.metas.getOrFetch(s.type, s.id) } }.awaitAll() }
-                    .forEach { (s, m) -> if (m != null) metas[s.id] = m }
-            }
+            // every series is checked, not only the uncached ones: a cached copy older than 12 h (or any copy after Refresh) is re-fetched,
+            // otherwise newly announced episodes never showed up and Refresh did nothing
+            val gate = kotlinx.coroutines.sync.Semaphore(4)
+            val maxAge = if (t > 0) 0L else 12L * 3600 * 1000
+            coroutineScope { series.map { s -> async { gate.withPermit { s to c.metas.getOrFetch(s.type, s.id, maxAge) } } }.awaitAll() }
+                .forEach { (s, m) -> if (m != null) metas[s.id] = m }
             emit(CalendarUi(false, series.size, agenda(series, metas)))
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CalendarUi())

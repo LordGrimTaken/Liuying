@@ -44,8 +44,8 @@ class ScreensShotsTest : ShotBase() {
     }
 
     @Test fun offlineToday() {
-        addon.offline = true
         seedSource()
+        addon.offline = true
         app()
         settle(); shot("today-offline")
     }
