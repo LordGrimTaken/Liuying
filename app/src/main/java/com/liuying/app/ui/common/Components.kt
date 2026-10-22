@@ -55,6 +55,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.draw.alpha
 import androidx.compose.runtime.remember
+import coil3.request.crossfade
 import com.liuying.app.ui.theme.PaperMuted
 import com.liuying.app.ui.theme.Vermilion
 

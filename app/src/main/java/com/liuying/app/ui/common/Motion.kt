@@ -13,6 +13,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -30,7 +31,7 @@ fun motionMs(ms: Int): Int = if (LocalReduceMotion.current) 0 else ms
 val EaseOutSoft = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0.7f, 0.3f, 1f)
 
 /** Press feedback: scales down to [scale] while pressed (120 ms). */
-fun Modifier.pressScale(source: InteractionSource, scale: Float = 0.96f): Modifier = androidx.compose.ui.composed {
+fun Modifier.pressScale(source: InteractionSource, scale: Float = 0.96f): Modifier = composed {
     val pressed by source.collectIsPressedAsState()
     val reduce = LocalReduceMotion.current
     val s by animateFloatAsState(if (pressed && !reduce) scale else 1f, tween(if (reduce) 0 else 120), label = "press")
@@ -38,7 +39,7 @@ fun Modifier.pressScale(source: InteractionSource, scale: Float = 0.96f): Modifi
 }
 
 /** Left-to-right 1.4 s shimmer for skeleton blocks; a static block under reduced motion. */
-fun Modifier.shimmer(base: Color, highlight: Color): Modifier = androidx.compose.ui.composed {
+fun Modifier.shimmer(base: Color, highlight: Color): Modifier = composed {
     val reduce = LocalReduceMotion.current
     if (reduce) return@composed this
     val t = rememberInfiniteTransition(label = "shimmer")
