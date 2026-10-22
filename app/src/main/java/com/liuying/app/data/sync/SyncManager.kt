@@ -55,6 +55,9 @@ class SyncManager(
 ) {
     private val mutex = Mutex()
     private var pending: Job? = null
+    /** True while a round runs. A change made meanwhile asks for another round afterwards instead of cancelling this one. */
+    @Volatile private var rounding = false
+    @Volatile private var rerun = false
     private val _state = MutableStateFlow(AccountState(session.username.takeIf { session.sid != null }))
     val state: StateFlow<AccountState> = _state.asStateFlow()
 
@@ -83,6 +86,7 @@ class SyncManager(
     }
 
     suspend fun signOut() {
+        rerun = false
         pending?.cancel()
         api.logOut()
         _state.value = AccountState(null)
@@ -90,6 +94,7 @@ class SyncManager(
 
     fun syncSoon(delayMs: Long = 2_000) {
         if (!api.signedIn) return
+        if (rounding) { rerun = true; return }
         pending?.cancel()
         pending = scope.launch { delay(delayMs); syncNow() }
     }
@@ -98,8 +103,13 @@ class SyncManager(
     suspend fun syncNow(first: Boolean = false): Boolean = mutex.withLock {
         if (!api.signedIn) return@withLock false
         _state.value = _state.value.copy(status = SyncStatus.Syncing)
+        rounding = true
         val ok = try { round(first) } catch (e: kotlinx.coroutines.CancellationException) { throw e }
         catch (e: Exception) { fail("Sync failed: ${e.message ?: "unknown error"}") }
+        finally {
+            rounding = false
+            if (rerun) { rerun = false; syncSoon(1_000) }
+        }
         if (ok) _state.value = AccountState(session.username, SyncStatus.Done(clock.nowMs()))
         ok
     }
@@ -132,23 +142,35 @@ class SyncManager(
 
     // ------------------------------------------------------------------------------------ settings
 
-    /** Pull-merge-push of the shared settings object; only keys this app owns are touched, others pass through. */
+    /**
+     * Pull-merge-push of the shared settings object; only keys this app owns are touched, others pass through.
+     * The user can keep editing while the round is in flight, so the result is applied with [SettingsSyncLogic.settle]
+     * inside one atomic settings update: a key edited meanwhile keeps its newer value and stays dirty.
+     */
     private suspend fun syncSettings(remote: RemoteState): Boolean {
         val cur = settings.current()
         val dirty = cur.syncDirtyKeys.filter { it in SettingsSyncLogic.KEYS }.toSet()
-        val local = SyncedSettings(cur.homeOrder, cur.hiddenCatalogs, cur.heroEnabled, cur.accent, cur.fontScale)
-        val merged = SettingsSyncLogic.merge(local, remote.settings, dirty)
-        if (merged != local) {
-            settings.update { it.copy(homeOrder = merged.homeOrder, hiddenCatalogs = merged.hiddenCatalogs, heroEnabled = merged.hero, accent = merged.accent, fontScale = merged.fontScale) }
+        val snapshot = SyncedSettings(cur.homeOrder, cur.hiddenCatalogs, cur.heroEnabled, cur.accent, cur.fontScale)
+        val merged = SettingsSyncLogic.merge(snapshot, remote.settings, dirty)
+        var pushed = dirty.isNotEmpty()
+        var failure: ApiResult.Err? = null
+        if (dirty.isNotEmpty()) {
+            val payload = SettingsSyncLogic.payload(remote.settings, merged, dirty)
+            if (payload != remote.settings) {
+                val r = api.putSettings(payload)
+                if (r is ApiResult.Err) { failure = r; pushed = false }
+            }
         }
-        if (dirty.isEmpty()) return true
-        val payload = SettingsSyncLogic.payload(remote.settings, merged, dirty)
-        if (payload != remote.settings) {
-            val r = api.putSettings(payload)
-            if (r is ApiResult.Err) return failErr(r)
+        settings.update { s ->
+            val live = SyncedSettings(s.homeOrder, s.hiddenCatalogs, s.heroEnabled, s.accent, s.fontScale)
+            val out = SettingsSyncLogic.settle(live, s.syncDirtyKeys, snapshot, merged, dirty, pushed)
+            s.copy(
+                homeOrder = out.settings.homeOrder, hiddenCatalogs = out.settings.hiddenCatalogs, heroEnabled = out.settings.hero,
+                accent = out.settings.accent, fontScale = out.settings.fontScale,
+                syncDirtyKeys = (s.syncDirtyKeys - SettingsSyncLogic.KEYS) + out.dirty.filter { it in SettingsSyncLogic.KEYS },
+            )
         }
-        settings.update { it.copy(syncDirtyKeys = it.syncDirtyKeys - dirty) }
-        return true
+        return failure?.let { failErr(it) } ?: true
     }
 
     // ------------------------------------------------------------------------------------ library

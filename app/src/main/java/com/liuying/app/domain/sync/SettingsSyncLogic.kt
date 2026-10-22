@@ -20,6 +20,9 @@ data class SyncedSettings(
     }
 }
 
+/** What a finished sync round leaves in the settings store: the values to keep and the keys still waiting to be pushed. */
+data class RoundOutcome(val settings: SyncedSettings, val dirty: Set<String>)
+
 /**
  * Settings sync rules. The server stores one opaque JSON object per account (PUT replaces it), shared with the web
  * player. So this app only ever edits the keys it knows ([KEYS]) and carries every other key through untouched.
@@ -54,14 +57,59 @@ object SettingsSyncLogic {
     fun merge(local: SyncedSettings, remote: JsonObject, dirty: Set<String>): SyncedSettings {
         fun <T> pick(key: String, localValue: T, remoteValue: T?): T = if (key in dirty) localValue else remoteValue ?: localValue
         val remoteHidden = parseHidden(remote[HIDDEN])
+        val remoteOrder = parseHomeOrder(remote[HOME_ORDER])
         return SyncedSettings(
-            homeOrder = pick(HOME_ORDER, local.homeOrder, parseHomeOrder(remote[HOME_ORDER])),
+            // Our order wins, but catalogs only the other device knows about stay in the list (after ours) instead of being dropped.
+            homeOrder = if (HOME_ORDER in dirty) mergeOrder(local.homeOrder, remoteOrder) else remoteOrder ?: local.homeOrder,
             // hidden flags merge per catalog: a catalog only the other device knows keeps its flag
             hiddenCatalogs = if (HIDDEN in dirty) (remoteHidden.orEmpty() + local.hiddenCatalogs) else remoteHidden ?: local.hiddenCatalogs,
             hero = pick(HERO, local.hero, (remote[HERO] as? JsonPrimitive)?.booleanOrNull),
             accent = pick(ACCENT, local.accent, str(remote[ACCENT], ACCENTS)),
             fontScale = pick(FONT_SCALE, local.fontScale, str(remote[FONT_SCALE], FONT_SCALES)),
         )
+    }
+
+    /**
+     * [local] first, then every key of [remote] that [local] lacks, in the server's order. An empty [local] order means
+     * "back to default" and is pushed as such (the user reset the layout), so it is not refilled from the server.
+     */
+    fun mergeOrder(local: List<String>, remote: List<String>?): List<String> {
+        if (local.isEmpty() || remote.isNullOrEmpty()) return local
+        val have = local.toHashSet()
+        return (local + remote.filter { it !in have }).distinct().take(MAX_ORDER)
+    }
+
+    private fun valueOf(s: SyncedSettings, key: String): Any = when (key) {
+        HOME_ORDER -> s.homeOrder
+        HIDDEN -> s.hiddenCatalogs
+        HERO -> s.hero
+        ACCENT -> s.accent
+        else -> s.fontScale
+    }
+
+    private fun withValue(s: SyncedSettings, key: String, from: SyncedSettings): SyncedSettings = when (key) {
+        HOME_ORDER -> s.copy(homeOrder = from.homeOrder)
+        HIDDEN -> s.copy(hiddenCatalogs = from.hiddenCatalogs)
+        HERO -> s.copy(hero = from.hero)
+        ACCENT -> s.copy(accent = from.accent)
+        else -> s.copy(fontScale = from.fontScale)
+    }
+
+    /**
+     * Applied atomically to the live settings when a sync round ends. The round worked from [snapshot]; if the user changed
+     * a key since then ([live] differs from the snapshot) that newer edit is kept and the key stays dirty, so it is pushed
+     * on the next round instead of being overwritten by (or marked as already synced with) the older value.
+     * Keys that did not change take the [merged] value, and leave the dirty set only if they were actually [pushed].
+     */
+    fun settle(live: SyncedSettings, liveDirty: Set<String>, snapshot: SyncedSettings, merged: SyncedSettings, dirtyAtStart: Set<String>, pushed: Boolean): RoundOutcome {
+        var out = live
+        val dirty = liveDirty.toMutableSet()
+        for (k in KEYS) {
+            if (valueOf(live, k) != valueOf(snapshot, k)) { dirty += k; continue }
+            out = withValue(out, k, merged)
+            if (k in dirtyAtStart && pushed) dirty -= k
+        }
+        return RoundOutcome(out, dirty)
     }
 
     /**

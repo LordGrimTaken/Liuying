@@ -82,4 +82,33 @@ class SettingsSyncLogicTest {
         assertEquals(listOf("a", "b"), SettingsSyncLogic.parseHomeOrder(obj("""{"k":["a",1,"b","a"]}""")["k"]))
         assertEquals(mapOf("a" to true), SettingsSyncLogic.parseHidden(obj("""{"k":{"a":true,"b":"x"}}""")["k"]))
     }
+
+    @Test fun mergeOrderKeepsLocalFirstAndAppendsRemoteOnly() {
+        assertEquals(listOf("a", "b", "c"), SettingsSyncLogic.mergeOrder(listOf("a", "b"), listOf("c", "a")))
+        assertEquals(emptyList<String>(), SettingsSyncLogic.mergeOrder(emptyList(), listOf("x")))
+        assertEquals(listOf("a"), SettingsSyncLogic.mergeOrder(listOf("a"), null))
+    }
+
+    @Test fun dirtyOrderDoesNotDropRemoteOnlyEntries() {
+        val m = SettingsSyncLogic.merge(local, webSettings, setOf(SettingsSyncLogic.HOME_ORDER))
+        assertEquals(listOf("l1", "l2", "r2", "r1"), m.homeOrder)
+    }
+
+    @Test fun settleKeepsKeyEditedDuringTheRoundAndLeavesItDirty() {
+        val snap = local
+        val merged = snap.copy(accent = "jade", hero = true)
+        val live = snap.copy(accent = "rose") // user edited accent mid-round
+        val out = SettingsSyncLogic.settle(live, setOf(SettingsSyncLogic.ACCENT), snap, merged, setOf(SettingsSyncLogic.ACCENT), pushed = true)
+        assertEquals("rose", out.settings.accent)
+        assertTrue(SettingsSyncLogic.ACCENT in out.dirty)
+        assertTrue(out.settings.hero) // untouched key follows merged
+    }
+
+    @Test fun settleClearsPushedKeysOnlyWhenPushed() {
+        val snap = local
+        val merged = snap.copy(accent = "jade")
+        val d = setOf(SettingsSyncLogic.ACCENT)
+        assertTrue(SettingsSyncLogic.settle(snap, d, snap, merged, d, pushed = true).dirty.isEmpty())
+        assertEquals(d, SettingsSyncLogic.settle(snap, d, snap, merged, d, pushed = false).dirty)
+    }
 }
