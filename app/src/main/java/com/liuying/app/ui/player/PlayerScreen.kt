@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -353,7 +354,7 @@ private fun SeekBar(position: Long, duration: Long, buffered: Long, onScrub: (Lo
     val frac = dragFraction ?: if (duration > 0) (position.toFloat() / duration).coerceIn(0f, 1f) else 0f
     val bufFrac = if (duration > 0) (buffered.toFloat() / duration).coerceIn(0f, 1f) else 0f
     Canvas(
-        Modifier.fillMaxWidth().height(36.dp)
+        Modifier.fillMaxWidth().height(48.dp)
             .onSizeChanged { width = it.width.toFloat().coerceAtLeast(1f) }
             .pointerInput(duration) {
                 detectTapGestures { o -> if (duration > 0) onCommit(GestureMath.positionForFraction(o.x / width, duration)) }
@@ -462,18 +463,20 @@ private fun NextEpisodeCard(c: PlayerController) {
 @Composable
 internal fun PillButton(text: String, onClick: () -> Unit, selected: Boolean = false, emphasized: Boolean = false) {
     val shape = RoundedCornerShape(50)
-    Box(
-        Modifier.clip(shape)
-            .background(if (emphasized) Vermilion else if (selected) Gold.copy(alpha = 0.22f) else Ink.copy(alpha = 0.55f))
-            .border(1.dp, if (selected) Gold else Paper.copy(alpha = 0.28f), shape)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 8.dp),
-        contentAlignment = Alignment.Center,
-    ) { Text(text, color = Paper, style = MaterialTheme.typography.labelLarge, maxLines = 1) }
+    // 48dp touch target around the visible pill
+    Box(Modifier.heightIn(min = 48.dp).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
+        Box(
+            Modifier.clip(shape)
+                .background(if (emphasized) Vermilion else if (selected) Gold.copy(alpha = 0.22f) else Ink.copy(alpha = 0.55f))
+                .border(1.dp, if (selected) Gold else Paper.copy(alpha = 0.28f), shape)
+                .padding(horizontal = 14.dp, vertical = 8.dp),
+            contentAlignment = Alignment.Center,
+        ) { Text(text, color = Paper, style = MaterialTheme.typography.labelLarge, maxLines = 1) }
+    }
 }
 
 @Composable
-private fun RoundGlyph(size: androidx.compose.ui.unit.Dp = 44.dp, filled: Boolean = false, onClick: () -> Unit, content: @Composable () -> Unit) {
+private fun RoundGlyph(size: androidx.compose.ui.unit.Dp = 48.dp, filled: Boolean = false, onClick: () -> Unit, content: @Composable () -> Unit) {
     Box(
         Modifier.size(size).clip(CircleShape)
             .background(if (filled) Vermilion else Ink.copy(alpha = 0.55f))
