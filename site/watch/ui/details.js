@@ -1,4 +1,4 @@
-import { h, icon, clear, toast, confirmDialog } from './dom.js';
+import { h, icon, clear, toast, confirmDialog, modal } from './dom.js';
 import * as store from '../store.js';
 import { loadMeta } from '../addon/service.js';
 import { describeError } from '../addon/client.js';
@@ -7,6 +7,8 @@ import { artImg, errorCard, toggleLibrary } from './components.js';
 import { streamsHref } from './continue.js';
 import { imgUrl, yearOf, fmtDuration } from '../util.js';
 import { safeHref } from '../addon/streams.js';
+import { shareUrl } from '../ux.js';
+import { navigate, enc } from '../router.js';
 
 const arrayOf = (x) => (Array.isArray(x) ? x : x ? [x] : []);
 const seasonChoice = new Map();
@@ -42,6 +44,11 @@ export function details({ params, query }) {
     if (res.meta) { meta = res.meta; state = 'ok'; }
     else if (!meta) state = res.sourcesTried && res.errors.length === res.sourcesTried ? 'error' : 'missing';
     draw();
+    if (query.play && meta && state === 'ok') {
+      const vids = normalizeVideos(meta.videos);
+      const t = playTarget({ type: meta.type || type, videos: vids, getRec: (e) => store.getProgress(id, e || null), threshold: store.settings().threshold, mediaId: id });
+      if (t.episodeId || !vids.length) navigate(`/streams/${enc(type)}/${enc(id)}`, t.episodeId ? { v: t.episodeId } : undefined, { replace: true });
+    }
   }
 
   function draw() {
@@ -87,14 +94,15 @@ export function details({ params, query }) {
       acts.append(h('a', { class: 'btn pri', href: streamsHref(m.type, id, target.episodeId) }, icon('play', 18), label));
     }
     acts.append(h('button', { class: 'btn', type: 'button', 'aria-pressed': String(inLib), onClick: () => toggleLibrary({ id, type: m.type, name, poster: m.poster, background: m.background, year: yr }) },
-      icon(inLib ? 'bookmarkOn' : 'bookmark', 18), inLib ? 'On shelf' : 'Add to shelf'));
+      icon(inLib ? 'check' : 'plus', 18), inLib ? 'Saved' : 'Save'));
     if (m.type !== 'series') {
       const rec = getRec(null);
-      acts.append(h('button', { class: 'btn', type: 'button', 'aria-pressed': String(!!rec?.watched), onClick: () => setMovieWatched(!rec?.watched) }, icon('check', 18), rec?.watched ? 'Watched' : 'Mark watched'));
+      acts.append(h('button', { class: 'btn', type: 'button', 'aria-pressed': String(!!rec?.watched), onClick: () => setMovieWatched(!rec?.watched) }, icon('eye', 18), rec?.watched ? 'Watched' : 'Mark watched'));
     } else if (videos.length) {
       const allW = videos.filter((v) => isReleased(v)).every((v) => getRec(v.id)?.watched);
-      acts.append(h('button', { class: 'btn', type: 'button', onClick: () => markMany(videos.filter((v) => isReleased(v) && v.season !== 0), !allW, 'all episodes') }, icon('check', 18), allW ? 'Mark all unwatched' : 'Mark all watched'));
+      acts.append(h('button', { class: 'btn', type: 'button', 'aria-pressed': String(allW), onClick: () => markMany(videos.filter((v) => isReleased(v) && v.season !== 0), !allW, 'all episodes') }, icon('eye', 18), allW ? 'Watched' : 'Mark watched'));
     }
+    acts.append(h('button', { class: 'ibtn ring', type: 'button', 'aria-label': 'Share or copy link', title: 'Share or copy link', onClick: () => share(m) }, icon('share', 20)));
     const trailer = arrayOf(m.trailers).map((t) => t?.source || t?.ytId).find(Boolean) || arrayOf(m.trailerStreams).map((t) => t?.ytId).find(Boolean);
     if (trailer) acts.append(h('a', { class: 'btn', href: `https://www.youtube.com/watch?v=${encodeURIComponent(trailer)}`, target: '_blank', rel: 'noopener noreferrer' }, icon('external', 18), 'Trailer'));
     const note = target.label === 'resume' && target.rec ? `${remainingMinutes(target.rec)} min left` : '';
@@ -126,6 +134,16 @@ export function details({ params, query }) {
     clear(page).append(root);
   }
 
+  async function share(m) {
+    const url = shareUrl(location.origin, m.type || type, id);
+    try {
+      if (navigator.share) { await navigator.share({ title: m.name || id, url }); return; }
+    } catch (e) { if (e?.name === 'AbortError') return; }
+    try { await navigator.clipboard.writeText(url); toast('Link copied'); return; } catch { /* fall through */ }
+    const inp = h('input', { class: 'inp', readonly: true, value: url, 'aria-label': 'Link to this title' });
+    modal({ title: 'Copy link', body: h('div', {}, inp), actions: [{ label: 'Done', value: null, primary: true }] });
+    inp.select();
+  }
   function setMovieWatched(w) {
     const m = current();
     store.putProgress(setWatched(store.getProgress(id, null), { mediaId: id, episodeId: null, watched: w, now: Date.now(), meta: { type: m.type, name: m.name, poster: m.poster } }));
@@ -146,12 +164,8 @@ export function details({ params, query }) {
     const eps = videos.filter((v) => v.season === sel);
     const watchedCount = eps.filter((e) => getRec(e.id)?.watched).length;
     const sbar = h('div', { class: 'seasons' });
-    if (seasons.length > 8) {
-      sbar.append(h('select', { class: 'inp', style: { width: 'auto' }, 'aria-label': 'Season', onChange: (e) => { seasonChoice.set(id, Number(e.target.value)); draw(); } },
-        seasons.map((s) => h('option', { value: s, selected: s === sel, text: s === 0 ? 'Specials' : `Season ${s}` }))));
-    } else {
-      sbar.append(h('div', { class: 'chips', role: 'tablist', 'aria-label': 'Seasons' }, seasons.map((s) => h('button', { class: 'chip', type: 'button', role: 'tab', 'aria-selected': String(s === sel), onClick: () => { seasonChoice.set(id, s); draw(); } }, s === 0 ? 'Specials' : `Season ${s}`))));
-    }
+    sbar.append(h('label', { class: 'sr', for: 'season-sel', text: 'Season' }), h('select', { class: 'inp seasel', id: 'season-sel', onChange: (e) => { seasonChoice.set(id, Number(e.target.value)); draw(); document.getElementById('season-sel')?.focus(); } },
+      seasons.map((s) => h('option', { value: s, selected: s === sel, text: s === 0 ? 'Specials' : `Season ${s}` }))));
     sbar.append(h('span', { class: 'mute', text: `${watchedCount}/${eps.length} watched` }));
     sbar.append(h('button', { class: 'linkbtn', type: 'button', text: sortDesc ? 'Newest first' : 'Oldest first', onClick: () => { sortDesc = !sortDesc; draw(); } }));
     const released = eps.filter((e) => isReleased(e));
@@ -166,12 +180,13 @@ export function details({ params, query }) {
       const r = ratioOf(rec);
       const th = imgUrl(e.thumbnail);
       const date = e.released && !Number.isNaN(Date.parse(e.released)) ? new Date(e.released).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '';
-      const row = h('div', { class: `ep${rec?.watched ? ' watched' : ''}${future ? ' future' : ''}` },
+      const isNext = target.episode?.id === e.id && !rec?.watched;
+      const row = h('div', { class: `ep${rec?.watched ? ' watched' : ''}${future ? ' future' : ''}${isNext ? ' next' : ''}` },
         h('div', { class: 'th' }, h('span', { 'aria-hidden': 'true', text: `E${Number.isFinite(e.episode) ? e.episode : '?'}` }), th ? artImg(th, '') : null,
           rec?.watched ? h('span', { class: 'chk', title: 'Watched' }, icon('check', 14)) : null,
           isInProgress(rec, store.settings().threshold) ? h('div', { class: 'pbar', style: { '--p': Math.round(r * 100) + '%' } }, h('i')) : null),
         h('div', { class: 'info' },
-          h('div', { class: 't' }, h('b', { text: `S${e.season} E${Number.isFinite(e.episode) ? e.episode : '?'}` }), h('span', { text: e.title || `Episode ${e.episode}` })),
+          h('div', { class: 't' }, h('b', { text: `S${e.season} E${Number.isFinite(e.episode) ? e.episode : '?'}` }), h('span', { text: e.title || `Episode ${e.episode}` }), isNext ? h('span', { class: 'badge nx', text: 'Up next' }) : rec?.watched ? h('span', { class: 'badge ok wk', text: 'Watched' }) : null),
           h('div', { class: 'd', text: [date, e.runtime, future ? 'Not released yet' : ''].filter(Boolean).join(' · ') }),
           e.overview ? h('div', { class: 'o', text: e.overview }) : null),
         h('button', { class: 'ibtn' + (rec?.watched ? ' on' : ''), type: 'button', 'aria-label': rec?.watched ? `Mark ${e.title || 'episode'} unwatched` : `Mark ${e.title || 'episode'} watched`, 'aria-pressed': String(!!rec?.watched), title: rec?.watched ? 'Mark unwatched' : 'Mark watched',
