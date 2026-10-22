@@ -6,7 +6,7 @@ import org.junit.Test
 
 class SmokeTest {
     @Test
-    fun dockHasFourTabsInOrder() {
-        assertEquals(listOf("Today", "Search", "Shelf", "You"), Tab.entries.map { it.label })
+    fun dockHasFiveTabsInOrder() {
+        assertEquals(listOf("Today", "Search", "Shelf", "Calendar", "You"), Tab.entries.map { it.label })
     }
 }

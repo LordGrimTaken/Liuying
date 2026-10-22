@@ -29,7 +29,7 @@ fun fontScaleFactor(key: String): Float = when (key) { "s" -> 0.9f; "l" -> 1.18f
 @Composable
 fun LiuyingTheme(accentKey: String = "vermilion", fontScale: String = "m", content: @Composable () -> Unit) {
     val accent = AccentChoice.of(accentKey)
-    Accent.choice = accent
+    if (Accent.choice != accent) Accent.choice = accent
     val d = LocalDensity.current
     CompositionLocalProvider(LocalDensity provides Density(d.density, d.fontScale * fontScaleFactor(fontScale))) {
         MaterialTheme(colorScheme = inkScheme(accent), typography = LiuyingTypography, content = content)
