@@ -5,6 +5,7 @@ import { h, icon, clear, toast } from './ui/dom.js';
 import { today } from './ui/today.js';
 import { search } from './ui/search.js';
 import { shelf } from './ui/shelf.js';
+import { history } from './ui/history.js';
 import { sources } from './ui/sources.js';
 import { settings } from './ui/settings.js';
 import { browse } from './ui/browse.js';
@@ -15,21 +16,25 @@ import { openSearch, closeSearch, initSearchShortcut } from './ui/searchOverlay.
 import { streams } from './ui/streams.js';
 import { player } from './player/player.js';
 import { refreshManifests, applyTimeoutSetting } from './addon/service.js';
+import { resolveTheme, syncFace, buildAgenda, calendarBadgeCount } from './ux.js';
+import { normalizeVideos } from './progress.js';
+import { debounce } from './util.js';
 
 const NAV = [['today', '#/', 'Today', 'today'], ['movies', '#/movies', 'Movies', 'film'], ['series', '#/series', 'Series', 'tv'], ['shelf', '#/shelf', 'Shelf', 'shelf'], ['calendar', '#/calendar', 'Calendar', 'calendar'], ['search', '#/search', 'Search', 'search'], ['sources', '#/sources', 'Sources', 'sources'], ['settings', '#/settings', 'You', 'user']];
-const SECTION = { today: 'today', movies: 'movies', series: 'series', browse: 'today', title: 'today', streams: 'today', play: 'today', search: 'search', shelf: 'shelf', calendar: 'calendar', sources: 'sources', settings: 'settings' };
-const TITLES = { today: 'Today', movies: 'Movies', series: 'Series', search: 'Search', shelf: 'Shelf', calendar: 'Calendar', sources: 'Sources', settings: 'Settings', browse: 'Browse', title: 'Details', streams: 'Streams', play: 'Now playing' };
+const SECTION = { today: 'today', movies: 'movies', series: 'series', browse: 'today', title: 'today', streams: 'today', play: 'today', search: 'search', shelf: 'shelf', history: 'shelf', calendar: 'calendar', sources: 'sources', settings: 'settings' };
+const TITLES = { today: 'Today', movies: 'Movies', series: 'Series', search: 'Search', shelf: 'Shelf', history: 'History', calendar: 'Calendar', sources: 'Sources', settings: 'Settings', browse: 'Browse', title: 'Details', streams: 'Streams', play: 'Now playing' };
 /** Routes whose first screen is full-bleed artwork: the top bar stays transparent until the page scrolls. */
 const ART_ROUTES = new Set(['today', 'search', 'movies', 'series', 'title']);
 
 function applySettings() {
   const s = store.settings();
-  document.documentElement.dataset.theme = s.theme || 'dark';
+  const theme = resolveTheme(s.theme, !matchMedia('(prefers-color-scheme: light)').matches);
+  document.documentElement.dataset.theme = theme;
   document.documentElement.dataset.poster = s.posterSize || 'm';
   document.documentElement.dataset.accent = s.accent || 'vermilion';
   document.documentElement.dataset.font = s.fontScale || 'm';
   document.body.classList.toggle('reduce-motion', !!s.reduceMotion);
-  const tc = { dark: '#14110f', black: '#000000', paper: '#f2e9da' }[s.theme] || '#14110f';
+  const tc = { dark: '#14110f', black: '#000000', paper: '#f2e9da' }[theme] || '#14110f';
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', tc);
   applyTimeoutSetting();
 }
@@ -67,16 +72,31 @@ function markNav() {
   document.title = `${TITLES[r?.name] || 'Liuying'} – Liuying Web Player`;
 }
 
-const SYNC_LABEL = { idle: 'Synced', syncing: 'Syncing', offline: 'Offline', error: 'Sync issue' };
+/** New episodes on the shelf that have aired and are unwatched, shown as a count on the Calendar link (L115). */
+function drawCalBadge() {
+  let n = 0;
+  try {
+    const series = store.library().filter((i) => i.type === 'series').slice(0, 30);
+    const agenda = buildAgenda(series, store.cachedMeta, normalizeVideos, new Date());
+    n = calendarBadgeCount(agenda, (id, ep) => !!store.getProgress(id, ep)?.watched);
+  } catch { n = 0; }
+  document.querySelectorAll('.navlink[data-nav="calendar"], .tbtn[data-tb="calendar"]').forEach((a) => {
+    a.querySelector('.cbadge')?.remove();
+    const base = a.dataset.label || (a.dataset.label = a.getAttribute('aria-label') || a.textContent.trim());
+    if (n > 0) { a.append(h('span', { class: 'cbadge', 'aria-hidden': 'true', text: n > 9 ? '9+' : String(n) })); a.setAttribute('aria-label', `${base}, ${n} new episode${n === 1 ? '' : 's'}`); }
+    else if (a.classList.contains('tbtn')) a.setAttribute('aria-label', base); else a.removeAttribute('aria-label');
+  });
+}
 function drawSyncChip(st) {
   const a = document.getElementById('acct');
   if (!a) return;
   a.dataset.state = st.user ? st.state || 'idle' : 'signedout';
   if (st.user) {
-    const label = `Signed in as ${st.user.username} · ${SYNC_LABEL[st.state] || 'Synced'}`;
+    const face = syncFace(st.state, st.waking);
+    const label = `Signed in as ${st.user.username} · ${face.sr}`;
     a.href = '#/settings';
     a.title = label; a.setAttribute('aria-label', label);
-    a.replaceChildren(h('span', { class: 'initial', text: (st.user.username || '?').trim().charAt(0).toUpperCase() }), h('i', { class: 'sdot' }));
+    a.replaceChildren(h('span', { class: 'initial', text: (st.user.username || '?').trim().charAt(0).toUpperCase() }), h('i', { class: 'sdot', 'aria-hidden': 'true', text: face.glyph }));
   } else {
     a.href = st.state === 'signedout' ? '/login' : '#/settings';
     a.title = 'Sign in'; a.setAttribute('aria-label', 'Sign in');
@@ -116,15 +136,20 @@ async function main() {
   await store.init();
   applySettings();
   store.subscribe((k) => { if (k === 'settings') applySettings(); });
+  matchMedia('(prefers-color-scheme: light)').addEventListener?.('change', () => { if (store.settings().theme === 'system') applySettings(); });
+  const calBadge = debounce(drawCalBadge, 400);
+  store.subscribe((k) => { if (k === 'library' || k === 'progress' || k === 'meta') calBadge(); });
   buildRail();
   buildTopbar();
   initSearchShortcut();
+  drawCalBadge();
 
   route('/', today, 'today');
   route('/movies', movies, 'movies');
   route('/series', series, 'series');
   route('/search', search, 'search');
   route('/shelf', shelf, 'shelf');
+  route('/history', history, 'history');
   route('/calendar', calendar, 'calendar');
   route('/sources', sources, 'sources');
   route('/settings', settings, 'settings');
