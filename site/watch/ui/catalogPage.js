@@ -62,7 +62,9 @@ function catalogPage(type, { query = {} } = {}) {
   }
   const genres = genresOf(cats);
   let genre = genres.includes(query.genre) ? query.genre : '';
-  page.append(heroBox, genres.length ? tabsBox : null, rowsBox);
+  page.append(heroBox);
+  if (genres.length) page.append(tabsBox);
+  page.append(rowsBox);
   if (store.settings().hero) heroBox.append(h('div', { class: 'sk hero', 'aria-hidden': 'true' }));
 
   function drawTabs() {

@@ -8,6 +8,7 @@ import { shelf } from './ui/shelf.js';
 import { sources } from './ui/sources.js';
 import { settings } from './ui/settings.js';
 import { browse } from './ui/browse.js';
+import { movies, series } from './ui/catalogPage.js';
 import { details } from './ui/details.js';
 import { calendar } from './ui/calendar.js';
 import { openSearch, closeSearch, initSearchShortcut } from './ui/searchOverlay.js';
@@ -15,9 +16,11 @@ import { streams } from './ui/streams.js';
 import { player } from './player/player.js';
 import { refreshManifests, applyTimeoutSetting } from './addon/service.js';
 
-const NAV = [['today', '#/', 'Today'], ['search', '#/search', 'Search'], ['shelf', '#/shelf', 'Shelf'], ['calendar', '#/calendar', 'Calendar'], ['sources', '#/sources', 'Sources'], ['settings', '#/settings', 'Settings']];
-const SECTION = { today: 'today', browse: 'today', title: 'today', streams: 'today', play: 'today', search: 'search', shelf: 'shelf', calendar: 'calendar', sources: 'sources', settings: 'settings' };
-const TITLES = { today: 'Today', search: 'Search', shelf: 'Shelf', calendar: 'Calendar', sources: 'Sources', settings: 'Settings', browse: 'Browse', title: 'Details', streams: 'Streams', play: 'Now playing' };
+const NAV = [['today', '#/', 'Today', 'today'], ['movies', '#/movies', 'Movies', 'film'], ['series', '#/series', 'Series', 'tv'], ['shelf', '#/shelf', 'Shelf', 'shelf'], ['calendar', '#/calendar', 'Calendar', 'calendar'], ['search', '#/search', 'Search', 'search'], ['sources', '#/sources', 'Sources', 'sources'], ['settings', '#/settings', 'You', 'user']];
+const SECTION = { today: 'today', movies: 'movies', series: 'series', browse: 'today', title: 'today', streams: 'today', play: 'today', search: 'search', shelf: 'shelf', calendar: 'calendar', sources: 'sources', settings: 'settings' };
+const TITLES = { today: 'Today', movies: 'Movies', series: 'Series', search: 'Search', shelf: 'Shelf', calendar: 'Calendar', sources: 'Sources', settings: 'Settings', browse: 'Browse', title: 'Details', streams: 'Streams', play: 'Now playing' };
+/** Routes whose first screen is full-bleed artwork: the top bar stays transparent until the page scrolls. */
+const ART_ROUTES = new Set(['today', 'search', 'movies', 'series', 'title']);
 
 function applySettings() {
   const s = store.settings();
@@ -34,24 +37,51 @@ function applySettings() {
 function buildRail() {
   const rail = document.getElementById('rail');
   clear(rail);
+  const searchClick = (e) => { if (e.ctrlKey || e.metaKey || e.shiftKey) return; e.preventDefault(); openSearch(); };
   rail.append(
     h('a', { class: 'brand', href: '#/', 'aria-label': 'Liuying home' }, h('span', { class: 'seal' }, '流', h('br'), '影')),
-    h('div', { class: 'nav' }, NAV.map(([k, hr, label]) => h('a', { class: 'navlink', href: hr, 'data-nav': k, onClick: k === 'search' ? (e) => { if (e.ctrlKey || e.metaKey || e.shiftKey) return; e.preventDefault(); openSearch(); } : undefined }, icon(k === 'today' ? 'today' : k, 22), h('span', { text: label })))),
-    h('div', { class: 'railfoot', id: 'railfoot' }));
+    h('div', { class: 'nav' }, NAV.map(([k, hr, label, ic]) => h('a', { class: 'navlink', href: hr, 'data-nav': k, title: k === 'settings' ? 'Settings and account' : undefined, onClick: k === 'search' ? searchClick : undefined }, icon(ic, 22), h('span', { class: 'lab', text: label })))));
+}
+
+function buildTopbar() {
+  const bar = document.getElementById('topbar');
+  clear(bar);
+  const tb = (name, label, hr, key) => h('a', { class: 'tbtn', href: hr, 'aria-label': label, title: label, 'data-tb': key }, icon(name, 22));
+  bar.append(
+    h('a', { class: 'tb-brand', href: '#/', 'aria-label': 'Liuying home' }, h('span', { class: 'seal sm', 'aria-hidden': 'true' }, '流', h('br'), '影'), h('span', { class: 'wordmark', text: 'Liuying' })),
+    h('div', { class: 'tb-actions' },
+      h('button', { class: 'tbtn', type: 'button', 'aria-label': 'Search', title: 'Search ( / )', onClick: () => openSearch() }, icon('search', 22)),
+      tb('calendar', 'Calendar', '#/calendar', 'calendar'),
+      tb('settings', 'Settings', '#/settings', 'settings'),
+      h('a', { class: 'avatar', id: 'acct', href: '#/settings', 'aria-label': 'Account', title: 'Account', 'data-state': 'signedout' }, icon('user', 20))));
+  const upd = () => bar.classList.toggle('solid', window.scrollY > 24 || !ART_ROUTES.has(currentRoute()?.name));
+  addEventListener('scroll', upd, { passive: true });
+  onRoute(upd);
 }
 function markNav() {
   const r = currentRoute();
-  const sec = SECTION[r?.name] || 'today';
+  let sec = SECTION[r?.name] || 'today';
+  if (r?.name === 'browse') sec = r.params.type === 'series' ? 'series' : r.params.type === 'movie' ? 'movies' : 'today';
   document.querySelectorAll('.navlink').forEach((a) => { if (a.dataset.nav === sec) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
+  document.querySelectorAll('.tbtn[data-tb]').forEach((a) => { if (a.dataset.tb === sec) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
   document.title = `${TITLES[r?.name] || 'Liuying'} – Liuying Web Player`;
 }
 
+const SYNC_LABEL = { idle: 'Synced', syncing: 'Syncing', offline: 'Offline', error: 'Sync issue' };
 function drawSyncChip(st) {
-  const foot = document.getElementById('railfoot');
-  if (!foot) return;
-  clear(foot);
-  if (st.user) foot.append(h('a', { class: 'sync', href: '#/settings', 'data-state': st.state, title: `Signed in as ${st.user.username}` }, h('span', { class: 'dot' }), h('span', { text: st.state === 'syncing' ? 'Syncing' : st.state === 'offline' ? 'Offline' : st.state === 'error' ? 'Sync issue' : 'Synced' }), h('span', { text: st.user.username })));
-  else if (st.state === 'signedout') foot.append(h('a', { class: 'sync', href: '/login', 'data-state': 'signedout' }, h('span', { class: 'dot' }), h('span', { text: 'Sign in' })));
+  const a = document.getElementById('acct');
+  if (!a) return;
+  a.dataset.state = st.user ? st.state || 'idle' : 'signedout';
+  if (st.user) {
+    const label = `Signed in as ${st.user.username} · ${SYNC_LABEL[st.state] || 'Synced'}`;
+    a.href = '#/settings';
+    a.title = label; a.setAttribute('aria-label', label);
+    a.replaceChildren(h('span', { class: 'initial', text: (st.user.username || '?').trim().charAt(0).toUpperCase() }), h('i', { class: 'sdot' }));
+  } else {
+    a.href = st.state === 'signedout' ? '/login' : '#/settings';
+    a.title = 'Sign in'; a.setAttribute('aria-label', 'Sign in');
+    a.replaceChildren(icon('user', 20));
+  }
 }
 function drawBanner(st) {
   const b = document.getElementById('banner');
@@ -60,7 +90,7 @@ function drawBanner(st) {
   if (!show) { clear(b); return; }
   if (b.firstChild) return;
   b.className = 'banner';
-  b.append(h('div', { class: 'grow' }, h('a', { href: '/login', text: 'Sign in to sync across devices' }), ' — your sources, shelf and progress follow you. Without an account everything stays in this browser.'),
+  b.append(h('div', { class: 'grow' }, h('a', { href: '/login', text: 'Sign in to sync across devices' }), h('span', { class: 'bnote', text: ' — your sources, shelf and progress follow you. Without an account everything stays in this browser.' })),
     h('button', { class: 'btn sm', type: 'button', text: 'Dismiss', 'aria-label': 'Dismiss sign-in banner', onClick: () => { store.setPref('dismissedBanner', true); drawBanner(sync.getStatus()); } }));
 }
 
@@ -85,9 +115,12 @@ async function main() {
   applySettings();
   store.subscribe((k) => { if (k === 'settings') applySettings(); });
   buildRail();
+  buildTopbar();
   initSearchShortcut();
 
   route('/', today, 'today');
+  route('/movies', movies, 'movies');
+  route('/series', series, 'series');
   route('/search', search, 'search');
   route('/shelf', shelf, 'shelf');
   route('/calendar', calendar, 'calendar');

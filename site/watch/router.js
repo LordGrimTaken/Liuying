@@ -33,6 +33,7 @@ export const currentRoute = () => current;
 
 export async function render() {
   const { path, query, raw } = parseHash();
+  const changed = !current || current.raw !== raw;
   if (current) scrollMemo.set(current.raw, window.scrollY);
   if (cleanup) { try { cleanup(); } catch (e) { console.error(e); } cleanup = null; }
   for (const r of routes) {
@@ -46,6 +47,7 @@ export async function render() {
     const result = await r.handler(current);
     if (token !== current) { try { result?.destroy?.(); } catch { /* ignore */ } return; }
     cleanup = result?.destroy || null;
+    if (changed && r.name !== 'play') document.getElementById('view')?.firstElementChild?.classList.add('route-in');
     afterHooks.forEach((f) => { try { f(current); } catch (e) { console.error(e); } });
     const y = scrollMemo.get(raw);
     window.scrollTo(0, y || 0);

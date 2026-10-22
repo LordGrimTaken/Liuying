@@ -8,12 +8,12 @@
  * content changed without the hash being updated (the failure prints the new hash).
  * Between bumps, shell assets are served stale-while-revalidate, so an edit that forgot the bump
  * still arrives on the next load.
- * shell-hash: 9a200b9e4474
+ * shell-hash: 438fb87fa8b2
  *
  * NEVER cached: /api/*, addon manifests/catalogs/streams, subtitles, posters and media (cross-origin
  * or non-shell). Only same-origin GETs under /watch/ and the hls vendor file are handled here.
  */
-const VERSION = 'v3';
+const VERSION = 'v4';
 const CACHE = `liuying-shell-${VERSION}`;
 const PREFIX = 'liuying-shell-';
 const SCOPE_PATH = '/watch/';
@@ -48,9 +48,11 @@ const SHELL = [
   '/watch/player/subtitles.js',
   '/watch/ui/browse.js',
   '/watch/ui/calendar.js',
+  '/watch/ui/catalogPage.js',
   '/watch/ui/components.js',
   '/watch/ui/continue.js',
   '/watch/ui/details.js',
+  '/watch/ui/hero.js',
   '/watch/ui/dom.js',
   '/watch/ui/search.js',
   '/watch/ui/searchOverlay.js',
