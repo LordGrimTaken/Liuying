@@ -8,6 +8,7 @@ import { href, enc, navigate } from '../router.js';
 import { imgUrl } from '../util.js';
 import { artImg, emptyState } from './components.js';
 import { badges } from './components.js';
+import { nextSort, sortStreamsBy, splitTop, fmtBytes } from '../ux.js';
 
 export function rememberStream(type, mediaId, videoId, s) {
   const stream = {
@@ -43,6 +44,9 @@ export function streams({ params, query }) {
   const groups = new Map(); // source url -> {source, status, streams, error}
   let order = [];
   let filter = 'all';
+  let sort = null; // {key, dir} once the viewer picks a column
+  const expanded = new Set();
+  const TOP = 5;
   let autoTimer = null;
   let autoCancelled = false;
 
@@ -62,15 +66,45 @@ export function streams({ params, query }) {
 
   function row(s) {
     const c = s.cls;
-    const body = [h('div', {}, h('div', { class: 't', text: s.title }), s.desc ? h('div', { class: 'd', text: s.desc }) : null,
-      s.badges.length ? badges(s.badges) : null,
-      c.playable && c.warn ? h('div', { class: 'badges' }, h('span', { class: 'badge warn', text: c.warn })) : null,
-      !c.playable && c.note ? h('div', { class: 'note' }, icon('warn', 14), c.note) : null,
-      h('div', { class: 'ssrc', text: s.source.manifest?.name || '' })),
-    h('span', { class: 'go' }, icon(c.playable ? 'play' : c.openUrl ? 'external' : 'close', c.playable ? 18 : 16))];
-    if (c.playable) return h('button', { class: 'srow', type: 'button', onClick: () => play(s) }, body);
-    if (c.openUrl) return h('a', { class: 'srow', href: c.openUrl, target: '_blank', rel: 'noopener noreferrer' }, body);
-    return h('div', { class: 'srow off', role: 'group', 'aria-disabled': 'true' }, body);
+    const q = s.res ? h('span', { class: 'badge res', text: s.res }) : h('span', { class: 'mute', text: '–' });
+    const cells = [
+      h('div', { class: 'smain' }, h('div', { class: 't', text: s.title }), s.desc ? h('div', { class: 'd', text: s.desc }) : null,
+        s.badges.filter((b) => b.kind !== 'res' && b.kind !== 'size').length ? badges(s.badges.filter((b) => b.kind !== 'res' && b.kind !== 'size')) : null,
+        c.playable && c.warn ? h('div', { class: 'badges' }, h('span', { class: 'badge warn', text: c.warn })) : null,
+        !c.playable && c.note ? h('div', { class: 'note' }, icon('warn', 14), c.note) : null),
+      h('div', { class: `scell q${s.res ? '' : ' empty'}`, 'data-label': 'Quality' }, q),
+      h('div', { class: `scell sz${s.size ? '' : ' empty'}`, 'data-label': 'Size', text: fmtBytes(s.size) || '–' }),
+      h('div', { class: 'scell ssc', 'data-label': 'Source', text: s.source.manifest?.name || '' }),
+      h('span', { class: 'go' }, icon(c.playable ? 'play' : c.openUrl ? 'external' : 'close', c.playable ? 18 : 16))];
+    if (c.playable) return h('button', { class: 'srow', type: 'button', onClick: () => play(s) }, cells);
+    if (c.openUrl) return h('a', { class: 'srow', href: c.openUrl, target: '_blank', rel: 'noopener noreferrer' }, cells);
+    return h('div', { class: 'srow off', role: 'group', 'aria-disabled': 'true' }, cells);
+  }
+
+  /** Top rows plus a collapsed "more" list. */
+  function list(items, key) {
+    const { top, rest } = splitTop(items, TOP);
+    const frag = [...top.map(row)];
+    if (rest.length) {
+      const open = expanded.has(key);
+      if (open) frag.push(...rest.map(row));
+      frag.push(h('button', { class: 'more-streams', type: 'button', 'aria-expanded': String(open), onClick: () => { if (open) expanded.delete(key); else expanded.add(key); render(); } },
+        icon(open ? 'up' : 'down', 16), open ? 'Show fewer streams' : `Show ${rest.length} more stream${rest.length > 1 ? 's' : ''}`));
+    }
+    return frag;
+  }
+
+  function sortBar(count) {
+    if (count < 2) return null;
+    const btn = (key, label) => {
+      const on = sort?.key === key;
+      const dirWord = on ? (sort.dir === 'asc' ? 'ascending' : 'descending') : '';
+      return h('button', { class: `sortbtn k-${key}`, type: 'button', 'aria-pressed': String(on), 'aria-label': `Sort by ${label.toLowerCase()}${on ? ', ' + dirWord : ''}`, onClick: () => { sort = nextSort(sort, key); render(); } },
+        label, on ? icon(sort.dir === 'asc' ? 'up' : 'down', 14) : null);
+    };
+    return h('div', { class: 'shead', role: 'group', 'aria-label': 'Sort streams' },
+      h('div', { class: 'shl' }, h('span', { class: 'lbl-sort', text: 'Sort by' }), sort ? h('button', { class: 'linkbtn reset', type: 'button', text: 'Reset', onClick: () => { sort = null; render(); } }) : null),
+      btn('quality', 'Quality'), btn('size', 'Size'), btn('source', 'Source'));
   }
 
   function drawChips() {
@@ -91,18 +125,24 @@ export function streams({ params, query }) {
     clear(listEl);
     const visible = order.filter((u) => filter === 'all' || filter === u).map((u) => groups.get(u));
     const keep = (x) => !(s.hideUnplayable && !x.cls.playable && !x.cls.openUrl);
-    if (s.streamGroup === 'flat') {
+    const flat = !!sort || s.streamGroup === 'flat';
+    const total = visible.reduce((n, g) => n + g.streams.filter(keep).length, 0);
+    if (flat) {
       const all = visible.flatMap((g) => g.streams).filter(keep);
-      const sorted = sortStreams(all, s.streamSort === 'default' ? 'resolution' : s.streamSort);
-      if (sorted.length) listEl.append(h('div', { class: 'sgroup' }, sorted.map(row)));
+      const sorted = sort ? sortStreamsBy(all, sort.key, sort.dir) : sortStreams(all, s.streamSort === 'default' ? 'resolution' : s.streamSort);
+      const bar = sortBar(total);
+      if (bar) listEl.append(bar);
+      if (sorted.length) listEl.append(h('div', { class: 'sgroup flatlist' }, list(sorted, 'flat')));
     } else {
+      const bar = sortBar(total);
+      if (bar) listEl.append(bar);
       for (const g of visible) {
-        const list = sortStreams(g.streams.filter(keep), s.streamSort);
-        if (g.status === 'ok' && !list.length) continue;
+        const items = sortStreams(g.streams.filter(keep), s.streamSort);
+        if (g.status === 'ok' && !items.length) continue;
         const el = h('div', { class: 'sgroup' }, h('h3', { text: g.source.manifest?.name || 'Source' }));
         if (g.status === 'loading') el.append(h('div', { class: 'sk line' }), h('div', { class: 'sk line' }));
         else if (g.status === 'err') el.append(h('div', { class: 'state err', role: 'alert' }, icon('warn', 22), h('div', { class: 'grow' }, h('strong', { text: 'This source failed' }), h('span', { class: 'mute', text: describeError(g.error) })), h('button', { class: 'btn sm', type: 'button', text: 'Retry', onClick: () => retry(g) })));
-        else list.forEach((x) => el.append(row(x)));
+        else el.append(...list(items, g.source.url));
         listEl.append(el);
       }
     }
