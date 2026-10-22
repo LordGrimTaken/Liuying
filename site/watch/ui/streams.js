@@ -1,10 +1,10 @@
-import { h, icon, clear } from './dom.js';
+import { h, icon, clear, keepFocus } from './dom.js';
 import * as store from '../store.js';
 import { loadStreams } from '../addon/service.js';
 import { describeError, fetchStreamsFrom } from '../addon/client.js';
 import { pickSimilar, sortStreams, RES_RANK, describeStream } from '../addon/streams.js';
 import { normalizeVideos, parseEpisodeId } from '../progress.js';
-import { href, enc, navigate } from '../router.js';
+import { href, enc, navigate, goBack } from '../router.js';
 import { imgUrl } from '../util.js';
 import { artImg, emptyState } from './components.js';
 import { badges } from './components.js';
@@ -50,7 +50,8 @@ export function streams({ params, query }) {
   let autoTimer = null;
   let autoCancelled = false;
 
-  const back = h('a', { class: 'ibtn ring', href: href(`/title/${enc(type)}/${enc(id)}`), 'aria-label': 'Back to details' }, icon('back'));
+  const detailsHref = href(`/title/${enc(type)}/${enc(id)}`);
+  const back = h('a', { class: 'ibtn ring', href: detailsHref, 'aria-label': 'Back to details', onClick: (e) => { if (e.ctrlKey || e.metaKey || e.shiftKey || e.button) return; e.preventDefault(); goBack(detailsHref, (p) => p.name === 'title' && p.params.id === id); } }, icon('back'));
   const head = h('div', { class: 's-head' }, back, artImg(poster, '') || h('div', { class: 'ph' }), h('div', {}, h('p', { class: 'eyebrow', text: 'Choose a stream' }), h('h1', { text: name }), epLabel ? h('p', { class: 'mute', text: epLabel }) : null));
   const chipsEl = h('div', { class: 'chips', role: 'group', 'aria-label': 'Filter by source' });
   const listEl = h('div', { class: 'slist' });
@@ -119,7 +120,8 @@ export function streams({ params, query }) {
     }
   }
 
-  function render() {
+  function render() { keepFocus(page, renderNow); }
+  function renderNow() {
     drawChips();
     const s = store.settings();
     clear(listEl);

@@ -41,9 +41,9 @@ export function posterCard(item, { srcId, showTitle = true, onMenu } = {}) {
     s.titlesUnder ? h('span', { class: 'ttl', text: name }) : null,
     s.titlesUnder && yearOf(item) ? h('span', { class: 'sub', text: yearOf(item) }) : null);
   const open = (e) => { e.preventDefault(); e.stopPropagation(); itemMenu(item); };
-  card.append(h('button', { class: 'more', type: 'button', 'aria-label': `Actions for ${name}`, onClick: open }, icon('more', 18)));
+  card.append(h('button', { class: 'more', type: 'button', tabindex: '-1', 'aria-label': `Actions for ${name}`, onClick: open }, icon('more', 18)));
   if (item.id) {
-    const q = h('button', { class: 'quick', type: 'button', 'aria-pressed': String(inLib), 'aria-label': `${inLib ? 'Remove' : 'Add'} ${name} ${inLib ? 'from' : 'to'} shelf`, title: inLib ? 'On your shelf' : 'Add to shelf' }, icon(inLib ? 'check' : 'plus', 18));
+    const q = h('button', { class: 'quick', type: 'button', tabindex: '-1', 'aria-pressed': String(inLib), 'aria-label': `${inLib ? 'Remove' : 'Add'} ${name} ${inLib ? 'from' : 'to'} shelf`, title: inLib ? 'On your shelf' : 'Add to shelf' }, icon(inLib ? 'check' : 'plus', 18));
     q.addEventListener('click', (e) => {
       e.preventDefault(); e.stopPropagation();
       toggleLibrary(item);
@@ -94,6 +94,30 @@ export function sheet(title, entries) {
     body: (close) => h('div', { class: 'sheet' }, entries.map((e) => h('button', { type: 'button', class: e.danger ? 'danger' : '', onClick: () => { close(null); setTimeout(() => e.run(), 0); } }, icon(e.icon || 'more', 20), e.label))),
     actions: [{ label: 'Close', value: null }],
   });
+}
+
+/**
+ * Fill `box` with make(item) for every item, a screenful at a time: the first chunk now, the rest as the
+ * viewer scrolls near the end (a shelf of a thousand titles stays instant). Returns a stop function.
+ */
+export function progressive(box, items, make, { chunk = 60, margin = 800 } = {}) {
+  let i = 0, io = null, stopped = false;
+  const sentinel = h('div', { class: 'sentinel', 'aria-hidden': 'true' });
+  const more = () => {
+    if (stopped) return;
+    const end = Math.min(items.length, i + chunk);
+    const frag = document.createDocumentFragment();
+    for (; i < end; i++) frag.append(make(items[i]));
+    box.append(frag);
+    if (i >= items.length) { io?.disconnect(); sentinel.remove(); return; }
+    box.append(sentinel);
+  };
+  more();
+  if (i < items.length) {
+    io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) more(); }, { rootMargin: `${margin}px` });
+    io.observe(sentinel);
+  }
+  return () => { stopped = true; io?.disconnect(); };
 }
 
 export function posterSkeleton() { return h('div', { class: 'sk poster', 'aria-hidden': 'true' }); }

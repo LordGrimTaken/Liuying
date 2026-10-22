@@ -16,6 +16,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.draw.rotate
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -57,6 +60,8 @@ import com.liuying.app.ui.theme.Vermilion
 @Composable
 fun LiuyingTopBar(
     solid: Boolean, account: AccountState,
+    /** L115: unwatched episodes airing in the next 7 days; 0 hides the badge. */
+    calendarBadge: Int = 0,
     onSearch: () -> Unit, onCalendar: () -> Unit, onSettings: () -> Unit, onAccount: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -69,7 +74,7 @@ fun LiuyingTopBar(
             Text("Liuying", color = Paper, style = TextStyle(fontFamily = FontFamily.Serif, fontWeight = FontWeight.Bold, fontSize = 21.sp), modifier = Modifier.padding(start = 10.dp))
             Spacer(Modifier.weight(1f))
             BarIcon(GlyphKind.Search, "Search", onSearch)
-            BarIcon(GlyphKind.Calendar, "Calendar", onCalendar)
+            BarIcon(GlyphKind.Calendar, if (calendarBadge > 0) "Calendar, $calendarBadge new this week" else "Calendar", onCalendar, badge = calendarBadge)
             BarIcon(GlyphKind.Gear, "Settings", onSettings)
             Spacer(Modifier.width(2.dp))
             Avatar(account, onAccount)
@@ -77,22 +82,28 @@ fun LiuyingTopBar(
     }
 }
 
-/** The seal: a small vermilion rounded square with 流 over 影. */
+/** The seal: the Liuying chop (vermilion leaf-cornered square carved with 流 over 影), a vector drawable. */
 @Composable
 fun Seal(modifier: Modifier = Modifier) {
-    Box(modifier.size(32.dp).clip(RoundedCornerShape(3.dp)).background(Vermilion), contentAlignment = Alignment.Center) {
-        Text("流\n影", color = OnAccent, textAlign = androidx.compose.ui.text.style.TextAlign.Center, style = TextStyle(fontFamily = FontFamily.Serif, fontWeight = FontWeight.Bold, fontSize = 12.sp, lineHeight = 13.sp))
-    }
+    androidx.compose.foundation.Image(
+        painter = androidx.compose.ui.res.painterResource(com.liuying.app.R.drawable.ic_seal),
+        contentDescription = null,
+        modifier = modifier.size(32.dp),
+    )
 }
 
 @Composable
-private fun BarIcon(kind: GlyphKind, description: String, onClick: () -> Unit) {
+private fun BarIcon(kind: GlyphKind, description: String, onClick: () -> Unit, badge: Int = 0) {
     val source = remember { MutableInteractionSource() }
     // 48dp touch target around the 42dp round button
     Box(Modifier.size(48.dp).clickable(interactionSource = source, indication = null, onClick = onClick).semantics { contentDescription = description; role = Role.Button }, contentAlignment = Alignment.Center) {
         Box(Modifier.pressScale(source).size(42.dp).clip(CircleShape).background(Ink.copy(alpha = 0.28f)), contentAlignment = Alignment.Center) {
             Glyph(kind, tint = Paper, size = 24.dp)
         }
+        if (badge > 0) Box(
+            Modifier.align(Alignment.TopEnd).padding(top = 3.dp, end = 1.dp).heightIn(min = 16.dp).widthIn(min = 16.dp).clip(CircleShape).background(Vermilion).border(1.5.dp, Ink, CircleShape).padding(horizontal = 3.dp),
+            contentAlignment = Alignment.Center,
+        ) { Text(if (badge > 9) "9+" else "$badge", color = OnAccent, style = TextStyle(fontWeight = FontWeight.Bold, fontSize = 10.sp)) }
     }
 }
 
@@ -100,7 +111,16 @@ private fun BarIcon(kind: GlyphKind, description: String, onClick: () -> Unit) {
 @Composable
 private fun Avatar(account: AccountState, onClick: () -> Unit) {
     val source = remember { MutableInteractionSource() }
-    val desc = if (account.signedIn) "Account ${account.username}" else "Sign in"
+    // L104: the sync state is a shape and a spoken word as well as a colour
+    val syncWord = when {
+        !account.signedIn -> ""
+        account.status is SyncStatus.Failed -> ", sync failed"
+        account.status == SyncStatus.Syncing -> ", syncing"
+        account.pending -> ", changes waiting to sync"
+        account.status is SyncStatus.Done -> ", synced"
+        else -> ""
+    }
+    val desc = if (account.signedIn) "Account ${account.username}$syncWord" else "Sign in"
     Box(Modifier.size(48.dp).clickable(interactionSource = source, indication = null, onClick = onClick).semantics { contentDescription = desc; role = Role.Button }, contentAlignment = Alignment.Center) {
         val shape = RoundedCornerShape(11.dp)
         Box(
@@ -112,13 +132,21 @@ private fun Avatar(account: AccountState, onClick: () -> Unit) {
             else Glyph(GlyphKind.Person, tint = Paper, size = 20.dp)
         }
         if (account.signedIn) {
-            val dot = when (account.status) {
-                is SyncStatus.Done -> Color(0xFF4CAF50)
-                SyncStatus.Syncing -> Gold
-                is SyncStatus.Failed -> Color(0xFFE5484D)
-                else -> null
+            val at = Modifier.align(Alignment.BottomEnd).padding(end = 2.dp, bottom = 2.dp)
+            when {
+                account.status is SyncStatus.Failed ->
+                    // a red diamond with a bang
+                    Box(at.size(14.dp).rotate(45f).clip(RoundedCornerShape(2.dp)).background(Color(0xFFE5484D)).border(1.5.dp, Ink, RoundedCornerShape(2.dp)))
+                account.status == SyncStatus.Syncing ->
+                    // a hollow gold ring
+                    Box(at.size(12.dp).clip(CircleShape).background(Ink).border(2.dp, Gold, CircleShape))
+                account.status is SyncStatus.Done && account.pending ->
+                    // half-filled: synced before, changes still waiting
+                    Box(at.size(12.dp).clip(CircleShape).background(Ink).border(2.dp, Color(0xFF4CAF50), CircleShape).padding(3.dp).background(Color(0xFF4CAF50), CircleShape))
+                account.status is SyncStatus.Done ->
+                    // a solid green disc
+                    Box(at.size(12.dp).clip(CircleShape).background(Color(0xFF4CAF50)).border(1.5.dp, Ink, CircleShape))
             }
-            if (dot != null) Box(Modifier.align(Alignment.BottomEnd).padding(end = 3.dp, bottom = 3.dp).size(10.dp).clip(CircleShape).background(dot).border(1.5.dp, Ink, CircleShape))
         }
     }
 }

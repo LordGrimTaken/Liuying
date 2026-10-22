@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -55,6 +56,13 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -118,6 +126,8 @@ fun PlayerScreen(c: PlayerController, onClose: () -> Unit) {
 
         Hud(c)
         NextEpisodeCard(c)
+        if (c.statsVisible && c.phase != UiPhase.LOADING) StatsOverlay(c)
+        if (c.stallOffer && c.phase != UiPhase.ERROR && c.panelTab == null && !c.locked) StallCard(c)
 
         AnimatedVisibility(
             visible = c.panelTab != null && !c.locked,
@@ -262,7 +272,7 @@ private fun TitleCard(c: PlayerController) {
         // Back remains reachable while loading.
         Box(Modifier.align(Alignment.TopStart).windowInsetsPadding(WindowInsets.displayCutout).padding(12.dp)) {
             val activity = LocalContext.current as PlayerActivity
-            RoundGlyph(onClick = { activity.onPlayerFinished(PlayerExit.Closed) }) { BackArrow() }
+            RoundGlyph(onClick = { activity.onPlayerFinished(PlayerExit.Closed) }, label = "Close player") { BackArrow() }
         }
     }
 }
@@ -293,30 +303,35 @@ private fun ControlsOverlay(c: PlayerController, activity: PlayerActivity) {
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            RoundGlyph(onClick = { activity.onPlayerFinished(PlayerExit.Closed) }) { BackArrow() }
+            RoundGlyph(onClick = { activity.onPlayerFinished(PlayerExit.Closed) }, label = "Close player") { BackArrow() }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(c.request.title, style = MaterialTheme.typography.titleMedium, color = Paper, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 c.request.subtitleLine?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = PaperMuted, maxLines = 1, overflow = TextOverflow.Ellipsis) }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (c.canSwitch) PillButton("Streams", { c.panelTab = PanelTab.STREAMS; c.loadStreamList() })
                 PillButton("Subtitles", { c.panelTab = PanelTab.SUBTITLES }, selected = c.selectedSubtitleKey != null)
                 PillButton("Audio", { c.panelTab = PanelTab.AUDIO })
                 PillButton(speedLabel(c.speed), { c.panelTab = PanelTab.SPEED })
                 PillButton(c.aspect.label, { c.cycleAspect(); c.poke() })
                 if (Build.VERSION.SDK_INT >= 26) PillButton("PiP", { activity.requestEnterPip() })
-                PillButton("Lock", { c.locked = true; c.controlsVisible = false })
+                PillButton("More", { c.panelTab = PanelTab.MORE }, selected = c.sleepStatus != null || c.statsVisible)
+                PillButton("Lock", { c.locked = true; c.controlsVisible = false }, description = "Lock controls")
             }
         }
 
         // centre transport
-        Row(Modifier.align(Alignment.Center), horizontalArrangement = Arrangement.spacedBy(36.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.align(Alignment.Center), horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.CenterVertically) {
             val step = c.settings.seekStepSeconds
-            RoundGlyph(size = 56.dp, onClick = { c.seekStep(false) }) { Text("-$step", color = Paper, fontWeight = FontWeight.SemiBold, fontSize = 16.sp) }
-            RoundGlyph(size = 76.dp, filled = true, onClick = { c.togglePlay() }) {
+            val canPrev = c.request.previousEpisode != null && c.canSwitch
+            if (canPrev) RoundGlyph(onClick = { c.playPrevious() }, label = "Previous episode") { SkipGlyph(forward = false) }
+            RoundGlyph(size = 56.dp, onClick = { c.seekStep(false) }, label = "Back $step seconds") { Text("-$step", color = Paper, fontWeight = FontWeight.SemiBold, fontSize = 16.sp) }
+            RoundGlyph(size = 76.dp, filled = true, onClick = { c.togglePlay() }, label = if (c.isPlaying) "Pause" else "Play") {
                 if (c.isPlaying) PauseGlyph() else PlayGlyph()
             }
-            RoundGlyph(size = 56.dp, onClick = { c.seekStep(true) }) { Text("+$step", color = Paper, fontWeight = FontWeight.SemiBold, fontSize = 16.sp) }
+            RoundGlyph(size = 56.dp, onClick = { c.seekStep(true) }, label = "Forward $step seconds") { Text("+$step", color = Paper, fontWeight = FontWeight.SemiBold, fontSize = 16.sp) }
+            if (c.request.nextEpisode != null) RoundGlyph(onClick = { c.skipToNext() }, label = "Next episode") { SkipGlyph(forward = true) }
         }
 
         // bottom bar
@@ -332,13 +347,14 @@ private fun ControlsOverlay(c: PlayerController, activity: PlayerActivity) {
                 onScrub = { c.scrubPreviewMs = it; c.poke() },
                 onCommit = { c.scrubPreviewMs = null; c.seekTo(it) },
             )
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 val pos = c.scrubPreviewMs ?: c.positionMs
                 Text(TimeFormat.clock(pos), color = Paper, style = MaterialTheme.typography.labelLarge)
+                PillButton("+${c.settings.longSkipSeconds} s", { c.skipLong() }, description = "Skip forward ${c.settings.longSkipSeconds} seconds")
                 Text(
                     if (c.durationMs <= 0) "--:--" else if (showRemaining) "-" + TimeFormat.clock(c.durationMs - pos) else TimeFormat.clock(c.durationMs),
                     color = PaperMuted, style = MaterialTheme.typography.labelLarge,
-                    modifier = Modifier.clickable { showRemaining = !showRemaining },
+                    modifier = Modifier.heightIn(min = 48.dp).clickable { showRemaining = !showRemaining }.wrapContentHeight(Alignment.CenterVertically),
                 )
             }
         }
@@ -391,6 +407,7 @@ private fun Hud(c: PlayerController) {
         c.hud?.let { HudChip(it, Modifier.align(Alignment.TopCenter).padding(top = 28.dp)) }
         c.resumedToast?.let { HudChip(it, Modifier.align(Alignment.BottomCenter).padding(bottom = 110.dp)) }
         c.subtitleBusyMessage?.let { HudChip(it, Modifier.align(Alignment.BottomCenter).padding(bottom = 110.dp)) }
+        c.sleepStatus?.let { HudChip(it, Modifier.align(Alignment.TopEnd).padding(top = 76.dp, end = 16.dp)) }
         if (c.speedHold) HudChip("2x speed", Modifier.align(Alignment.TopCenter).padding(top = 28.dp), accent = true)
         c.scrubPreviewMs?.let { p ->
             val delta = p - c.positionMs
@@ -415,7 +432,8 @@ private fun Hud(c: PlayerController) {
 @Composable
 private fun HudChip(text: String, modifier: Modifier = Modifier, big: Boolean = false, accent: Boolean = false) {
     Box(
-        modifier.clip(RoundedCornerShape(50)).background(Ink.copy(alpha = 0.82f))
+        modifier.semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite }
+            .clip(RoundedCornerShape(50)).background(Ink.copy(alpha = 0.82f))
             .border(1.dp, if (accent) Vermilion else Gold.copy(alpha = 0.45f), RoundedCornerShape(50))
             .padding(horizontal = if (big) 22.dp else 16.dp, vertical = if (big) 12.dp else 8.dp),
     ) {
@@ -461,10 +479,15 @@ private fun NextEpisodeCard(c: PlayerController) {
 // ---------- small building blocks ----------
 
 @Composable
-internal fun PillButton(text: String, onClick: () -> Unit, selected: Boolean = false, emphasized: Boolean = false) {
+internal fun PillButton(text: String, onClick: () -> Unit, selected: Boolean = false, emphasized: Boolean = false, description: String? = null) {
     val shape = RoundedCornerShape(50)
     // 48dp touch target around the visible pill
-    Box(Modifier.heightIn(min = 48.dp).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
+    Box(
+        Modifier.heightIn(min = 48.dp)
+            .semantics { role = Role.Button; if (description != null) contentDescription = description; if (selected) stateDescription = "Selected" }
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
         Box(
             Modifier.clip(shape)
                 .background(if (emphasized) Vermilion else if (selected) Gold.copy(alpha = 0.22f) else Ink.copy(alpha = 0.55f))
@@ -476,11 +499,12 @@ internal fun PillButton(text: String, onClick: () -> Unit, selected: Boolean = f
 }
 
 @Composable
-private fun RoundGlyph(size: androidx.compose.ui.unit.Dp = 48.dp, filled: Boolean = false, onClick: () -> Unit, content: @Composable () -> Unit) {
+private fun RoundGlyph(size: androidx.compose.ui.unit.Dp = 48.dp, filled: Boolean = false, onClick: () -> Unit, label: String? = null, content: @Composable () -> Unit) {
     Box(
         Modifier.size(size).clip(CircleShape)
             .background(if (filled) Vermilion else Ink.copy(alpha = 0.55f))
             .border(1.dp, if (filled) Color.Transparent else Paper.copy(alpha = 0.3f), CircleShape)
+            .semantics { role = Role.Button; if (label != null) contentDescription = label }
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) { content() }
@@ -505,4 +529,61 @@ private fun BackArrow() = Canvas(Modifier.size(22.dp)) {
     drawLine(Paper, Offset(size.width * 0.9f, size.height / 2), Offset(size.width * 0.12f, size.height / 2), sw, StrokeCap.Round)
     drawLine(Paper, Offset(size.width * 0.12f, size.height / 2), Offset(size.width * 0.48f, size.height * 0.14f), sw, StrokeCap.Round)
     drawLine(Paper, Offset(size.width * 0.12f, size.height / 2), Offset(size.width * 0.48f, size.height * 0.86f), sw, StrokeCap.Round)
+}
+
+@Composable
+private fun SkipGlyph(forward: Boolean) = Canvas(Modifier.size(22.dp)) {
+    val p = Path().apply {
+        if (forward) { moveTo(size.width * 0.12f, size.height * 0.15f); lineTo(size.width * 0.72f, size.height * 0.5f); lineTo(size.width * 0.12f, size.height * 0.85f) }
+        else { moveTo(size.width * 0.88f, size.height * 0.15f); lineTo(size.width * 0.28f, size.height * 0.5f); lineTo(size.width * 0.88f, size.height * 0.85f) }
+        close()
+    }
+    drawPath(p, Paper)
+    val x = if (forward) size.width * 0.86f else size.width * 0.14f
+    drawLine(Paper, Offset(x, size.height * 0.15f), Offset(x, size.height * 0.85f), 2.5.dp.toPx(), StrokeCap.Round)
+}
+
+/** L048: shown after 15 s of loading or buffering. */
+@Composable
+private fun StallCard(c: PlayerController) {
+    Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.displayCutout), contentAlignment = Alignment.BottomCenter) {
+        Column(
+            Modifier.padding(bottom = 28.dp).widthIn(max = 420.dp)
+                .clip(RoundedCornerShape(14.dp)).background(InkSurface.copy(alpha = 0.97f))
+                .border(1.dp, Gold.copy(alpha = 0.45f), RoundedCornerShape(14.dp)).padding(16.dp)
+                .semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite },
+        ) {
+            Text("This is taking a while", color = Paper, style = MaterialTheme.typography.titleMedium)
+            Text("The stream has been loading for over 15 seconds. Another stream may start faster.", color = PaperMuted, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp))
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                PillButton("Try another stream", {
+                    c.stallOffer = false
+                    if (c.canSwitch) { c.controlsVisible = true; c.panelTab = PanelTab.STREAMS; c.loadStreamList() } else c.tryAnotherStream()
+                }, emphasized = true)
+                PillButton("Keep waiting", { c.stallOffer = false })
+            }
+        }
+    }
+}
+
+/** L049 */
+@Composable
+private fun StatsOverlay(c: PlayerController) {
+    val lines = c.stats.lines()
+    Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.displayCutout), contentAlignment = Alignment.TopStart) {
+        Column(
+            Modifier.padding(start = 16.dp, top = 76.dp)
+                .clip(RoundedCornerShape(10.dp)).background(Ink.copy(alpha = 0.78f))
+                .border(1.dp, Gold.copy(alpha = 0.35f), RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 8.dp)
+                .semantics(mergeDescendants = true) { contentDescription = "Playback statistics. " + lines.joinToString(". ") { "${it.first} ${it.second}" } },
+        ) {
+            lines.forEach { (k, v) ->
+                Row {
+                    Text(k, color = PaperMuted, fontSize = 12.sp, modifier = Modifier.width(104.dp))
+                    Text(v, color = Paper, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                }
+            }
+        }
+    }
 }

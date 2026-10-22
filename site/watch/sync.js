@@ -3,12 +3,13 @@ import * as store from './store.js';
 import { mergeProgress, mergeLibrary, mergeSources, mergeSettings, sourcesPayload, progressWire, chunk, backoffMs } from './sync-merge.js';
 import { progressKey } from './progress.js';
 import { debounce } from './util.js';
+import { pendingCount } from './ux.js';
 
-const status = { state: 'checking', user: null, lastSync: 0, error: '' };
+const status = { state: 'checking', user: null, lastSync: 0, error: '', waking: false };
 const subs = new Set();
-const emit = () => subs.forEach((f) => { try { f({ ...status }); } catch (e) { console.error(e); } });
-export const subscribeStatus = (f) => { subs.add(f); f({ ...status }); return () => subs.delete(f); };
-export const getStatus = () => ({ ...status });
+const emit = () => subs.forEach((f) => { try { f(getStatus()); } catch (e) { console.error(e); } });
+export const subscribeStatus = (f) => { subs.add(f); f(getStatus()); return () => subs.delete(f); };
+export const getStatus = () => ({ ...status, pending: pendingCount(store.syncState()) });
 export const isSignedIn = () => !!status.user;
 
 let failures = 0;
@@ -23,7 +24,9 @@ async function api(method, path, body) {
   const init = { method, credentials: 'same-origin', headers: { Accept: 'application/json' } };
   if (method !== 'GET') { init.headers['Content-Type'] = 'application/json'; init.body = JSON.stringify(body ?? {}); }
   let res;
-  try { res = await fetch(path, init); } catch (e) { throw new ApiError(0, 'offline'); }
+  // the free host sleeps when idle: say so instead of looking frozen (L094)
+  const wake = setTimeout(() => { status.waking = true; emit(); }, 3000);
+  try { res = await fetch(path, init); } catch (e) { throw new ApiError(0, 'offline'); } finally { clearTimeout(wake); if (status.waking) { status.waking = false; emit(); } }
   if (res.status === 401) throw new ApiError(401, 'signed out');
   if (!res.ok) {
     let msg = `HTTP ${res.status}`;
@@ -40,7 +43,7 @@ function setSignedOut() {
 
 export async function init() {
   try {
-    const me = await api('GET', '/api/auth/me');
+    const me = await api('GET', '/api/auth/me?soft=1');
     status.user = me?.user?.username ? { username: me.user.username } : null;
   } catch (e) {
     if (e.status === 0) { status.state = 'offline'; status.user = null; emit(); return; }

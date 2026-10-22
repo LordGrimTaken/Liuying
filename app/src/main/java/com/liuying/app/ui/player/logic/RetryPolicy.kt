@@ -72,4 +72,52 @@ object ErrorClassifier {
         ErrorKind.MALFORMED -> "The stream could not be read. Try another stream."
         ErrorKind.BEHIND_LIVE_WINDOW, ErrorKind.OTHER -> "Something went wrong while playing. Retry, or try another stream."
     }
+
+    /** L050: what happened, why, and the next step, with the action to emphasise. */
+    fun copy(kind: ErrorKind, httpStatus: Int? = null): ErrorCopy = when {
+        kind == ErrorKind.LINK_EXPIRED && httpStatus == 403 -> ErrorCopy(
+            "The source refused this link", "This stream did not start.",
+            "The server answered \"403 forbidden\". Links from some sources only work for a short time or only from the app that asked.",
+            "Try another stream, or reload the stream list for a fresh link.", ErrorAction.TRY_ANOTHER,
+        )
+        kind == ErrorKind.LINK_EXPIRED && (httpStatus == 404 || httpStatus == 410) -> ErrorCopy(
+            "This stream is gone", "The file could not be found.",
+            "The server answered \"${httpStatus}\": the link has expired or the file was removed.",
+            "Try another stream, or reload the stream list for a fresh link.", ErrorAction.TRY_ANOTHER,
+        )
+        kind == ErrorKind.LINK_EXPIRED && httpStatus == 401 -> ErrorCopy(
+            "This stream needs a sign-in", "The source asked for credentials it did not get.",
+            "The server answered \"401 unauthorised\". Some sources need to be configured on their own page first.",
+            "Open the source in Sources to configure it, or try another stream.", ErrorAction.TRY_ANOTHER,
+        )
+        kind == ErrorKind.LINK_EXPIRED -> ErrorCopy(
+            "This stream link isn't working", "The stream did not start.",
+            "The link may have expired, or the server refused it.",
+            "Try another stream, or reload the stream list for a fresh link.", ErrorAction.TRY_ANOTHER,
+        )
+        kind == ErrorKind.NETWORK -> ErrorCopy(
+            "Connection problem", "Playback stopped after several automatic retries.",
+            "Your connection dropped, or the server was too slow to answer.",
+            "Check your connection and retry, or try another stream.", ErrorAction.RETRY,
+        )
+        kind == ErrorKind.UNSUPPORTED -> ErrorCopy(
+            "Can't play this format", "This device cannot decode the video or audio.",
+            "The stream uses a codec or container this phone does not support, for example HEVC, AV1 or Dolby Vision.",
+            "Try a stream marked H.264 or a lower resolution, or open it in an external player.", ErrorAction.TRY_ANOTHER,
+        )
+        kind == ErrorKind.MALFORMED -> ErrorCopy(
+            "This file looks damaged", "The stream could not be read.",
+            "The file is incomplete or not a valid video.",
+            "Try another stream.", ErrorAction.TRY_ANOTHER,
+        )
+        else -> ErrorCopy(
+            "Playback failed", "Something went wrong while playing.",
+            "The player reported an error it could not recover from.",
+            "Retry, or try another stream.", ErrorAction.RETRY,
+        )
+    }
 }
+
+enum class ErrorAction { RETRY, TRY_ANOTHER }
+
+data class ErrorCopy(val title: String, val what: String, val why: String, val next: String, val primary: ErrorAction)

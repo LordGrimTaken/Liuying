@@ -1,4 +1,4 @@
-import { h, icon, clear, toast, confirmDialog, modal } from './dom.js';
+import { h, icon, clear, toast, confirmDialog, modal, keepFocus } from './dom.js';
 import * as store from '../store.js';
 import { loadMeta } from '../addon/service.js';
 import { describeError } from '../addon/client.js';
@@ -8,10 +8,11 @@ import { streamsHref } from './continue.js';
 import { imgUrl, yearOf, fmtDuration } from '../util.js';
 import { safeHref } from '../addon/streams.js';
 import { shareUrl } from '../ux.js';
-import { navigate, enc } from '../router.js';
+import { navigate, enc, goBack } from '../router.js';
 
 const arrayOf = (x) => (Array.isArray(x) ? x : x ? [x] : []);
 const seasonChoice = new Map();
+const EP_CHUNK = 60; // episodes drawn at a time; seasons with hundreds of entries stay light
 
 export function details({ params, query }) {
   const { type, id } = params;
@@ -25,6 +26,7 @@ export function details({ params, query }) {
   let errors = [];
   let expanded = false;
   let sortDesc = false;
+  const epShown = new Map(); // season -> how many episode rows are drawn
 
   // offline / uncached: fall back to the shelf or any progress record's title and poster before the raw id
   const unsub = store.subscribe((k) => { if (k === 'progress' || k === 'library') draw(); });
@@ -65,7 +67,7 @@ export function details({ params, query }) {
     const root = h('div', {});
 
     // hero
-    const back = h('a', { class: 'ibtn back', href: '#/', 'aria-label': 'Back', onClick: (e) => { if (history.length > 1) { e.preventDefault(); history.back(); } } }, icon('back'));
+    const back = h('a', { class: 'ibtn back', href: '#/', 'aria-label': 'Back', onClick: (e) => { e.preventDefault(); goBack('#/'); } }, icon('back'));
     const poster = h('div', { class: 'pcard' }, h('div', { class: 'art' }, h('div', { class: 'ph', 'aria-hidden': 'true', text: name }), artImg(m.poster, `${name} poster`)));
     const logo = artImg(m.logo, name);
     if (logo) { logo.className = 'logo'; logo.loading = 'eager'; }
@@ -132,7 +134,7 @@ export function details({ params, query }) {
     if (m.type === 'series') body.append(episodes(videos, getRec));
     if (state === 'ok' && errors.length) body.append(h('p', { class: 'det-note' }, icon('warn', 14), `${errors.length} source${errors.length > 1 ? 's' : ''} couldn't provide details; showing what the others returned.`));
     root.append(body);
-    clear(page).append(root);
+    keepFocus(page, () => clear(page).append(root));
   }
 
   async function share(m) {
@@ -174,7 +176,11 @@ export function details({ params, query }) {
     sbar.append(h('button', { class: 'linkbtn', type: 'button', text: allW ? 'Mark season unwatched' : 'Mark season watched', onClick: () => markMany(released, !allW, 'this season') }));
     wrap.append(sbar);
     const list = h('div', { class: 'eps' });
-    const ordered = sortDesc ? [...eps].reverse() : eps;
+    const orderedAll = sortDesc ? [...eps].reverse() : eps;
+    // always include the "up next" episode in the visible window
+    const nextIdx = orderedAll.findIndex((e) => e.id === target.episode?.id);
+    const limit = Math.max(epShown.get(sel) || EP_CHUNK, nextIdx >= 0 ? nextIdx + 6 : 0);
+    const ordered = orderedAll.slice(0, limit);
     for (const e of ordered) {
       const rec = getRec(e.id);
       const future = !isReleased(e);
@@ -197,6 +203,10 @@ export function details({ params, query }) {
       list.append(row);
     }
     wrap.append(list);
+    if (orderedAll.length > ordered.length) {
+      const left = orderedAll.length - ordered.length;
+      wrap.append(h('button', { class: 'btn more-eps', type: 'button', onClick: () => { epShown.set(sel, ordered.length + EP_CHUNK * 2); draw(); } }, `Show ${Math.min(left, EP_CHUNK * 2)} more episodes`, h('span', { class: 'mute', text: ` (${left} left)` })));
+    }
     return wrap;
   }
 

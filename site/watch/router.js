@@ -1,6 +1,8 @@
 // Tiny hash router: '#/path/seg?x=y'. Routes are patterns with ':param' segments.
 const routes = [];
 let current = null;
+let prev = null;
+let hashChanges = 0;
 let cleanup = null;
 const scrollMemo = new Map();
 const afterHooks = new Set();
@@ -30,6 +32,16 @@ export const navigate = (path, query, { replace = false } = {}) => {
 };
 
 export const currentRoute = () => current;
+/** The route shown before the current one (only meaningful right after an in-app navigation). */
+export const previousRoute = () => prev;
+/** True once the viewer has moved inside the app, so history.back() stays on this site. */
+export const canGoBack = () => hashChanges > 0 && history.length > 1;
+/** Go back when the previous page is one of ours (and, optionally, matches `pred`); otherwise open `fallbackHref`. */
+export function goBack(fallbackHref, pred) {
+  if (canGoBack() && prev && (!pred || pred(prev))) { history.back(); return true; }
+  location.hash = fallbackHref.replace(/^#?/, '#');
+  return false;
+}
 
 export async function render() {
   const { path, query, raw } = parseHash();
@@ -41,6 +53,7 @@ export async function render() {
     if (!m) continue;
     const params = {};
     r.keys.forEach((k, i) => { params[k] = decodeURIComponent(m[i + 1]); });
+    if (current && current.raw !== raw) prev = current;
     current = { name: r.name, params, query, raw, path };
     const token = current;
     document.body.dataset.route = r.name;
@@ -57,7 +70,7 @@ export async function render() {
 }
 
 export function start() {
-  addEventListener('hashchange', render);
+  addEventListener('hashchange', () => { hashChanges++; render(); });
   return render();
 }
 export const restoreScroll = () => { const y = scrollMemo.get(current?.raw); if (y) window.scrollTo(0, y); };

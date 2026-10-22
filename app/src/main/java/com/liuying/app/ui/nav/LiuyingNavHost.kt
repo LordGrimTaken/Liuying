@@ -31,6 +31,7 @@ import androidx.navigation.navArgument
 import com.liuying.app.AppContainer
 import com.liuying.app.domain.model.MetaPreview
 import com.liuying.app.ui.common.LocalContainer
+import com.liuying.app.ui.calendar.calendarBadge
 import com.liuying.app.ui.details.DetailsScreen
 import com.liuying.app.ui.home.TodayScreen
 import com.liuying.app.ui.browse.BrowseScreen
@@ -61,6 +62,7 @@ class Navigator(private val nav: NavHostController, private val container: AppCo
 
     fun openSource(id: Long) = nav.navigate(Routes.source(id))
     fun openBrowse(catalogKey: String, genre: String? = null) = nav.navigate(Routes.browse(catalogKey, genre))
+    fun openHistory() = nav.navigate(Overlay.HISTORY) { launchSingleTop = true }
     fun openCalendar() = nav.navigate(Overlay.CALENDAR) { launchSingleTop = true }
     fun openTitle(type: String, id: String, play: String? = null) = nav.navigate(Routes.details(type, id, play))
     fun back() { nav.popBackStack() }
@@ -85,6 +87,7 @@ fun LiuyingApp() {
     val current = Tab.entries.firstOrNull { it.route == route }
     val showChrome = current != null || route == Overlay.CALENDAR
     val account by container.sync.state.collectAsState()
+    val calBadge by androidx.compose.runtime.remember(container) { container.calendarBadge() }.collectAsState(0)
     val chrome = androidx.compose.runtime.remember { ChromeState() }
     val reduce = LocalReduceMotion.current
     val rise = with(androidx.compose.ui.platform.LocalDensity.current) { 10.dp.roundToPx() }
@@ -107,6 +110,7 @@ fun LiuyingApp() {
             composable(Overlay.SEARCH) { SearchScreen(navigator) }
             composable(Tab.Shelf.route) { ShelfScreen(navigator) }
             composable(Overlay.CALENDAR) { CalendarScreen(navigator) }
+            composable(Overlay.HISTORY) { com.liuying.app.ui.history.HistoryScreen(navigator) }
             composable(Tab.You.route) { YouScreen(navigator) }
             composable(
                 Routes.SOURCE,
@@ -137,13 +141,14 @@ fun LiuyingApp() {
         }
         if (showChrome) {
             LiuyingTopBar(
-                solid = chrome.solid, account = account,
+                solid = chrome.solid, account = account, calendarBadge = calBadge,
                 onSearch = navigator::openSearch, onCalendar = navigator::openCalendar,
                 onSettings = { navigator.goTab(Tab.You) }, onAccount = { navigator.goTab(Tab.You) },
                 modifier = Modifier.align(Alignment.TopCenter),
             )
             InkDock(current = current, onSelect = { navigator.goTab(it) }, modifier = Modifier.align(Alignment.BottomCenter))
         }
+        com.liuying.app.ui.onboarding.ClipboardLinkOffer(container)
     }
     }
 }

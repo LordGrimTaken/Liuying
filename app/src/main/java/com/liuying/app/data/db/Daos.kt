@@ -142,6 +142,10 @@ interface MetaCacheDao {
     @Query("SELECT * FROM meta_cache")
     suspend fun getAll(): List<MetaCacheEntity>
 
+    /** Drops everything older than the [keep] newest rows (no row-value syntax: API 24 ships SQLite 3.9). */
+    @Query("DELETE FROM meta_cache WHERE fetchedAt < (SELECT fetchedAt FROM meta_cache ORDER BY fetchedAt DESC LIMIT 1 OFFSET :keep)")
+    suspend fun prune(keep: Int)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entity: MetaCacheEntity)
 

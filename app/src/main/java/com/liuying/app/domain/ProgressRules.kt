@@ -43,6 +43,13 @@ object ProgressRules {
         return pos.coerceIn(0, nd)
     }
 
+    /** L037: backs a resume position up by [rewindSec] seconds (never below the start); no position stays 0. */
+    fun rewound(resumeMs: Long?, rewindSec: Int): Long {
+        val r = resumeMs ?: return 0L
+        if (r <= 0) return 0L
+        return (r - rewindSec.coerceIn(0, 30) * 1000L).coerceAtLeast(0L)
+    }
+
     /**
      * Computes the record to store for a progress report. Position is clamped to the duration. Crossing the
      * threshold sets watched and clears the resume position; a previously-watched flag is never cleared by playback.

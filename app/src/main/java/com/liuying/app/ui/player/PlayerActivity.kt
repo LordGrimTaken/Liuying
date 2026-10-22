@@ -139,6 +139,14 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         val c = controller
+        if (c != null) {
+            // L055: hardware media keys and remote buttons work even with the controls locked
+            val media = com.liuying.app.ui.player.logic.MediaKeys.actionFor(keyCode)
+            if (media != com.liuying.app.ui.player.logic.MediaKeyAction.None) {
+                if (event.repeatCount == 0 && c.handleMediaKey(media)) { c.controlsVisible = true; return true }
+                if (event.repeatCount > 0) return true
+            }
+        }
         if (c != null && !c.locked) {
             when (keyCode) {
                 KeyEvent.KEYCODE_DPAD_LEFT -> { c.seekStep(false); c.controlsVisible = true; return true }

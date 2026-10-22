@@ -1,6 +1,9 @@
 package com.liuying.app.ui.settings
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -30,12 +33,13 @@ import com.liuying.app.ui.theme.Vermilion
 
 @Composable
 fun ToggleRow(title: String, subtitle: String? = null, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable(enabled = enabled) { onChange(!checked) }.padding(horizontal = 20.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+    // one TalkBack stop per row: "title, switch, on"
+    Row(Modifier.fillMaxWidth().toggleable(value = checked, enabled = enabled, role = androidx.compose.ui.semantics.Role.Switch, onValueChange = onChange).padding(horizontal = 20.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f).padding(end = 12.dp)) {
             Text(title, color = if (enabled) Paper else PaperMuted, style = MaterialTheme.typography.bodyLarge)
             if (subtitle != null) Text(subtitle, color = PaperMuted, style = MaterialTheme.typography.bodyMedium)
         }
-        Switch(checked, onChange, enabled = enabled, colors = SwitchDefaults.colors(checkedTrackColor = Vermilion, checkedThumbColor = com.liuying.app.ui.theme.OnAccent, uncheckedTrackColor = Ink, uncheckedThumbColor = PaperMuted, uncheckedBorderColor = GoldHairline))
+        Switch(checked, null, enabled = enabled, colors = SwitchDefaults.colors(checkedTrackColor = Vermilion, checkedThumbColor = com.liuying.app.ui.theme.OnAccent, uncheckedTrackColor = Ink, uncheckedThumbColor = PaperMuted, uncheckedBorderColor = GoldHairline))
     }
 }
 
@@ -43,7 +47,9 @@ fun ToggleRow(title: String, subtitle: String? = null, checked: Boolean, enabled
 fun <T> ChoiceRow(title: String, subtitle: String? = null, options: List<T>, selected: T, label: (T) -> String, onSelect: (T) -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
-        Row(Modifier.fillMaxWidth().clickable { open = true }.padding(horizontal = 20.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().clickable(role = androidx.compose.ui.semantics.Role.DropdownList) { open = true }
+            .semantics(mergeDescendants = true) { stateDescription = label(selected) }
+            .padding(horizontal = 20.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f).padding(end = 12.dp)) {
                 Text(title, color = Paper, style = MaterialTheme.typography.bodyLarge)
                 if (subtitle != null) Text(subtitle, color = PaperMuted, style = MaterialTheme.typography.bodyMedium)

@@ -136,6 +136,7 @@ export function splitTop(list, n = 5) {
 
 export function fmtBytes(b) {
   if (!Number.isFinite(b) || b <= 0) return '';
+  if (b < 1e6) return `${Math.max(1, Math.round(b / 1e3))} KB`;
   if (b >= 1e9) return `${(b / 1e9).toFixed(b >= 1e10 ? 0 : 1)} GB`;
   return `${Math.round(b / 1e6)} MB`;
 }

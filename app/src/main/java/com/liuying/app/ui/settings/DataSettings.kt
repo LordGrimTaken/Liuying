@@ -25,6 +25,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.liuying.app.AppContainer
 import com.liuying.app.ui.common.InkTextButton
+import com.liuying.app.ui.history.titleLookup
 import com.liuying.app.ui.common.containerViewModel
 import com.liuying.app.ui.theme.InkSurface
 import com.liuying.app.ui.theme.Paper
@@ -75,6 +76,7 @@ class DataViewModel(private val c: AppContainer, private val app: android.app.Ap
                 runCatching { coil3.SingletonImageLoader.get(app).let { it.diskCache?.clear(); it.memoryCache?.clear() } }
                 runCatching { File(app.cacheDir, "updates").deleteRecursively() }
             }
+            runCatching { app.getSharedPreferences("liuying_track_memory", Context.MODE_PRIVATE).edit().clear().apply() }
             c.settings.resetToDefaults()
             refreshSize()
             message.value = "Liuying is back to a clean slate."
@@ -98,11 +100,43 @@ class DataViewModel(private val c: AppContainer, private val app: android.app.Ap
 
     fun clearMessage() { message.value = null }
 
+    enum class Export(val mime: String, val fileName: String) {
+        LibraryCsv("text/csv", "liuying-shelf.csv"), HistoryCsv("text/csv", "liuying-history.csv"), Json("application/json", "liuying-export.json"),
+    }
+
+    /** L031: builds the export text. Sources, stream links and credentials are never included. */
+    suspend fun buildExport(kind: Export): String {
+        val library = c.library.observeAll().first()
+        val progress = c.progress.snapshot().filter(com.liuying.app.domain.HistoryLogic::isVisible).sortedByDescending { it.updatedAt }
+        val metas = c.titleLookup(progress)
+        val names = library.associateBy { it.type to it.id }
+        val rows = progress.map { e ->
+            com.liuying.app.domain.ExportHistoryRow(e, metas[e.type to e.titleId]?.name?.takeIf { it.isNotBlank() } ?: names[e.type to e.titleId]?.name ?: e.titleId)
+        }
+        return when (kind) {
+            Export.LibraryCsv -> com.liuying.app.domain.ExportLogic.libraryCsv(library)
+            Export.HistoryCsv -> com.liuying.app.domain.ExportLogic.historyCsv(rows)
+            Export.Json -> com.liuying.app.domain.ExportLogic.json(library, rows, System.currentTimeMillis(), c.updates.installedVersionName)
+        }
+    }
+
+    fun writeExport(kind: Export, uri: android.net.Uri) {
+        viewModelScope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                runCatching {
+                    val text = buildExport(kind)
+                    app.contentResolver.openOutputStream(uri, "wt")?.use { it.write(text.toByteArray(Charsets.UTF_8)) } ?: error("no stream")
+                }.isSuccess
+            }
+            message.value = if (ok) "Exported." else "Could not save the file."
+        }
+    }
+
     private fun sizeOf(f: File): Long = if (f.isFile) f.length() else f.listFiles()?.sumOf { sizeOf(it) } ?: 0L
 }
 
 @Composable
-fun DataSettings() {
+fun DataSettings(onOpenHistory: (() -> Unit)? = null) {
     val context = LocalContext.current
     val vm = containerViewModel { DataViewModel(it, context.applicationContext as android.app.Application) }
     val bytes by vm.cacheBytes.collectAsStateWithLifecycle()
@@ -112,10 +146,22 @@ fun DataSettings() {
     var typed by remember { mutableStateOf("") }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
 
+    var pending by remember { mutableStateOf<DataViewModel.Export?>(null) }
+    val saver = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("*/*")) { uri ->
+        val k = pending; pending = null
+        if (uri != null && k != null) vm.writeExport(k, uri)
+    }
+    fun export(k: DataViewModel.Export) { pending = k; saver.launch(k.fileName) }
+
     LaunchedEffect(message) { message?.let { Toast.makeText(context, it, Toast.LENGTH_SHORT).show(); vm.clearMessage() } }
 
     Column(Modifier.padding(horizontal = 20.dp)) {
         Text("Cache: " + (bytes?.let { "%.1f MB".format(it / 1_048_576.0) } ?: "measuring"), color = PaperMuted, style = androidx.compose.material3.MaterialTheme.typography.bodyMedium)
+        if (onOpenHistory != null) InkTextButton("Watch history", onOpenHistory)
+        InkTextButton("Export shelf (CSV)", { export(DataViewModel.Export.LibraryCsv) })
+        InkTextButton("Export history (CSV)", { export(DataViewModel.Export.HistoryCsv) })
+        InkTextButton("Export everything (JSON)", { export(DataViewModel.Export.Json) })
+        Text("Exports hold titles and watch times only: no sources, links or account details.", color = PaperMuted, style = androidx.compose.material3.MaterialTheme.typography.labelMedium)
         InkTextButton("Clear cache", vm::clearCache)
         InkTextButton("Clear watch history", { confirmHistory = true }, color = Vermilion)
         InkTextButton("Copy debug info", {

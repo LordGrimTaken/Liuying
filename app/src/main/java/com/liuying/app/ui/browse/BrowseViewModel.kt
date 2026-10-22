@@ -12,6 +12,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -78,6 +80,12 @@ class BrowseViewModel(private val c: AppContainer, private val key: String, priv
             if ((type + "|" + preview.id) in savedKeys.value) c.library.remove(type, preview.id) else c.library.add(preview, type)
         }
     }
+
+    val actions = com.liuying.app.ui.common.TitleActions(c, viewModelScope)
+    /** L004 */
+    val hideWatched: StateFlow<Boolean> = c.settings.settings.map { it.hideWatchedInBrowse }.stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5_000), false)
+    fun setHideWatched(on: Boolean) { viewModelScope.launch { c.settings.update { it.copy(hideWatchedInBrowse = on) } } }
+    fun toggleWatched(preview: MetaPreview) = actions.toggleWatched(preview, _ui.value.entry?.catalog?.type.orEmpty())
 
     val savedKeys: StateFlow<Set<String>> = c.library.observeAll().let { f ->
         val out = MutableStateFlow<Set<String>>(emptySet())

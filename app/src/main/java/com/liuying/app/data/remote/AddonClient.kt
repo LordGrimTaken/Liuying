@@ -219,6 +219,10 @@ class AddonClient(
         }
         val body = resp.body ?: return Result.failure(AddonFailure(AddonErrorKind.NotJson, "Empty response"))
         if (body.contentLength() > MAX_BODY_BYTES) return Result.failure(AddonFailure(AddonErrorKind.NotJson, "Response too large"))
+        // chunked responses report no length: cap what is read instead of buffering whatever a source streams
+        val src = body.source()
+        src.request(MAX_BODY_BYTES + 1)
+        if (src.buffer.size > MAX_BODY_BYTES) return Result.failure(AddonFailure(AddonErrorKind.NotJson, "Response too large"))
         val text = body.string().removePrefix("﻿").trim()
         if (text.isEmpty() || (text[0] != '{' && text[0] != '[')) {
             return Result.failure(AddonFailure(AddonErrorKind.NotJson, "Response is not JSON"))

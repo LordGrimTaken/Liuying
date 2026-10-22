@@ -47,6 +47,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.liuying.app.data.repo.RowState
+import com.liuying.app.domain.SearchRanking
 import com.liuying.app.domain.Ux
 import com.liuying.app.ui.common.CenterLoading
 import com.liuying.app.ui.common.EmptyBlock
@@ -81,7 +82,9 @@ fun SearchScreen(navigator: Navigator) {
     val recent by vm.recent.collectAsStateWithLifecycle()
     val type by vm.typeFilter.collectAsStateWithLifecycle()
     val suggestions by vm.suggestions.collectAsStateWithLifecycle()
+    val sourceSel by vm.sourceFilter.collectAsStateWithLifecycle()
     val saved by vm.savedKeys.collectAsStateWithLifecycle()
+    val watchedKeys by vm.actions.watchedKeys.collectAsStateWithLifecycle()
     val focus = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     val requester = remember { FocusRequester() }
@@ -118,6 +121,14 @@ fun SearchScreen(navigator: Navigator) {
             items(filters) { t -> InkChip(Ux.typeFilterLabel(t), type == t, { vm.setType(t) }) }
         }
 
+        val sourceNames = res?.let { SearchRanking.sourceNames(it.groups) }.orEmpty()
+        if (sourceNames.size > 1) {
+            LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                item { InkChip("All sources", sourceSel == null, { vm.setSource(null) }) }
+                items(sourceNames) { n -> InkChip(n, sourceSel == n, { vm.setSource(if (sourceSel == n) null else n) }) }
+            }
+        }
+
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
             if (suggestions.isNotEmpty()) {
                 items(suggestions, key = { "s$it" }) { s ->
@@ -131,7 +142,7 @@ fun SearchScreen(navigator: Navigator) {
                 }
             }
             when {
-                trimmed.length < 2 -> {
+                !com.liuying.app.domain.QaGuards.isSearchable(trimmed) -> {
                     if (suggestions.isEmpty()) {
                         if (recent.isNotEmpty()) {
                             item { SectionHeader("Recent searches", trailing = { InkTextButton("Clear all", vm::clearRecent) }) }
@@ -151,8 +162,29 @@ fun SearchScreen(navigator: Navigator) {
                         action = { InkButton("Open You", { navigator.goTab(Tab.You) }) })
                 }
                 else -> {
-                    val shown = res.groups.filter { Ux.matchesType(it.entry.catalog.type, type) }
+                    val shown = SearchRanking.orderGroups(res.groups, trimmed)
+                        .filter { Ux.matchesType(it.entry.catalog.type, type) && (sourceSel == null || it.entry.source.displayName == sourceSel) }
                     var any = false
+                    // L006: exact title matches first, across all sources
+                    val best = SearchRanking.bestMatches(shown, trimmed)
+                    if (best.isNotEmpty() && shown.size > 1) {
+                        item(key = "best-match") {
+                            Column {
+                                SectionHeader("Best match", subtitle = "Exact title")
+                                LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    items(best, key = { (m, g) -> g.entry.key + m.id }) { (m, g) ->
+                                        val gt = g.entry.catalog.type
+                                        val mt = m.type.ifBlank { gt }
+                                        com.liuying.app.ui.common.ActionPoster(
+                                            m, gt, saved = (mt + "|" + m.id) in saved, watched = (mt + "|" + m.id) in watchedKeys,
+                                            onToggleSave = { vm.toggleSave(m, gt) }, onToggleWatched = { vm.actions.toggleWatched(m, gt) },
+                                            onOpen = { vm.commitRecent(); navigator.openDetails(m, gt, g.entry.source.id) },
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                     for (g in shown) {
                         val st = g.state
                         if (st is RowState.Loaded && st.items.isEmpty()) continue
@@ -167,10 +199,11 @@ fun SearchScreen(navigator: Navigator) {
                                     is RowState.Loaded -> LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                         items(st.items, key = { it.id }) { m ->
                                             val mt = m.type.ifBlank { gt }
-                                            PosterCard(m.title, m.poster, subtitle = m.displayYear, saved = (mt + "|" + m.id) in saved, onToggleSave = { vm.toggleSave(m, gt) }) {
-                                                vm.commitRecent()
-                                                navigator.openDetails(m, gt, g.entry.source.id)
-                                            }
+                                            com.liuying.app.ui.common.ActionPoster(
+                                                m, gt, saved = (mt + "|" + m.id) in saved, watched = (mt + "|" + m.id) in watchedKeys,
+                                                onToggleSave = { vm.toggleSave(m, gt) }, onToggleWatched = { vm.actions.toggleWatched(m, gt) },
+                                                onOpen = { vm.commitRecent(); navigator.openDetails(m, gt, g.entry.source.id) },
+                                            )
                                         }
                                     }
                                 }
@@ -180,10 +213,14 @@ fun SearchScreen(navigator: Navigator) {
                     if (res.done && !res.hasAnyResults) {
                         val failed = res.groups.count { it.state is RowState.Failed }
                         item {
+                            val failedAll = failed == res.groups.size
+                            val srcCount = res.groups.map { it.entry.source.id }.distinct().size
                             EmptyBlock(
-                                if (failed == res.groups.size) "Could not search" else "No results for \"$trimmed\"",
-                                if (failed == res.groups.size) "Every source failed to answer. Check your connection and try again."
-                                else "Check the spelling, or add a source that supports search.",
+                                if (failedAll) "Could not search" else "No results for \"$trimmed\"",
+                                if (failedAll) "Every source failed to answer. Check your connection and try again."
+                                else "Searched ${res.groups.size} catalog${if (res.groups.size == 1) "" else "s"} from $srcCount source${if (srcCount == 1) "" else "s"}. " +
+                                    SearchRanking.suggestions(trimmed).joinToString(" "),
+                                action = { InkButton("Open sources", { navigator.goTab(Tab.You) }) },
                             )
                         }
                     } else if (res.done && !any && type != "all") {

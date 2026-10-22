@@ -103,3 +103,10 @@ test('parsePluginUrl', () => {
   assert.equal(parsePluginUrl('https://localhost/x'), null);
   assert.equal(parsePluginUrl(''), null);
 });
+
+import { fmtBytes as qaFmtBytes } from '../ux.js';
+test('fmtBytes shows KB for small sizes instead of 0 MB', () => {
+  assert.equal(qaFmtBytes(400000), '400 KB');
+  assert.equal(qaFmtBytes(2.5e9), '2.5 GB');
+  assert.equal(qaFmtBytes(0), '');
+});

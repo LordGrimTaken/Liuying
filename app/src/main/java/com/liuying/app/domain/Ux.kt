@@ -143,7 +143,7 @@ object Ux {
     // ---------------------------------------------------------------------------- streams
 
     enum class SortKey(val label: String, val defaultDesc: Boolean) {
-        Quality("Quality", true), Size("Size", true), Source("Source", false)
+        Quality("Quality", true), QualityThenSize("Quality + size", true), Size("Size", true), Source("Source", false)
     }
 
     data class Sort(val key: SortKey, val desc: Boolean)
@@ -169,6 +169,7 @@ object Ux {
             }
             val c = when (sort.key) {
                 SortKey.Quality -> quality(a.value).compareTo(quality(b.value))
+                SortKey.QualityThenSize -> quality(a.value).compareTo(quality(b.value)).let { if (it != 0) it else size(a.value).compareTo(size(b.value)) }
                 SortKey.Size -> size(a.value).compareTo(size(b.value))
                 SortKey.Source -> source(a.value).lowercase().compareTo(source(b.value).lowercase())
             }

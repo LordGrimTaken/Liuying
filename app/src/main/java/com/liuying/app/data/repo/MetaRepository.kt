@@ -31,6 +31,8 @@ data class CachedMeta(val meta: Meta, val fetchedAt: Long)
 interface MetaStore {
     suspend fun get(type: String, id: String): CachedMeta?
     suspend fun put(type: String, id: String, meta: Meta, fetchedAt: Long)
+    /** Keeps the cache from growing without bound (series metas with thousands of episodes are large). */
+    suspend fun prune() {}
 }
 
 class RoomMetaStore(private val dao: MetaCacheDao) : MetaStore {
@@ -46,6 +48,10 @@ class RoomMetaStore(private val dao: MetaCacheDao) : MetaStore {
     override suspend fun put(type: String, id: String, meta: Meta, fetchedAt: Long) {
         dao.upsert(MetaCacheEntity(type, id, StremioJson.encodeToString(Meta.serializer(), meta), fetchedAt))
     }
+
+    override suspend fun prune() = dao.prune(KEEP)
+
+    private companion object { const val KEEP = 400 }
 }
 
 /**
@@ -121,7 +127,12 @@ class MetaRepository(
                         }
                         val live = slots.filterNotNull().reduceOrNull { a, b -> a.mergedWith(b) }
                         val merged = live?.mergedWith(fallback)
-                        if (pending == 0 && live != null) store.put(type, id, live.mergedWith(cached), clock.nowMs())
+                        if (pending == 0 && live != null) {
+                            // a full disk or a locked database must not take the details screen down with it
+                            try { store.put(type, id, live.mergedWith(cached), clock.nowMs()); store.prune() }
+                            catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                            catch (e: Exception) { /* the cache is best effort */ }
+                        }
                         send(
                             MetaLoad(
                                 meta = merged ?: fallback,

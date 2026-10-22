@@ -62,7 +62,18 @@ android {
 
     buildFeatures { compose = true }
 
-    testOptions { unitTests { isIncludeAndroidResources = true; isReturnDefaultValues = true } }
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+            isReturnDefaultValues = true
+            // Robolectric fetches its android-all jar from Maven Central; this sandbox reaches a Central mirror instead.
+            all { t ->
+                (System.getenv("ROBOLECTRIC_REPO_URL") ?: "https://maven-central.storage-download.googleapis.com/maven2")
+                    .let { t.systemProperty("robolectric.dependency.repo.url", it) }
+                t.maxHeapSize = "2g"
+            }
+        }
+    }
 
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
 }

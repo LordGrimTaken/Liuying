@@ -10,6 +10,7 @@ import com.liuying.app.data.remote.AddonClient
 import com.liuying.app.data.repo.CatalogRepository
 import com.liuying.app.data.repo.LibraryRepository
 import com.liuying.app.data.repo.MetaRepository
+import com.liuying.app.data.repo.RowSnapshots
 import com.liuying.app.data.repo.PluginRepository
 import com.liuying.app.data.repo.ProgressRepository
 import com.liuying.app.data.repo.RoomMetaStore
@@ -42,7 +43,11 @@ class AppContainer(private val app: Application) {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     val db: LiuyingDatabase by lazy { LiuyingDatabase.build(app) }
-    private val settingsStore = PreferenceDataStoreFactory.create(scope = scope) { app.preferencesDataStoreFile("settings") }
+    // a corrupt settings file is replaced by defaults instead of crashing every launch (reads were already guarded, writes were not)
+    private val settingsStore = PreferenceDataStoreFactory.create(
+        corruptionHandler = androidx.datastore.core.handlers.ReplaceFileCorruptionHandler { androidx.datastore.preferences.core.emptyPreferences() },
+        scope = scope,
+    ) { app.preferencesDataStoreFile("settings") }
     val settings = SettingsRepository(settingsStore)
 
     @Volatile private var timeoutScale = 1.0
@@ -56,7 +61,7 @@ class AppContainer(private val app: Application) {
         .connectTimeout(20, java.util.concurrent.TimeUnit.SECONDS).readTimeout(60, java.util.concurrent.TimeUnit.SECONDS).build()
 
     val sources by lazy { SourceRepository(db, db.sourceDao(), addonClient) }
-    val catalogs by lazy { CatalogRepository(sources, addonClient, settings.settings) }
+    val catalogs by lazy { CatalogRepository(sources, addonClient, settings.settings, RowSnapshots(app.cacheDir.resolve("rows"))) }
     val metas by lazy { MetaRepository(sources, addonClient, RoomMetaStore(db.metaCacheDao())) }
     val streams by lazy { StreamRepository(sources, addonClient) }
     val library by lazy { LibraryRepository(db.libraryDao()) }
@@ -103,6 +108,8 @@ class AppContainer(private val app: Application) {
     fun start() {
         PlayerDependencies.progressReporter = progress
         PlayerDependencies.httpClient = playerHttp
+        PlayerDependencies.gateway = com.liuying.app.ui.details.AppPlaybackGateway(this)
+        PlayerDependencies.trackMemory = com.liuying.app.data.settings.TrackMemoryPrefs(app.getSharedPreferences("liuying_track_memory", 0))
         PlayerDependencies.onPlaybackStarting = { r ->
             val ref = if (r.episodeId == null) PlaybackRef.movie(r.type, r.mediaId)
             else SyncLogic.parseEpisodeId(r.mediaId, r.episodeId)?.let { (s, e) -> PlaybackRef.episode(r.type, r.mediaId, r.episodeId, s, e) }

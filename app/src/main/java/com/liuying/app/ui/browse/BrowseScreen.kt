@@ -49,6 +49,8 @@ fun BrowseScreen(catalogKey: String, initialGenre: String?, navigator: Navigator
     val vm = containerViewModel(key = "browse:$catalogKey:$initialGenre") { BrowseViewModel(it, catalogKey, initialGenre) }
     val ui by vm.ui.collectAsStateWithLifecycle()
     val saved by vm.savedKeys.collectAsStateWithLifecycle()
+    val hideWatched by vm.hideWatched.collectAsStateWithLifecycle()
+    val watchedKeys by vm.actions.watchedKeys.collectAsStateWithLifecycle()
     BackHandler { navigator.back() }
     val entry = ui.entry
     androidx.compose.foundation.layout.Column(Modifier.fillMaxSize().statusBarsPadding()) {
@@ -65,6 +67,9 @@ fun BrowseScreen(catalogKey: String, initialGenre: String?, navigator: Navigator
             entry == null -> EmptyBlock("This catalog is gone", "Its source was removed or turned off.", action = { com.liuying.app.ui.common.InkButton("Go back", navigator::back) })
             else -> {
                 Filters(ui, vm)
+                Row(Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) {
+                    com.liuying.app.ui.common.InkChip("Hide watched", hideWatched, { vm.setHideWatched(!hideWatched) })
+                }
                 val p = ui.pager
                 when {
                     p.items.isEmpty() && (p.loading || !p.firstPageLoaded && p.error == null) -> CenterLoading(Modifier.fillMaxSize(), "Loading")
@@ -72,6 +77,7 @@ fun BrowseScreen(catalogKey: String, initialGenre: String?, navigator: Navigator
                     p.items.isEmpty() && p.firstPageLoaded -> EmptyBlock("Nothing here", "This catalog returned no titles${ui.genre?.let { " for $it" }.orEmpty()}.")
                     else -> {
                         val state = rememberLazyGridState()
+                        val shownItems = if (hideWatched) com.liuying.app.domain.WatchedIndex.hideWatched(p.items, entry.catalog.type, watchedKeys) else p.items
                         // near the end of what is loaded: ask for the next page (not while an error is showing; the user retries)
                         LaunchedEffect(state, p.items.size, p.error, p.endReached) {
                             snapshotFlow { (state.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0) >= p.items.size - 8 }.collect { near ->
@@ -84,12 +90,14 @@ fun BrowseScreen(catalogKey: String, initialGenre: String?, navigator: Navigator
                             contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = com.liuying.app.ui.nav.DockClearance),
                             horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(14.dp),
                         ) {
-                            items(p.items, key = { it.id }) { m ->
+                            items(shownItems, key = { it.id }) { m ->
                                 val type = m.type.ifBlank { entry.catalog.type }
-                                PosterCard(
-                                    m.title, m.poster, subtitle = m.displayYear, fillWidth = true,
-                                    saved = (type + "|" + m.id) in saved, onToggleSave = { vm.toggleSave(m) },
-                                ) { navigator.openDetails(m, entry.catalog.type, entry.source.id) }
+                                com.liuying.app.ui.common.ActionPoster(
+                                    m, entry.catalog.type, saved = (type + "|" + m.id) in saved, watched = (type + "|" + m.id) in watchedKeys,
+                                    onToggleSave = { vm.toggleSave(m) }, onToggleWatched = { vm.toggleWatched(m) },
+                                    onOpen = { navigator.openDetails(m, entry.catalog.type, entry.source.id) },
+                                    fillWidth = true,
+                                )
                             }
                             item(span = { GridItemSpan(maxLineSpan) }, key = "footer") {
                                 when {
@@ -115,7 +123,7 @@ private fun Filters(ui: BrowseUi, vm: BrowseViewModel) {
         val selected = ui.genre ?: if (required) cat.genreOptions.first() else null
         LazyRow(contentPadding = PaddingValues(horizontal = 20.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (!required) item(key = "all") { InkChip("All", selected == null, onClick = { vm.selectGenre(null) }) }
-            items(cat.genreOptions, key = { it }) { g -> InkChip(g, selected == g, onClick = { vm.selectGenre(g) }) }
+            items(com.liuying.app.domain.QaGuards.distinctOptions(cat.genreOptions), key = { it }) { g -> InkChip(g, selected == g, onClick = { vm.selectGenre(g) }) }
         }
     }
     // other extras with a fixed list of options (e.g. "sort": top, new)
@@ -124,7 +132,7 @@ private fun Filters(ui: BrowseUi, vm: BrowseViewModel) {
         val required = ex.name in cat.requiredExtras
         val selected = ui.more[ex.name] ?: if (required) ex.options.first() else null
         LazyRow(contentPadding = PaddingValues(horizontal = 20.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(cat.optionsFor(ex.name), key = { it }) { o -> InkChip(o, selected == o, onClick = { vm.selectExtra(ex.name, o) }) }
+            items(com.liuying.app.domain.QaGuards.distinctOptions(cat.optionsFor(ex.name)), key = { it }) { o -> InkChip(o, selected == o, onClick = { vm.selectExtra(ex.name, o) }) }
         }
     }
 }

@@ -177,6 +177,9 @@ class StreamRepository(
             StreamSort.Resolution -> items.sortedByDescending { it.quality.resolution?.height ?: 0 }
             StreamSort.Size -> items.sortedByDescending { it.quality.sizeBytes ?: 0L }
             StreamSort.Name -> items.sortedBy { it.displayName.lowercase() }
+            StreamSort.ResolutionThenSize -> items.sortedWith(
+                compareByDescending<StreamItem> { it.quality.resolution?.height ?: 0 }.thenByDescending { it.quality.sizeBytes ?: 0L },
+            )
         }
     }
 }

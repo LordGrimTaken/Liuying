@@ -51,7 +51,7 @@ export function continueCard(c, { onChange } = {}) {
       { label: 'Remove from Continue Watching', icon: 'close', run: () => { dismiss(c, info); onChange?.(); } },
     ]);
   };
-  el.append(h('button', { class: 'more', type: 'button', 'aria-label': `Actions for ${info.name}`, onClick: menu }, icon('more', 18)));
+  el.append(h('button', { class: 'more', type: 'button', tabindex: '-1', 'aria-label': `Actions for ${info.name}`, onClick: menu }, icon('more', 18)));
   el.addEventListener('contextmenu', menu);
   return el;
 }

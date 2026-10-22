@@ -85,6 +85,18 @@ class SourceDetailViewModel(private val c: AppContainer, private val id: Long) :
         }
     }
     fun clearMessage() { message.value = null }
+
+    /** L081 */
+    val testing = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val testSteps = kotlinx.coroutines.flow.MutableStateFlow<List<com.liuying.app.data.repo.TestStep>?>(null)
+    fun runTest(s: Source) {
+        if (testing.value) return
+        testing.value = true; testSteps.value = null
+        viewModelScope.launch {
+            testSteps.value = com.liuying.app.data.repo.SourceTester(c.addonClient).run(s)
+            testing.value = false
+        }
+    }
 }
 
 @Composable
@@ -94,6 +106,8 @@ fun SourceDetailScreen(sourceId: Long, navigator: Navigator) {
     val prefs by vm.prefs.collectAsStateWithLifecycle()
     val hidden by vm.hidden.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
+    val testing by vm.testing.collectAsStateWithLifecycle()
+    val testSteps by vm.testSteps.collectAsStateWithLifecycle()
     val context = LocalContext.current
     BackHandler { navigator.back() }
     androidx.compose.runtime.LaunchedEffect(message) { message?.let { Toast.makeText(context, it, Toast.LENGTH_SHORT).show(); vm.clearMessage() } }
@@ -135,6 +149,22 @@ fun SourceDetailScreen(sourceId: Long, navigator: Navigator) {
                         InkTextButton("Refresh now", { vm.refresh(s) })
                         if (s.needsConfiguration) InkTextButton("Configure", { openConfigure(context, s) })
                     }
+                }
+            }
+            item { SectionHeader("Test this source") }
+            item {
+                Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Asks the source for each thing it says it offers and shows what worked.", color = PaperMuted, style = MaterialTheme.typography.bodyMedium)
+                    InkButton(if (testing) "Testing" else "Run test", { vm.runTest(s) }, enabled = !testing, filled = false)
+                    testSteps?.let { steps ->
+                        steps.forEach { st ->
+                            val mark = when (st.status) { com.liuying.app.data.repo.TestStep.Status.Pass -> "Pass"; com.liuying.app.data.repo.TestStep.Status.Fail -> "Fail"; else -> "Skipped" }
+                            Text("$mark  ·  ${st.resource}  ·  ${st.detail}", color = if (st.status == com.liuying.app.data.repo.TestStep.Status.Fail) Vermilion else Paper, style = MaterialTheme.typography.bodyMedium)
+                        }
+                        Text(com.liuying.app.data.repo.SourceTestText.summary(steps), color = PaperMuted, style = MaterialTheme.typography.labelMedium)
+                    }
+                    // L083
+                    Text("This source's operator can see your IP address and what you ask it for.", color = PaperMuted, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 6.dp))
                 }
             }
             item { SectionHeader("Catalogs") }

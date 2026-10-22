@@ -78,6 +78,8 @@ class TypePageViewModel(private val c: AppContainer, val type: String) : ViewMod
         viewModelScope.launch {
             rows.collect { list ->
                 if (genre.value != null && _hero.value.isNotEmpty()) return@collect
+                // every catalog of this type is gone (source removed or disabled): do not keep featuring its titles
+                if (list != null && list.isEmpty() && genre.value == null) { _hero.value = emptyList(); heroEntry = null }
                 val first = list?.firstOrNull() ?: return@collect
                 val items = (first.state as? RowState.Loaded)?.items.orEmpty()
                 val picked = Ux.pickFeatured(items, 5)

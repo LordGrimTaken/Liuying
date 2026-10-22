@@ -104,7 +104,12 @@ fun YouScreen(navigator: Navigator) {
             if (account.signedIn) {
                 Column(Modifier.padding(horizontal = 20.dp)) {
                     Text("Signed in as ${account.username}", color = Paper, style = MaterialTheme.typography.bodyLarge)
-                    Text(syncLine(account.status), color = if (account.status is SyncStatus.Failed) Vermilion else PaperMuted, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 2.dp))
+                    val panel = com.liuying.app.domain.SyncPanelText.lines(
+                        account.status == SyncStatus.Syncing, (account.status as? SyncStatus.Failed)?.message,
+                        (account.status as? SyncStatus.Done)?.at, System.currentTimeMillis(), account.pending, 0,
+                    )
+                    Text(panel.headline, color = if (panel.problem) Vermilion else Paper, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 2.dp))
+                    Text(panel.detail, color = if (panel.problem) Vermilion else PaperMuted, style = MaterialTheme.typography.bodyMedium)
                     Text("Your shelf, sources and progress sync best-effort. Everything works offline first.", color = PaperMuted, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 6.dp))
                     Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         InkButton("Sync now", vm::syncNow, enabled = account.status != SyncStatus.Syncing)
@@ -154,6 +159,7 @@ fun YouScreen(navigator: Navigator) {
                             p.manifest.resources.map { it.name }.distinct().forEach { Badge(it) }
                         }
                         p.warnings.forEach { w -> warningText(w)?.let { Text(it, color = Gold, style = MaterialTheme.typography.bodyMedium) } }
+                        Text("The operator of a source can see your IP address and what you ask it for.", color = PaperMuted, style = MaterialTheme.typography.labelMedium)
                         if (p.requiresExtraConfirmation) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Switch(add.confirmRisky, vm::setRiskyConfirmed)
@@ -266,7 +272,7 @@ fun YouScreen(navigator: Navigator) {
         }
 
         item { SectionHeader("Data and storage") }
-        item { DataSettings() }
+        item { DataSettings(onOpenHistory = navigator::openHistory) }
 
         item { SectionHeader("About") }
         item { ToggleRow("Check for updates automatically", "Looks at liuyingapp.com at most every 12 hours", settings.autoUpdateCheck) { v -> vm.update { it.copy(autoUpdateCheck = v) } } }
@@ -360,6 +366,8 @@ private fun PlaybackSettings(s: AppSettings, vm: YouViewModel) {
         ToggleRow("Hide streams that cannot play", null, s.hideNonPlayableStreams) { v -> vm.update { it.copy(hideNonPlayableStreams = v) } }
         ChoiceRow("Mark watched at", "Share of the runtime played", listOf(0.80, 0.85, 0.90, 0.95, 0.98), s.completionThreshold, { "${(it * 100).toInt()}%" }) { v -> vm.update { it.copy(completionThreshold = v) } }
         ChoiceRow("Seek step", null, listOf(5, 10, 15, 30), s.seekStepSec, { "$it s" }) { v -> vm.update { it.copy(seekStepSec = v) } }
+        ChoiceRow("Long skip", "The +N s button in the player, for intros and recaps", listOf(30, 60, 85, 90, 120), s.longSkipSec, { "$it s" }) { v -> vm.update { it.copy(longSkipSec = v) } }
+        ChoiceRow("Resume rewind", "Back up a little when you resume", listOf(0, 5, 10), s.resumeRewindSec, { if (it == 0) "Off" else "$it s" }) { v -> vm.update { it.copy(resumeRewindSec = v) } }
         ChoiceRow("Subtitles", null, SubtitleMode.entries, s.subtitleMode, { enumLabel(it.name) }) { v -> vm.update { it.copy(subtitleMode = v) } }
         ToggleRow("Fetch subtitles from sources", null, s.autoFetchSubtitles) { v -> vm.update { it.copy(autoFetchSubtitles = v) } }
     }
@@ -375,6 +383,7 @@ private fun ContentSettings(s: AppSettings, vm: YouViewModel) {
         ToggleRow("Continue watching row", null, s.showContinueWatching) { v -> vm.update { it.copy(showContinueWatching = v) } }
         ToggleRow("Up next cards", "Suggest the next episode", s.showUpNext) { v -> vm.update { it.copy(showUpNext = v) } }
         ToggleRow("Save watch history", "Off stops recording progress", s.saveWatchHistory) { v -> vm.update { it.copy(saveWatchHistory = v) } }
+        ToggleRow("Offer links from the clipboard", "Asks before adding a source link you copied", s.clipboardLinkDetection) { v -> vm.update { it.copy(clipboardLinkDetection = v) } }
         ToggleRow("Remember searches", null, s.recentSearchesEnabled) { v -> vm.update { it.copy(recentSearchesEnabled = v) } }
     }
 }

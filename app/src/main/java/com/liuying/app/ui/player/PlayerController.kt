@@ -37,6 +37,18 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.text.TextOutput
 import androidx.media3.session.MediaSession
 import com.liuying.app.ui.player.logic.AutoSubtitleMode
+import com.liuying.app.ui.player.logic.ErrorCopy
+import com.liuying.app.ui.player.logic.PlaybackStats
+import com.liuying.app.ui.player.logic.RememberedAudio
+import com.liuying.app.ui.player.logic.SleepChoice
+import com.liuying.app.ui.player.logic.SleepTimer
+import com.liuying.app.ui.player.logic.StallDetector
+import com.liuying.app.ui.player.logic.SubtitleCharset
+import com.liuying.app.ui.player.logic.TrackChoice
+import com.liuying.app.ui.player.logic.withAudio
+import com.liuying.app.ui.player.logic.withSubtitle
+import androidx.media3.exoplayer.analytics.AnalyticsListener
+import java.io.File
 import com.liuying.app.ui.player.logic.ErrorClassifier
 import com.liuying.app.ui.player.logic.ErrorKind
 import com.liuying.app.ui.player.logic.HeaderPolicy
@@ -64,22 +76,17 @@ import java.util.concurrent.ConcurrentHashMap
 
 enum class UiPhase { LOADING, READY, RECONNECTING, ERROR }
 
-data class ErrorInfo(val kind: ErrorKind, val title: String, val message: String, val technical: String?)
-
-/** In-process memory of the user's manual subtitle choice per title (language, not file). */
-internal object SubtitleMemory {
-    data class Entry(val language: String?, val off: Boolean)
-    private val map = ConcurrentHashMap<String, Entry>()
-    fun get(mediaId: String): Entry? = map[mediaId]
-    fun put(mediaId: String, e: Entry) { map[mediaId] = e }
-}
+data class ErrorInfo(val kind: ErrorKind, val title: String, val message: String, val technical: String?, val copy: ErrorCopy? = null)
 
 /**
  * Owns the ExoPlayer, MediaSession and all observable player state for one PlayerActivity.
  * Compose reads the `mutableStateOf` fields directly.
  */
 @OptIn(UnstableApi::class)
-class PlayerController(private val activity: PlayerActivity, val request: PlaybackRequest) {
+class PlayerController(private val activity: PlayerActivity, initialRequest: PlaybackRequest) {
+
+    /** The playback being shown. Changes when the user switches stream or episode without leaving the player. */
+    var request by mutableStateOf(initialRequest); private set
 
     private val scope get() = activity.lifecycleScope
     private val provider get() = PlayerDependencies.settingsProvider
@@ -117,6 +124,17 @@ class PlayerController(private val activity: PlayerActivity, val request: Playba
     var seekFeedback by mutableStateOf<SeekFeedback?>(null); private set
     var subtitleBusyMessage by mutableStateOf<String?>(null); private set
     var resumedToast by mutableStateOf<String?>(null); private set
+    /** L049 */
+    var statsVisible by mutableStateOf(false)
+    var stats by mutableStateOf(PlaybackStats()); private set
+    /** L052 */
+    var sleepStatus by mutableStateOf<String?>(null); private set
+    /** L048: playback has been waiting too long; the screen offers another stream. */
+    var stallOffer by mutableStateOf(false)
+    /** L045: streams listed inside the player. */
+    var streamList by mutableStateOf<StreamsSnapshot?>(null); private set
+    var switching by mutableStateOf(false); private set
+    val canSwitch: Boolean get() = PlayerDependencies.gateway != null
 
     data class SeekFeedback(val forward: Boolean, val seconds: Int, val id: Long)
 
@@ -127,7 +145,6 @@ class PlayerController(private val activity: PlayerActivity, val request: Playba
     private val failedSubtitleUrls = HashSet<String>()
     private val localSubtitles = ArrayList<LocalSubtitle>()
     private var strippedExternalOnce = false
-    private var resolvedMimes: Map<Int, String> = emptyMap()
     private val trackRefs = HashMap<String, Pair<Tracks.Group, Int>>()
     private var started = false
     private var released = false
@@ -144,9 +161,20 @@ class PlayerController(private val activity: PlayerActivity, val request: Playba
     private var hudJob: Job? = null
     private var feedbackId = 0L
     private var originalBrightness: Float = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
-    private val streamHost = HeaderPolicy.hostOf(request.url)
-    private val subtitleOnlyHosts: Set<String> = request.externalSubtitles
+    @Volatile private var liveHeaders: Map<String, String> = initialRequest.headers
+    @Volatile private var streamHost: String? = HeaderPolicy.hostOf(initialRequest.url)
+    @Volatile private var subtitleOnlyHosts: Set<String> = initialRequest.externalSubtitles
         .mapNotNull { HeaderPolicy.hostOf(it.url) }.toSet() - setOfNotNull(streamHost)
+    private val sleepTimer = SleepTimer()
+    private val stall = StallDetector()
+    private var droppedFrames = 0
+    private var bandwidthBps = 0L
+    private var streamsJob: Job? = null
+    private var switchJob: Job? = null
+    private var preparedSubs: Map<Int, PreparedSub> = emptyMap()
+    private val memoryKey get() = "${request.type}|${request.mediaId}"
+
+    private class PreparedSub(val file: File, val mime: String)
 
     private data class LocalSubtitle(val id: String, val uri: Uri, val label: String, val mime: String)
 
@@ -158,9 +186,9 @@ class PlayerController(private val activity: PlayerActivity, val request: Playba
         val ctx = activity.applicationContext
         val httpFactory = OkHttpDataSource.Factory(PlayerDependencies.httpClient)
         val baseFactory = DefaultDataSource.Factory(ctx, httpFactory)
-        val headers = request.headers
-        val dsFactory = if (headers.isEmpty()) baseFactory else ResolvingDataSource.Factory(baseFactory) { spec: DataSpec ->
-            if (HeaderPolicy.shouldApply(spec.uri.host, spec.uri.scheme, streamHost, subtitleOnlyHosts)) {
+        val dsFactory = ResolvingDataSource.Factory(baseFactory) { spec: DataSpec ->
+            val headers = liveHeaders
+            if (headers.isNotEmpty() && HeaderPolicy.shouldApply(spec.uri.host, spec.uri.scheme, streamHost, subtitleOnlyHosts)) {
                 val merged = LinkedHashMap<String, String>(headers)
                 merged.putAll(spec.httpRequestHeaders) // engine-set headers (Range) win
                 spec.buildUpon().setHttpRequestHeaders(merged).build()
@@ -203,9 +231,17 @@ class PlayerController(private val activity: PlayerActivity, val request: Playba
         if (started) return
         started = true
         player.addListener(listener)
+        player.addAnalyticsListener(object : AnalyticsListener {
+            override fun onDroppedVideoFrames(eventTime: AnalyticsListener.EventTime, droppedFrames: Int, elapsedMs: Long) {
+                this@PlayerController.droppedFrames += droppedFrames
+            }
+            override fun onBandwidthEstimate(eventTime: AnalyticsListener.EventTime, totalLoadTimeMs: Int, totalBytesLoaded: Long, bitrateEstimate: Long) {
+                bandwidthBps = bitrateEstimate
+            }
+        })
         originalBrightness = activity.window.attributes.screenBrightness
         scope.launch {
-            resolvedMimes = resolveUnknownSubtitleMimes()
+            preparedSubs = prepareExternalSubtitles()
             if (released) return@launch
             player.setMediaItem(buildItem(), request.startPositionMs.coerceAtLeast(0))
             player.playWhenReady = true
@@ -233,6 +269,8 @@ class PlayerController(private val activity: PlayerActivity, val request: Playba
         if (released) return
         released = true
         retryJob?.cancel()
+        streamsJob?.cancel()
+        switchJob?.cancel()
         reportFinal()
         activity.window.attributes = activity.window.attributes.also { it.screenBrightness = originalBrightness }
         session.release()
@@ -252,7 +290,48 @@ class PlayerController(private val activity: PlayerActivity, val request: Playba
             positionMs, durationMs, request.nextEpisode != null, nextDismissed,
             settings.autoPlayNext && !settings.askBeforeNext, settings.nextCountdownSec * 1000L,
         )
+        val now = System.currentTimeMillis()
+        // L048: loading or buffering for 15 s while the user wants playback
+        val waiting = phase != UiPhase.ERROR && phase != UiPhase.RECONNECTING && !switching &&
+            (phase == UiPhase.LOADING || (player.playbackState == Player.STATE_BUFFERING && player.playWhenReady))
+        if (stall.tick(now, waiting)) stallOffer = true
+        if (!waiting && stallOffer) stallOffer = false
+        // L052
+        if (sleepTimer.active != null) {
+            if (sleepTimer.tick(now, positionMs, durationMs)) {
+                val endOfEpisode = durationMs > 0 && durationMs - positionMs <= 1_500
+                if (endOfEpisode) nextDismissed = true // do not roll into the next episode
+                player.pause()
+                showHud("Sleep timer: paused")
+                sleepStatus = null
+            } else sleepStatus = SleepTimer.status(sleepTimer.active, sleepTimer.remainingMs(now))
+        }
+        if (statsVisible) stats = collectStats()
     }
+
+    private fun collectStats(): PlaybackStats {
+        val v = player.videoFormat
+        val a = player.audioFormat
+        return PlaybackStats(
+            width = v?.width ?: 0, height = v?.height ?: 0,
+            videoBitrate = (v?.bitrate?.takeIf { it > 0 } ?: v?.averageBitrate?.takeIf { it > 0 } ?: 0),
+            frameRate = v?.frameRate?.takeIf { it > 0 } ?: 0f,
+            videoCodec = v?.codecs ?: v?.sampleMimeType?.substringAfter('/'),
+            audioCodec = com.liuying.app.ui.player.logic.TrackLabels.codecName(a?.codecs ?: a?.sampleMimeType) ?: a?.codecs ?: a?.sampleMimeType?.substringAfter('/'),
+            droppedFrames = droppedFrames,
+            bufferAheadMs = (player.bufferedPosition - player.currentPosition).coerceAtLeast(0),
+            bandwidthBps = bandwidthBps,
+        )
+    }
+
+    // ---- sleep timer ----
+    val sleepChoice: SleepChoice? get() = sleepTimer.active
+    fun startSleep(choice: SleepChoice) {
+        sleepTimer.start(choice, System.currentTimeMillis())
+        sleepStatus = SleepTimer.status(choice, sleepTimer.remainingMs(System.currentTimeMillis()))
+        showHud(sleepStatus ?: "Sleep timer set")
+    }
+    fun cancelSleep() { sleepTimer.cancel(); sleepStatus = null; showHud("Sleep timer off") }
 
     private val listener = object : Player.Listener {
         override fun onPlaybackStateChanged(state: Int) {
@@ -300,8 +379,9 @@ class PlayerController(private val activity: PlayerActivity, val request: Playba
     private fun buildItem(): MediaItem {
         val subs = ArrayList<MediaItem.SubtitleConfiguration>()
         for ((i, e) in activeExternal()) {
-            val mime = SubtitleFormat.fromExtension(e.url) ?: resolvedMimes[i] ?: SubtitleFormat.SUBRIP
-            subs += MediaItem.SubtitleConfiguration.Builder(Uri.parse(e.url))
+            val prepared = preparedSubs[i]
+            val mime = prepared?.mime ?: SubtitleFormat.fromExtension(e.url) ?: SubtitleFormat.SUBRIP
+            subs += MediaItem.SubtitleConfiguration.Builder(if (prepared != null) Uri.fromFile(prepared.file) else Uri.parse(e.url))
                 .setMimeType(mime)
                 .setLanguage(Languages.base(e.language))
                 .setLabel(e.label ?: e.sourceName)
@@ -330,25 +410,42 @@ class PlayerController(private val activity: PlayerActivity, val request: Playba
             .build()
     }
 
-    /** Probes the first bytes of external subtitles whose URL has no recognisable extension (bounded to ~2.5 s). */
-    private suspend fun resolveUnknownSubtitleMimes(): Map<Int, String> {
-        val unknown = request.externalSubtitles.withIndex().filter { SubtitleFormat.fromExtension(it.value.url) == null }
-        if (unknown.isEmpty()) return emptyMap()
-        return withTimeoutOrNull(2_500) {
-            withContext(Dispatchers.IO) {
-                unknown.map { (i, e) ->
-                    async {
+    /**
+     * L069: downloads each external subtitle (bounded to ~2.5 s overall), detects its text encoding and writes a UTF-8 copy,
+     * because the player's parsers read UTF-8 only. Anything slower falls back to the original link.
+     */
+    private suspend fun prepareExternalSubtitles(): Map<Int, PreparedSub> {
+        val list = request.externalSubtitles.withIndex().filter { it.value.url !in failedSubtitleUrls }
+        if (list.isEmpty()) return emptyMap()
+        val dir = File(activity.cacheDir, "subs").apply { mkdirs() }
+        // keep the cache small: files from earlier sessions are dropped
+        runCatching { dir.listFiles()?.filter { System.currentTimeMillis() - it.lastModified() > 6 * 3600_000L }?.forEach { it.delete() } }
+        val sHost = streamHost
+        val sHeaders = liveHeaders
+        return withContext(Dispatchers.IO) {
+            list.map { (i, e) ->
+                async {
+                    withTimeoutOrNull(2_500) {
                         runCatching {
-                            val req = Request.Builder().url(e.url).header("Range", "bytes=0-1023").build()
-                            PlayerDependencies.httpClient.newCall(req).execute().use { r ->
-                                val bytes = r.body?.source()?.let { src -> src.request(1024); src.buffer.snapshot().toByteArray() }
-                                i to SubtitleFormat.sniff(String(bytes ?: ByteArray(0), Charsets.UTF_8).take(512))
+                            val rb = Request.Builder().url(e.url)
+                            if (HeaderPolicy.hostOf(e.url) == sHost) sHeaders.forEach { (k, v) -> rb.header(k, v) }
+                            val bytes = PlayerDependencies.httpClient.newCall(rb.build()).execute().use { r ->
+                                if (!r.isSuccessful) return@runCatching null
+                                val src = r.body?.source() ?: return@runCatching null
+                                src.request(MAX_SUBTITLE_BYTES + 1)
+                                if (src.buffer.size > MAX_SUBTITLE_BYTES) return@runCatching null
+                                src.readByteArray()
                             }
+                            val res = SubtitleCharset.decode(bytes, e.language)
+                            val mime = SubtitleFormat.fromExtension(e.url) ?: SubtitleFormat.sniff(res.text.take(512))
+                            val f = File(dir, "e${System.nanoTime()}.sub")
+                            f.writeBytes(res.text.toByteArray(Charsets.UTF_8))
+                            i to PreparedSub(f, mime)
                         }.getOrNull()
                     }
-                }.awaitAll().filterNotNull().toMap()
-            }
-        } ?: emptyMap()
+                }
+            }.awaitAll().filterNotNull().toMap()
+        }
     }
 
     /** Re-creates the media item (e.g. after dropping a bad subtitle or adding a file) keeping position and play state. */
@@ -360,6 +457,8 @@ class PlayerController(private val activity: PlayerActivity, val request: Playba
         player.playWhenReady = play
         player.prepare()
     }
+
+    private companion object { const val MAX_SUBTITLE_BYTES = 3L * 1024 * 1024 }
 
     private fun currentSubtitleFormatId(): String? =
         selectedSubtitleKey?.let { trackRefs[it] }?.let { (g, i) -> g.getTrackFormat(i).id }
@@ -434,9 +533,12 @@ class PlayerController(private val activity: PlayerActivity, val request: Playba
 
     private fun runAutoSelection(audio: List<TrackInfo>, subs: List<TrackInfo>, selectedAudio: String?) {
         var effectiveAudio = selectedAudio
+        val memory = PlayerDependencies.trackMemory.get(memoryKey)
         if (!autoAudioDone && audio.isNotEmpty()) {
             autoAudioDone = true
-            val pick = TrackSelection.chooseAudio(audio, settings.preferredAudioLanguages)
+            // L047: the language picked earlier for this series wins over the global preference, if this file has it
+            val pick = RememberedAudio.pick(audio, memory?.audioLanguage)
+                ?: TrackSelection.chooseAudio(audio, settings.preferredAudioLanguages)
             if (pick != null && pick != selectedAudio) { applyAudio(pick); effectiveAudio = pick }
         }
         if (userTouchedSub || audio.isEmpty() || subs.isEmpty()) return
@@ -444,8 +546,8 @@ class PlayerController(private val activity: PlayerActivity, val request: Playba
         if (sig == lastAutoSubSignature) return
         lastAutoSubSignature = sig
         val prefs = selectionPrefs()
-        val remembered = SubtitleMemory.get(request.mediaId)
-        val choice = remembered?.let { TrackSelection.applyRemembered(subs, it.language, it.off, prefs) }
+        val choice = memory?.takeIf { it.subtitleOff || it.subtitleLanguage != null }
+            ?.let { TrackSelection.applyRemembered(subs, it.subtitleLanguage, it.subtitleOff, prefs) }
             ?: TrackSelection.chooseSubtitle(subs, TrackSelection.audioLanguage(audio, effectiveAudio), prefs)
         when (choice) {
             is SubtitleChoice.Track -> applySubtitle(choice.key, remember = false)
@@ -463,6 +565,9 @@ class PlayerController(private val activity: PlayerActivity, val request: Playba
     fun selectAudio(key: String) {
         autoAudioDone = true
         applyAudio(key)
+        audioTracks.firstOrNull { it.key == key }?.language?.let { lang ->
+            PlayerDependencies.trackMemory.put(memoryKey, PlayerDependencies.trackMemory.get(memoryKey).withAudio(lang))
+        }
     }
 
     private fun applySubtitle(key: String?, remember: Boolean) {
@@ -478,7 +583,7 @@ class PlayerController(private val activity: PlayerActivity, val request: Playba
         selectedSubtitleKey = key
         if (remember) {
             val lang = key?.let { k -> subtitleTracks.firstOrNull { it.key == k }?.language }
-            SubtitleMemory.put(request.mediaId, SubtitleMemory.Entry(lang, key == null))
+            PlayerDependencies.trackMemory.put(memoryKey, PlayerDependencies.trackMemory.get(memoryKey).withSubtitle(lang, key == null))
         }
     }
 
@@ -495,11 +600,19 @@ class PlayerController(private val activity: PlayerActivity, val request: Playba
                 runCatching {
                     val name = activity.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
                         ?.use { c -> if (c.moveToFirst()) c.getString(0) else null } ?: uri.lastPathSegment ?: "Subtitle file"
-                    val mime = SubtitleFormat.fromExtension(name) ?: activity.contentResolver.openInputStream(uri)?.use { ins ->
-                        val buf = ByteArray(1024); val n = ins.read(buf).coerceAtLeast(0)
-                        SubtitleFormat.sniff(String(buf, 0, n, Charsets.UTF_8))
-                    } ?: SubtitleFormat.SUBRIP
-                    Triple(name, mime, uri)
+                    // L069: read the file, detect its encoding and keep a UTF-8 copy for the parser
+                    val bytes = activity.contentResolver.openInputStream(uri)?.use { ins ->
+                        val out = java.io.ByteArrayOutputStream()
+                        val buf = ByteArray(16 * 1024)
+                        while (true) { val n = ins.read(buf); if (n < 0) break; out.write(buf, 0, n); if (out.size() > MAX_SUBTITLE_BYTES) return@runCatching null }
+                        out.toByteArray()
+                    } ?: return@runCatching null
+                    val res = SubtitleCharset.decode(bytes)
+                    val mime = SubtitleFormat.fromExtension(name) ?: SubtitleFormat.sniff(res.text.take(512))
+                    val dir = File(activity.cacheDir, "subs").apply { mkdirs() }
+                    val f = File(dir, "f${System.nanoTime()}.sub")
+                    f.writeBytes(res.text.toByteArray(Charsets.UTF_8))
+                    Triple(name, mime, Uri.fromFile(f))
                 }.getOrNull()
             }
             if (result == null) { subtitleBusyMessage = "This subtitle couldn't be read"; delay(2500); subtitleBusyMessage = null; return@launch }
@@ -522,6 +635,7 @@ class PlayerController(private val activity: PlayerActivity, val request: Playba
 
     // ---- transport ----
     fun togglePlay() {
+        if (player.playerError != null) { retry(); return }
         if (player.playbackState == Player.STATE_ENDED) { player.seekTo(0); player.play() }
         else if (player.isPlaying || player.playWhenReady) player.pause() else player.play()
         poke()
@@ -538,6 +652,28 @@ class PlayerController(private val activity: PlayerActivity, val request: Playba
         seekBy(if (forward) sec * 1000L else -sec * 1000L)
         seekFeedback = SeekFeedback(forward, sec, ++feedbackId)
     }
+    /** L042: the long skip button (default +85 s) for intros and recaps. */
+    fun skipLong() {
+        val sec = settings.longSkipSeconds
+        seekBy(sec * 1000L)
+        seekFeedback = SeekFeedback(true, sec, ++feedbackId)
+    }
+
+    /** L055: hardware media keys and remote buttons. @return true when the key was used. */
+    fun handleMediaKey(action: com.liuying.app.ui.player.logic.MediaKeyAction): Boolean {
+        return when (action) {
+            com.liuying.app.ui.player.logic.MediaKeyAction.TogglePlay -> { togglePlay(); true }
+            com.liuying.app.ui.player.logic.MediaKeyAction.Play -> { player.play(); poke(); true }
+            com.liuying.app.ui.player.logic.MediaKeyAction.Pause -> { player.pause(); poke(); true }
+            com.liuying.app.ui.player.logic.MediaKeyAction.SeekForward -> { seekStep(true); true }
+            com.liuying.app.ui.player.logic.MediaKeyAction.SeekBack -> { seekStep(false); true }
+            com.liuying.app.ui.player.logic.MediaKeyAction.Next -> { if (request.nextEpisode != null) { skipToNext(); true } else false }
+            com.liuying.app.ui.player.logic.MediaKeyAction.Previous -> { if (request.previousEpisode != null) { playPrevious(); true } else false }
+            com.liuying.app.ui.player.logic.MediaKeyAction.Stop -> { activity.onPlayerFinished(PlayerExit.Closed); true }
+            com.liuying.app.ui.player.logic.MediaKeyAction.None -> false
+        }
+    }
+
     fun changeSpeed(v: Float) {
         speed = v.coerceIn(0.25f, 3f)
         player.playbackParameters = PlaybackParameters(speed)
@@ -636,13 +772,13 @@ class PlayerController(private val activity: PlayerActivity, val request: Playba
         when (kind) {
             ErrorKind.BEHIND_LIVE_WINDOW -> { player.seekToDefaultPosition(); player.prepare() }
             ErrorKind.NETWORK -> scheduleRetry(e)
-            else -> showError(kind, e)
+            else -> showError(kind, e, status)
         }
     }
 
     private fun scheduleRetry(e: PlaybackException) {
         val d = retryPolicy.delayFor(retryAttempt)
-        if (d == null) { showError(ErrorKind.NETWORK, e); return }
+        if (d == null) { showError(ErrorKind.NETWORK, e, findHttpStatus(e)); return }
         retryAttempt++
         reconnectAttempt = retryAttempt
         phase = UiPhase.RECONNECTING
@@ -658,10 +794,11 @@ class PlayerController(private val activity: PlayerActivity, val request: Playba
         }
     }
 
-    private fun showError(kind: ErrorKind, e: PlaybackException) {
+    private fun showError(kind: ErrorKind, e: PlaybackException, status: Int? = null) {
         retryJob?.cancel()
         phase = UiPhase.ERROR
-        error = ErrorInfo(kind, ErrorClassifier.title(kind), ErrorClassifier.message(kind), e.errorCodeName)
+        val copy = ErrorClassifier.copy(kind, status)
+        error = ErrorInfo(kind, copy.title, copy.what, e.errorCodeName + (status?.let { " · HTTP $it" } ?: ""), copy)
         maybeReport(force = true)
     }
 
@@ -688,8 +825,118 @@ class PlayerController(private val activity: PlayerActivity, val request: Playba
         val next = request.nextEpisode ?: return
         if (advanced) return
         advanced = true
-        maybeReport(force = true, atEnd = player.playbackState == Player.STATE_ENDED)
+        val ended = player.playbackState == Player.STATE_ENDED
+        if (PlayerDependencies.gateway != null) {
+            // stay in the player: pick a stream for the next episode and swap it in
+            loadEpisode(next, atEnd = ended) { advanced = false; exitToNext(next, ended) }
+        } else exitToNext(next, ended)
+    }
+
+    private fun exitToNext(next: NextEpisodeInfo, ended: Boolean) {
+        advanced = true
+        maybeReport(force = true, atEnd = ended)
         activity.onPlayerFinished(PlayerExit.PlayNext(request.mediaId, next.episodeId))
+    }
+
+    /** L044: previous episode, in place. */
+    fun playPrevious() {
+        val prev = request.previousEpisode ?: return
+        if (PlayerDependencies.gateway == null) return
+        loadEpisode(prev, atEnd = false) { showHud("No stream found for that episode") }
+    }
+
+    /** L044: the next-episode button (works any time, not only in the last minute). */
+    fun skipToNext() {
+        if (request.nextEpisode == null) return
+        advanced = false
+        playNextNow()
+    }
+
+    private fun loadEpisode(target: NextEpisodeInfo, atEnd: Boolean, onFail: () -> Unit) {
+        val gw = PlayerDependencies.gateway ?: run { onFail(); return }
+        if (switching) return
+        switching = true
+        showHud("Loading ${target.title}")
+        switchJob?.cancel()
+        switchJob = scope.launch {
+            val base = request
+            val next = runCatching { gw.requestForEpisode(base, target.episodeId, 8_000) }.getOrNull()
+            switching = false
+            if (released) return@launch
+            if (next == null) { onFail(); return@launch }
+            maybeReport(force = true, atEnd = atEnd)
+            applyRequest(next, next.startPositionMs, newEpisode = true)
+        }
+    }
+
+    /** L045: switch to another stream of the same video, keeping the position. */
+    fun switchStream(choice: StreamChoice) {
+        val gw = PlayerDependencies.gateway ?: return
+        if (switching || !choice.playable) return
+        switching = true
+        showHud("Switching stream")
+        val pos = player.currentPosition.coerceAtLeast(0)
+        switchJob?.cancel()
+        switchJob = scope.launch {
+            val next = runCatching { gw.requestForChoice(request, choice.key, pos) }.getOrNull()
+            switching = false
+            if (released) return@launch
+            if (next == null) { showHud("That stream can't be played"); return@launch }
+            panelTab = null
+            applyRequest(next, pos, newEpisode = false)
+        }
+    }
+
+    /** From the error card: keep the player open and show the other streams. */
+    fun openStreamsFromError() {
+        error = null
+        phase = UiPhase.READY
+        controlsVisible = true
+        panelTab = PanelTab.STREAMS
+        loadStreamList()
+    }
+
+    /** Loads the streams for the player's Streams tab. */
+    fun loadStreamList() {
+        val gw = PlayerDependencies.gateway ?: return
+        streamsJob?.cancel()
+        streamList = null
+        val r = request
+        streamsJob = scope.launch {
+            runCatching { gw.streams(r).collect { streamList = it } }
+        }
+    }
+
+    private fun applyRequest(next: PlaybackRequest, startMs: Long, newEpisode: Boolean) {
+        runCatching { PlayerDependencies.onPlaybackStarting?.invoke(next) }
+        request = next
+        liveHeaders = next.headers
+        streamHost = HeaderPolicy.hostOf(next.url)
+        subtitleOnlyHosts = next.externalSubtitles.mapNotNull { HeaderPolicy.hostOf(it.url) }.toSet() - setOfNotNull(streamHost)
+        failedSubtitleUrls.clear()
+        strippedExternalOnce = false
+        if (newEpisode) localSubtitles.clear()
+        userTouchedSub = false
+        autoAudioDone = false
+        lastAutoSubSignature = null
+        pendingSelectSubId = null
+        nextDismissed = false
+        advanced = false
+        retryAttempt = 0
+        error = null
+        stallOffer = false
+        stall.reset()
+        hasPlayed = false
+        throttle.reset()
+        phase = UiPhase.LOADING
+        streamList = null
+        scope.launch {
+            preparedSubs = prepareExternalSubtitles()
+            if (released) return@launch
+            player.setMediaItem(buildItem(), startMs.coerceAtLeast(0))
+            player.playWhenReady = true
+            player.prepare()
+        }
     }
 
     fun tryAnotherStream() {
@@ -723,4 +970,4 @@ class PlayerController(private val activity: PlayerActivity, val request: Playba
     fun onBackgrounded() { maybeReport(force = true) }
 }
 
-enum class PanelTab(val title: String) { AUDIO("Audio"), SUBTITLES("Subtitles"), STYLE("Style"), TIMING("Timing"), SPEED("Speed") }
+enum class PanelTab(val title: String) { AUDIO("Audio"), SUBTITLES("Subtitles"), STYLE("Style"), TIMING("Timing"), SPEED("Speed"), STREAMS("Streams"), MORE("More") }

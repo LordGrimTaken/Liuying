@@ -13,4 +13,5 @@ enum class Tab(val route: String, val label: String) {
 object Overlay {
     const val SEARCH = "search"
     const val CALENDAR = "calendar"
+    const val HISTORY = "history"
 }

@@ -35,6 +35,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -71,14 +72,14 @@ val PosterShape = RoundedCornerShape(8.dp)
 
 @Composable
 fun ScreenTitle(text: String, modifier: Modifier = Modifier) {
-    Text(text, style = MaterialTheme.typography.headlineMedium, color = Paper, modifier = modifier.padding(horizontal = 20.dp, vertical = 12.dp))
+    Text(text, style = MaterialTheme.typography.headlineMedium, color = Paper, modifier = modifier.padding(horizontal = 20.dp, vertical = 12.dp).semantics { heading() })
 }
 
 @Composable
 fun SectionHeader(text: String, modifier: Modifier = Modifier, subtitle: String? = null, trailing: (@Composable () -> Unit)? = null) {
     Row(modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            Text(text, style = MaterialTheme.typography.titleLarge.copy(fontSize = 24.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, lineHeight = 30.sp), color = Paper, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(text, style = MaterialTheme.typography.titleLarge.copy(fontSize = 24.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, lineHeight = 30.sp), color = Paper, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.semantics { heading() })
             if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.labelMedium, color = PaperMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         trailing?.invoke()
@@ -132,7 +133,7 @@ fun PosterCard(
                 QuickSave(saved, title, onToggleSave, Modifier.align(Alignment.BottomEnd).padding(4.dp))
             }
         }
-        Text(title, style = MaterialTheme.typography.labelLarge, color = Paper, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
+        Text(title, style = MaterialTheme.typography.labelLarge.forTitle(title), color = Paper, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
         if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.labelMedium, color = PaperMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }

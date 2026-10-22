@@ -78,6 +78,12 @@ fun ShelfScreen(navigator: Navigator) {
     val filter by vm.filter.collectAsStateWithLifecycle()
     val query by vm.query.collectAsStateWithLifecycle()
     var sortMenu by remember { mutableStateOf(false) }
+    var status by remember { mutableStateOf(com.liuying.app.domain.ShelfStatus.All) }
+    var selected by remember { mutableStateOf(setOf<String>()) }
+    val entries = state.entries.filter { status == com.liuying.app.domain.ShelfStatus.All || it.status == status }
+    val selecting = selected.isNotEmpty()
+    fun keyOf(e: ShelfEntry) = e.item.type + "|" + e.item.id
+    val open = { e: ShelfEntry -> if (selecting) selected = if (keyOf(e) in selected) selected - keyOf(e) else selected + keyOf(e) else navigator.openTitle(e.item.type, e.item.id) }
     val snackbar = remember { androidx.compose.material3.SnackbarHostState() }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val removeWithUndo = { item: LibraryItem ->
@@ -117,7 +123,19 @@ fun ShelfScreen(navigator: Navigator) {
         LazyRow(contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(TypeFilter.entries.toList()) { f -> InkChip(f.label, filter == f, { vm.filter.value = f }) }
         }
-        if (state.entries.isEmpty()) {
+        LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(com.liuying.app.domain.ShelfStatus.entries.toList()) { st -> InkChip(st.label, status == st, { status = st }) }
+            item { InkTextButton("Surprise me", { vm.surprise()?.let { navigator.openTitle(it.type, it.id) } }) }
+        }
+        if (selecting) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("${selected.size} selected", color = Paper, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f).padding(start = 8.dp))
+                InkTextButton("Mark watched", { vm.markWatched(entries.filter { keyOf(it) in selected }.map { it.item }); selected = emptySet() })
+                InkTextButton("Remove", { vm.removeAll(entries.filter { keyOf(it) in selected }.map { it.item }); selected = emptySet() })
+                InkTextButton("Cancel", { selected = emptySet() }, color = PaperMuted)
+            }
+        }
+        if (entries.isEmpty()) {
             EmptyBlock("Nothing here", "No saved titles match this filter.")
             return@Column
         }
@@ -126,20 +144,20 @@ fun ShelfScreen(navigator: Navigator) {
                 GridCells.Adaptive(90.dp), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = DockClearance),
                 horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                items(state.entries, key = { it.item.type + it.item.id }) { e ->
-                    ShelfCell(e, navigator, onRemove = { removeWithUndo(e.item) }) { menu, openMenu ->
-                        PosterCard(e.item.name, e.item.poster, fillWidth = true, subtitle = e.item.year, progress = e.progress, watched = e.watched,
-                            onLongClick = openMenu) { navigator.openTitle(e.item.type, e.item.id) }
+                items(entries, key = { it.item.type + it.item.id }) { e ->
+                    ShelfCell(e, navigator, onRemove = { removeWithUndo(e.item) }, onSelect = { selected = selected + keyOf(e) }) { menu, openMenu ->
+                        PosterCard(e.item.name, e.item.poster, fillWidth = true, subtitle = e.item.year, progress = e.progress, watched = e.watched || keyOf(e) in selected,
+                            onLongClick = openMenu) { open(e) }
                         menu()
                     }
                 }
             }
         } else {
             LazyColumn(contentPadding = PaddingValues(bottom = DockClearance)) {
-                items(state.entries, key = { it.item.type + it.item.id }) { e ->
-                    ShelfCell(e, navigator, onRemove = { removeWithUndo(e.item) }) { menu, openMenu ->
+                items(entries, key = { it.item.type + it.item.id }) { e ->
+                    ShelfCell(e, navigator, onRemove = { removeWithUndo(e.item) }, onSelect = { selected = selected + keyOf(e) }) { menu, openMenu ->
                         Row(
-                            Modifier.fillMaxWidth().combinedClickable(onClick = { navigator.openTitle(e.item.type, e.item.id) }, onLongClick = openMenu)
+                            Modifier.fillMaxWidth().combinedClickable(onClick = { open(e) }, onLongClick = openMenu)
                                 .padding(horizontal = 20.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
@@ -149,7 +167,7 @@ fun ShelfScreen(navigator: Navigator) {
                                 Text(listOfNotNull(e.item.type.replaceFirstChar { it.uppercase() }, e.item.year).joinToString("  ·  "), color = PaperMuted, style = MaterialTheme.typography.bodyMedium)
                                 if (e.progress != null) ProgressBar(e.progress, Modifier.padding(top = 6.dp).width(120.dp))
                             }
-                            if (e.watched) Badge("Seen")
+                            if (keyOf(e) in selected) Badge("Selected") else if (e.watched) Badge("Seen")
                         }
                         menu()
                     }
@@ -163,7 +181,7 @@ fun ShelfScreen(navigator: Navigator) {
 
 @Composable
 private fun ShelfCell(
-    e: ShelfEntry, navigator: Navigator, onRemove: () -> Unit,
+    e: ShelfEntry, navigator: Navigator, onRemove: () -> Unit, onSelect: () -> Unit,
     content: @Composable (menu: @Composable () -> Unit, openMenu: () -> Unit) -> Unit,
 ) {
     var open by remember { mutableStateOf(false) }
@@ -171,6 +189,7 @@ private fun ShelfCell(
         content({
             DropdownMenu(open, { open = false }) {
                 DropdownMenuItem(text = { Text("Open details") }, onClick = { open = false; navigator.openTitle(e.item.type, e.item.id) })
+                DropdownMenuItem(text = { Text("Select") }, onClick = { open = false; onSelect() })
                 DropdownMenuItem(text = { Text("Remove from shelf") }, onClick = { open = false; onRemove() })
             }
         }, { open = true })

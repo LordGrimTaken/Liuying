@@ -39,6 +39,7 @@ object PlayerSettingsMapper {
             swipeBrightnessVolumeEnabled = s.gestureBrightness || s.gestureVolume,
             longPressSpeedEnabled = s.gestureSpeedHold,
             seekStepSeconds = s.seekStepSec,
+            longSkipSeconds = s.longSkipSec.coerceIn(30, 120),
             autoPlayNext = s.autoPlayNext,
             nextCountdownSec = s.nextEpisodeCountdownSec.coerceIn(5, 30),
             askBeforeNext = s.askBeforeNext,

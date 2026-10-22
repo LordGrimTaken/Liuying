@@ -76,6 +76,7 @@ fun TodayScreen(navigator: Navigator) {
     val cw by vm.continueItems.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
     val saved by vm.savedKeys.collectAsStateWithLifecycle()
+    val watched by vm.actions.watchedKeys.collectAsStateWithLifecycle()
 
     androidx.compose.material3.pulltorefresh.PullToRefreshBox(
         isRefreshing = rows?.any { it.refreshing } == true, onRefresh = vm::refresh,
@@ -109,7 +110,11 @@ fun TodayScreen(navigator: Navigator) {
                 Box(Modifier.fillMaxWidth().height(heroHeight()).background(com.liuying.app.ui.theme.InkSurface).shimmer(com.liuying.app.ui.theme.InkSurface, Paper.copy(alpha = 0.05f)))
             }
         }
-        if (hasSources == false) {
+        if (hasSources == false && !settings.firstRunGuideDismissed) {
+            item(key = "first-run") {
+                com.liuying.app.ui.onboarding.FirstRunGuide(onAddSource = { navigator.goTab(Tab.You) }, onSkip = vm::dismissGuide)
+            }
+        } else if (hasSources == false) {
             item {
                 EmptyBlock(
                     "Your scroll is blank",
@@ -140,13 +145,16 @@ fun TodayScreen(navigator: Navigator) {
             item { SectionHeader("Loading") ; PlaceholderRow() }
         }
         rows?.let { list ->
-            items(list, key = { it.key }) { row -> CatalogRow(row, navigator, saved, { vm.toggleSave(it, row.entry.catalog.type) }, onRetry = { vm.retry(row.key) }) }
+            items(list, key = { it.key }) { row -> CatalogRow(row, navigator, saved, { vm.toggleSave(it, row.entry.catalog.type) }, onRetry = { vm.retry(row.key) }, watched = watched, onToggleWatched = { vm.toggleWatched(it, row.entry.catalog.type) }) }
             if (hasSources == true && list.isEmpty()) {
                 item { EmptyBlock("No rows to show", "Your sources have no catalogs turned on for Today. They may still be searchable.") }
             }
         }
         if (hasSources == true) item(key = "refresh") {
-            Box(Modifier.fillMaxWidth().padding(vertical = 8.dp), contentAlignment = Alignment.Center) { InkButton("Refresh", vm::refresh, filled = false) }
+            Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally)) {
+                InkButton("Surprise me", { vm.surprise()?.let { navigator.openDetails(it.preview, it.type, it.sourceId) } })
+                InkButton("Refresh", vm::refresh, filled = false)
+            }
         }
     }
     }
@@ -168,7 +176,10 @@ private fun PlaceholderRow() {
 }
 
 @Composable
-internal fun CatalogRow(row: HomeRow, navigator: Navigator, saved: Set<String>, onToggleSave: (MetaPreview) -> Unit, onRetry: () -> Unit, genre: String? = null) {
+internal fun CatalogRow(
+    row: HomeRow, navigator: Navigator, saved: Set<String>, onToggleSave: (MetaPreview) -> Unit, onRetry: () -> Unit, genre: String? = null,
+    watched: Set<String> = emptySet(), onToggleWatched: ((MetaPreview) -> Unit)? = null,
+) {
     val state = row.state
     if (state is RowState.Loaded && state.items.isEmpty()) return
     SectionHeader(row.entry.title, subtitle = rowSubtitle(row), trailing = {
@@ -183,9 +194,11 @@ internal fun CatalogRow(row: HomeRow, navigator: Navigator, saved: Set<String>, 
             is RowState.Loaded -> LazyRow(contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(state.items, key = { it.id }) { m ->
                     val type = m.type.ifBlank { row.entry.catalog.type }
-                    PosterCard(m.title, m.poster, subtitle = m.displayYear, saved = (type + "|" + m.id) in saved, onToggleSave = { onToggleSave(m) }) {
-                        navigator.openDetails(m, row.entry.catalog.type, row.entry.source.id)
-                    }
+                    com.liuying.app.ui.common.ActionPoster(
+                        m, row.entry.catalog.type, saved = (type + "|" + m.id) in saved, watched = (type + "|" + m.id) in watched,
+                        onToggleSave = { onToggleSave(m) }, onToggleWatched = onToggleWatched?.let { f -> { f(m) } },
+                        onOpen = { navigator.openDetails(m, row.entry.catalog.type, row.entry.source.id) },
+                    )
                 }
             }
         }

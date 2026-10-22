@@ -1,4 +1,4 @@
-import { h, icon, clear, toast, confirmDialog } from './dom.js';
+import { h, icon, clear, toast, confirmDialog, keepFocus } from './dom.js';
 import * as store from '../store.js';
 import { fetchManifest, describeError } from '../addon/client.js';
 import { normalizeManifestUrl, isAdult, isConfigurable, configurationRequired, configureUrl, catalogTitle, normalizeResources, catalogCapabilities, catalogKey, noCatalogsNotice } from '../addon/protocol.js';
@@ -104,7 +104,8 @@ export function sources({ query }) {
   }
 
   // ---------- list ----------
-  function draw() {
+  function draw() { keepFocus(list, drawNow); }
+  function drawNow() {
     const all = store.sources();
     clear(list);
     if (!all.length) { list.append(emptyState('No sources yet', 'A source is an addon that supplies catalogs, streams or subtitles. Paste its manifest link to add it.', h('button', { class: 'btn pri', type: 'button', text: 'Add source', onClick: () => openAdd() }))); return; }

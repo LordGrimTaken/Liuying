@@ -32,7 +32,7 @@ sealed interface SyncStatus {
     data class Failed(val message: String) : SyncStatus
 }
 
-data class AccountState(val username: String?, val status: SyncStatus = SyncStatus.Idle) {
+data class AccountState(val username: String?, val status: SyncStatus = SyncStatus.Idle, val pending: Boolean = false) {
     val signedIn: Boolean get() = username != null
 }
 
@@ -94,6 +94,7 @@ class SyncManager(
 
     fun syncSoon(delayMs: Long = 2_000) {
         if (!api.signedIn) return
+        if (!_state.value.pending) _state.value = _state.value.copy(pending = true)
         if (rounding) { rerun = true; return }
         pending?.cancel()
         pending = scope.launch { delay(delayMs); syncNow() }
@@ -104,13 +105,14 @@ class SyncManager(
         if (!api.signedIn) return@withLock false
         _state.value = _state.value.copy(status = SyncStatus.Syncing)
         rounding = true
+        var again = false
         val ok = try { round(first) } catch (e: kotlinx.coroutines.CancellationException) { throw e }
         catch (e: Exception) { fail("Sync failed: ${e.message ?: "unknown error"}") }
         finally {
             rounding = false
-            if (rerun) { rerun = false; syncSoon(1_000) }
+            if (rerun) { rerun = false; again = true; syncSoon(1_000) }
         }
-        if (ok) _state.value = AccountState(session.username, SyncStatus.Done(clock.nowMs()))
+        if (ok) _state.value = AccountState(session.username, SyncStatus.Done(clock.nowMs()), pending = again)
         ok
     }
 

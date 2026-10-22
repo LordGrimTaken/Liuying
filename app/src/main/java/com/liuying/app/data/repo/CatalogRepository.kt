@@ -114,6 +114,7 @@ class CatalogRepository(
     private val sources: SourceProvider,
     private val client: AddonClient,
     private val settings: Flow<AppSettings>,
+    private val snapshots: RowSnapshots? = null,
 ) {
     private val retryRequests = MutableSharedFlow<String>(extraBufferCapacity = 16)
 
@@ -202,9 +203,15 @@ class CatalogRepository(
                     for (e in entries) {
                         val cur = rows[e.key]
                         val reusable = cur != null && !force && !cur.refreshing && cur.state is RowState.Loaded &&
-                            cur.entry.source.manifestUrl == e.source.manifestUrl && cur.entry.source.fetchedAt == e.source.fetchedAt
+                            cur.entry.source.manifestUrl == e.source.manifestUrl && cur.entry.source.manifest == e.source.manifest
                         if (reusable) { rows[e.key] = cur!!.copy(entry = e); continue }
-                        rows[e.key] = if (cur == null) HomeRow(e, RowState.Loading) else cur.copy(entry = e, refreshing = true)
+                        // L088: first sight of a row this session: show what it held last time while the fresh titles load
+                        val last = if (cur == null && !force) snapshots?.get(e.key) else null
+                        rows[e.key] = when {
+                            cur != null -> cur.copy(entry = e, refreshing = true)
+                            last != null -> HomeRow(e, RowState.Loaded(last), refreshing = true)
+                            else -> HomeRow(e, RowState.Loading)
+                        }
                         toFetch += e
                     }
                     publish()
@@ -212,7 +219,14 @@ class CatalogRepository(
                 coroutineScope {
                     for (e in toFetch) launch {
                         val st = fetchRow(e, force)
-                        mutex.withLock { if (rows.containsKey(e.key)) { rows[e.key] = HomeRow(e, st); publish() } }
+                        mutex.withLock {
+                            if (rows.containsKey(e.key)) {
+                                val prev = rows[e.key]
+                                // a failed background refresh keeps the titles already on screen instead of replacing them with an error
+                                rows[e.key] = if (!force && st is RowState.Failed && prev?.state is RowState.Loaded) prev.copy(entry = e, refreshing = false) else HomeRow(e, st)
+                                publish()
+                            }
+                        }
                     }
                 }
             }
@@ -227,7 +241,12 @@ class CatalogRepository(
         val cap = settings.first().rowItemCount.count
         val extras = entry.catalog.requiredExtraDefaults() ?: return RowState.Failed("This catalog needs input")
         return client.catalog(entry.source.baseUrl, entry.catalog.type, entry.catalog.id, extras, force).fold(
-            onSuccess = { noteTitles(it.metas); RowState.Loaded(it.metas.distinctBy { m -> m.id }.take(cap)) },
+            onSuccess = {
+                noteTitles(it.metas)
+                val items = it.metas.distinctBy { m -> m.id }.take(cap)
+                snapshots?.put(entry.key, items)
+                RowState.Loaded(items)
+            },
             onFailure = { e -> RowState.Failed(e.toUserMessage(), (e as? AddonFailure)?.kind) },
         )
     }

@@ -6,7 +6,7 @@ enum class ResumeBehavior { Auto, Ask, StartOver }
 enum class StreamSelectionMode { ShowList, AutoSelect }
 enum class PreferredResolution(val height: Int?) { Any(null), UHD4K(2160), FHD1080(1080), HD720(720), SD480(480) }
 enum class StreamGrouping { BySource, FlatSorted }
-enum class StreamSort { SourceOrder, Resolution, Size, Name }
+enum class StreamSort { SourceOrder, Resolution, Size, Name, ResolutionThenSize }
 enum class AspectMode { Fit, Fill, Stretch, Ratio16x9, Ratio4x3 }
 enum class OrientationMode { LandscapeLocked, AutoRotate }
 enum class HardwareDecoding { Auto, PreferHardware, SoftwareOnly }
@@ -66,6 +66,10 @@ data class AppSettings(
     val showRawStreamDescription: Boolean = true,
     val hideNonPlayableStreams: Boolean = false,
     val seekStepSec: Int = 10,
+    /** L042: the long-skip button for intros and recaps, 30..120 s. */
+    val longSkipSec: Int = 85,
+    /** L037: seconds to back up when resuming a title, 0 / 5 / 10. */
+    val resumeRewindSec: Int = 0,
     val gestureBrightness: Boolean = true,
     val gestureVolume: Boolean = true,
     val gestureSpeedHold: Boolean = true,
@@ -111,6 +115,17 @@ data class AppSettings(
     val recentSearchesEnabled: Boolean = true,
     // Scraper plugins: global off switch (default off)
     val pluginsEnabled: Boolean = false,
+    // Onboarding (local only)
+    /** L078: the first-run guide on an empty Today was dismissed or finished. */
+    val firstRunGuideDismissed: Boolean = false,
+    /** L079: offer to add a manifest link found on the clipboard. */
+    val clipboardLinkDetection: Boolean = true,
+    /** L079: the last clipboard link already offered (or declined), so it is not offered again. */
+    val clipboardLinkSeen: String = "",
+    /** L004: hide watched movies in Browse. */
+    val hideWatchedInBrowse: Boolean = false,
+    /** L115: Calendar filters. */
+    val calendarHideWatched: Boolean = false,
     // Updates
     val autoUpdateCheck: Boolean = true,
     // Storage

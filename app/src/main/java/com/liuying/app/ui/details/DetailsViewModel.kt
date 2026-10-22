@@ -95,7 +95,7 @@ class DetailsViewModel(
         metaFlow, c.library.observeContains(type, id), c.progress.observeForTitle(type, id), c.settings.settings, selectedSeason,
     ) { load, inLib, prog, s, sel ->
         val meta = load.meta
-        val states = if (meta != null) EpisodeLogic.buildStates(meta.videos, prog.filter { it.isEpisode }, SystemClock.todayEpochDay()) else emptyList()
+        val states = if (meta != null) EpisodeLogic.buildStates(if (meta.type.equals("movie", true)) emptyList() else meta.videos, prog.filter { it.isEpisode }, SystemClock.todayEpochDay()) else emptyList()
         val seasons = EpisodeLogic.seasons(states)
         DetailsUi(
             load = load, inLibrary = inLib, states = states, seasons = seasons,
@@ -115,6 +115,7 @@ class DetailsViewModel(
     private var streamsJob: Job? = null
     private var autoJob: Job? = null
     private var launched = false
+    @Volatile private var starting = false
 
     init {
         viewModelScope.launch {
@@ -241,7 +242,9 @@ class DetailsViewModel(
         when {
             !item.enabled -> events.trySend(DetailsEvent.Message(item.disabledReason ?: "This stream cannot be played."))
             item.kind == StreamKind.Direct && !item.url.isNullOrBlank() -> startPlayback(item, null)
-            item.kind == StreamKind.External && !item.stream.externalUrl.isNullOrBlank() -> events.trySend(DetailsEvent.OpenUrl(item.stream.externalUrl!!))
+            item.kind == StreamKind.External && !item.stream.externalUrl.isNullOrBlank() ->
+                if (com.liuying.app.domain.QaGuards.isSafeExternalUrl(item.stream.externalUrl)) events.trySend(DetailsEvent.OpenUrl(item.stream.externalUrl!!))
+                else events.trySend(DetailsEvent.Message("This source gave a link Liuying will not open."))
             item.kind == StreamKind.YouTube && !item.stream.ytId.isNullOrBlank() ->
                 events.trySend(DetailsEvent.OpenUrl("https://www.youtube.com/watch?v=${item.stream.ytId}"))
             else -> events.trySend(DetailsEvent.Message("This stream cannot be played."))
@@ -256,10 +259,14 @@ class DetailsViewModel(
 
     fun cancelAsk() { _ask.value = null }
 
+    private val builder = PlaybackBuilder(c)
+
     /** [forcedStart] null = decide from the resume setting. */
     private fun startPlayback(item: StreamItem, forcedStart: Long?) {
         val target = _sheet.value?.target ?: return
-        if (launched) return
+        // `launched` is only set after the (suspending) resume lookup, so a double tap on a stream used to start two players
+        if (launched || starting) return
+        starting = true
         viewModelScope.launch {
             val u = ui.value
             val s = u.settings
@@ -271,45 +278,17 @@ class DetailsViewModel(
             val start = when {
                 forcedStart != null -> forcedStart
                 s.resumeBehavior == ResumeBehavior.StartOver -> 0L
-                s.resumeBehavior == ResumeBehavior.Ask && resumeMs > 0 -> { _ask.value = ResumeAsk(item, resumeMs); return@launch }
-                else -> resumeMs
+                s.resumeBehavior == ResumeBehavior.Ask && resumeMs > 0 -> { _ask.value = ResumeAsk(item, ProgressRules.rewound(resumeMs, s.resumeRewindSec)); return@launch }
+                else -> ProgressRules.rewound(resumeMs, s.resumeRewindSec)
             }
             launched = true
             autoJob?.cancel()
 
-            val subs = ArrayList<ExternalSubtitle>()
-            item.stream.subtitles.forEach { sub ->
-                if (sub.url.isNotBlank()) subs += ExternalSubtitle(sub.url, sub.lang.takeIf { it != "und" }, sub.label, item.source.displayName, item.source.order)
-            }
-            if (s.autoFetchSubtitles) {
-                var offers = emptyList<com.liuying.app.data.repo.StreamRepository.SubtitleOffer>()
-                val hints = item.stream.behaviorHints
-                withTimeoutOrNull(2_500) {
-                    c.streams.subtitles(type, target.videoId, hints.videoHash, hints.videoSize, hints.filename).collect { offers = it }
-                }
-                offers.forEach { o -> subs += ExternalSubtitle(o.subtitle.url, o.subtitle.lang.takeIf { it != "und" }, o.subtitle.label, o.source.displayName, o.source.order, hashMatched = hints.videoHash != null) }
-            }
-
-            val next = if (target.season != null) {
-                val seq = EpisodeLogic.sequence(u.states)
-                val idx = seq.indexOfFirst { it.videoId == target.videoId }
-                seq.getOrNull(idx + 1)?.takeIf { idx >= 0 && it.released }?.let {
-                    NextEpisodeInfo(it.videoId, EpisodeLabels.line(it.season, it.episode, it.video.displayTitle))
-                }
-            } else null
-
-            c.progress.registerPlayback(ref, item.stream.behaviorHints.bingeGroup?.takeIf { it.isNotBlank() }?.let { "binge:$it" })
-            events.send(
-                DetailsEvent.Launch(
-                    PlaybackRequest(
-                        mediaId = id, type = type, episodeId = if (target.season != null) target.videoId else null,
-                        title = meta?.title ?: hint?.first?.title ?: id, subtitleLine = target.label.ifBlank { null },
-                        url = item.url!!, headers = item.requestHeaders, startPositionMs = start,
-                        externalSubtitles = subs.distinctBy { it.url }, nextEpisode = next,
-                    ),
-                ),
+            val request = builder.build(
+                type, id, meta?.title ?: hint?.first?.title ?: id, target, item, u.states, start, s,
             )
+            events.send(DetailsEvent.Launch(request))
             _sheet.value = null
-        }
+        }.invokeOnCompletion { starting = false }
     }
 }

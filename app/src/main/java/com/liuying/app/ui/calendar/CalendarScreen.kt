@@ -56,7 +56,9 @@ import com.liuying.app.ui.theme.Vermilion
 fun CalendarScreen(navigator: Navigator) {
     val vm = containerViewModel { CalendarViewModel(it) }
     val ui by vm.ui.collectAsStateWithLifecycle()
-    val agenda = ui.agenda
+    val hideWatched by vm.hideWatched.collectAsStateWithLifecycle()
+    val watchedEps by vm.watchedEpisodes.collectAsStateWithLifecycle()
+    val agenda = ui.agenda?.let { com.liuying.app.domain.CalendarFilters.filter(it, hideWatched, watchedEps) }
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = com.liuying.app.ui.nav.topBarInset(), bottom = DockClearance)) {
         item {
@@ -65,6 +67,11 @@ fun CalendarScreen(navigator: Navigator) {
                 if (ui.seriesOnShelf > 0) InkTextButton("Refresh", vm::refresh)
             }
             Text("New and recent episodes for the series on your shelf.", color = PaperMuted, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 20.dp))
+            if (ui.seriesOnShelf > 0) {
+                Row(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                    com.liuying.app.ui.common.InkChip("Hide watched", hideWatched, { vm.setHideWatched(!hideWatched) })
+                }
+            }
             if (agenda != null && ui.seriesOnShelf > 0) {
                 Text(
                     "${agenda.tracked} of ${agenda.series} series reported release dates.",

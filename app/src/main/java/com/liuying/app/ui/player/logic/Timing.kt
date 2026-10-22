@@ -36,6 +36,9 @@ class ProgressThrottle(private val intervalMs: Long = 10_000L) {
     private var lastAtMs = Long.MIN_VALUE
     private var lastPositionMs = -1L
 
+    /** A new media item starts: the next report is always sent. */
+    fun reset() { lastAtMs = Long.MIN_VALUE; lastPositionMs = -1L }
+
     /** @return true if a report should be sent now (and records it). */
     fun shouldReport(nowMs: Long, positionMs: Long, force: Boolean): Boolean {
         if (positionMs < 0) return false

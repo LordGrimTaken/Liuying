@@ -76,6 +76,7 @@ import com.liuying.app.domain.EpisodeState
 import com.liuying.app.domain.PlayKind
 import com.liuying.app.ui.common.ArtImage
 import com.liuying.app.ui.common.Badge
+import com.liuying.app.ui.common.forTitle
 import com.liuying.app.ui.common.CenterLoading
 import com.liuying.app.ui.common.EmptyBlock
 import com.liuying.app.ui.common.ErrorNote
@@ -173,7 +174,7 @@ private fun DetailsBody(vm: DetailsViewModel, ui: DetailsUi, navigator: Navigato
                 Row(Modifier.align(Alignment.BottomStart).padding(horizontal = 20.dp), verticalAlignment = Alignment.Bottom) {
                     ArtImage(meta.poster, meta.title, Modifier.width(96.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(6.dp)).border(BorderStroke(0.5.dp, GoldHairline), RoundedCornerShape(6.dp)))
                     Column(Modifier.padding(start = 14.dp).weight(1f)) {
-                        Text(meta.title, style = MaterialTheme.typography.headlineSmall, color = Paper, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                        Text(meta.title, style = MaterialTheme.typography.headlineSmall.forTitle(meta.title), color = Paper, maxLines = 3, overflow = TextOverflow.Ellipsis)
                         val line = listOfNotNull(meta.displayYear, meta.runtime, meta.imdbRating?.let { "★ $it" }).joinToString("   ")
                         if (line.isNotBlank()) Text(line, style = MaterialTheme.typography.bodyMedium, color = PaperMuted)
                     }
@@ -360,9 +361,13 @@ private fun StreamsSheetContent(sh: StreamsSheet, ui: DetailsUi, vm: DetailsView
     // which lists are expanded past the first five: "all" for the flat list, "g<sourceId>" for a source group
     var expanded by remember { mutableStateOf(setOf<String>()) }
     fun toggle(k: String) { expanded = if (k in expanded) expanded - k else expanded + k }
-    fun sorted(l: List<StreamItem>): List<StreamItem> = sort?.let { so ->
+    // L065: quality and language chips
+    var qFilter by remember { mutableStateOf<String?>(null) }
+    var lFilter by remember { mutableStateOf<String?>(null) }
+    fun sorted0(l: List<StreamItem>): List<StreamItem> = sort?.let { so ->
         Ux.sortStreams(l, so, ::usability, { it.quality.resolution?.height ?: 0 }, { it.quality.sizeBytes ?: 0L }, { it.source.displayName })
     } ?: StreamRepository.sort(l, s.streamSort)
+    fun sorted(l0: List<StreamItem>): List<StreamItem> = com.liuying.app.domain.StreamFilters.apply(l0, qFilter, lFilter).let { l -> sorted0(l) }
 
     LazyColumn(Modifier.fillMaxWidth().navigationBarsPadding(), contentPadding = PaddingValues(bottom = 24.dp)) {
         item {
@@ -399,6 +404,18 @@ private fun StreamsSheetContent(sh: StreamsSheet, ui: DetailsUi, vm: DetailsView
                         }) { InkChip(k.label + arrow, on, { sort = Ux.nextSort(sort, k); expanded = emptySet() }) }
                     }
                     if (sort != null) InkTextButton("Reset", { sort = null; expanded = emptySet() })
+                }
+            }
+        }
+        val qOpts = com.liuying.app.domain.StreamFilters.qualityOptions(r.items)
+        val lOpts = com.liuying.app.domain.StreamFilters.languageOptions(r.items)
+        if (r.items.size > 1 && (qOpts.size > 1 || lOpts.size > 1)) {
+            item {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("SHOW", style = MaterialTheme.typography.labelMedium, color = PaperMuted)
+                    if (qOpts.size > 1) qOpts.forEach { q -> InkChip(q, qFilter == q, { qFilter = if (qFilter == q) null else q; expanded = emptySet() }) }
+                    if (lOpts.size > 1) lOpts.forEach { l -> InkChip(l, lFilter == l, { lFilter = if (lFilter == l) null else l; expanded = emptySet() }) }
+                    if (qFilter != null || lFilter != null) InkTextButton("Clear", { qFilter = null; lFilter = null; expanded = emptySet() })
                 }
             }
         }

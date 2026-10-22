@@ -74,7 +74,23 @@ class TodayViewModel(private val c: AppContainer) : ViewModel() {
         }
     }
 
+    val actions = com.liuying.app.ui.common.TitleActions(c, viewModelScope)
+    fun toggleWatched(preview: MetaPreview, fallbackType: String) = actions.toggleWatched(preview, fallbackType)
+
+    private var lastPick: String? = null
+    /** L010: a random unwatched title from the rows on screen and the shelf. Null when there is nothing to pick. */
+    fun surprise(): com.liuying.app.domain.PickCandidate? {
+        val fromRows = rows.value.orEmpty().flatMap { r ->
+            val items = (r.state as? com.liuying.app.data.repo.RowState.Loaded)?.items.orEmpty()
+            items.map { com.liuying.app.domain.PickCandidate(it.copy(type = it.type.ifBlank { r.entry.catalog.type }), it.type.ifBlank { r.entry.catalog.type }, r.entry.source.id) }
+        }
+        val pick = com.liuying.app.domain.SurprisePick.pick(fromRows, actions.watchedKeys.value, avoid = lastPick)
+        lastPick = pick?.let { com.liuying.app.domain.WatchedIndex.key(it.type, it.preview.id) }
+        return pick
+    }
+
     fun refresh() { refreshTick.value += 1 }
+    fun dismissGuide() { viewModelScope.launch { c.settings.update { it.copy(firstRunGuideDismissed = true) } } }
     fun retry(key: String) = c.catalogs.retryRow(key)
     fun dismiss(item: ContinueItem) { viewModelScope.launch { c.progress.dismissContinue(item.type, item.titleId) } }
 }

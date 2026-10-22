@@ -1,6 +1,6 @@
-import { h, icon, clear } from './dom.js';
+import { h, icon, clear, keepFocus } from './dom.js';
 import * as store from '../store.js';
-import { posterCard, emptyState, emptyPage, artImg, titleHref, itemMenu } from './components.js';
+import { posterCard, emptyState, emptyPage, artImg, titleHref, itemMenu, progressive } from './components.js';
 import { renderContinueRow } from './continue.js';
 import { isInProgress, ratioOf } from '../progress.js';
 import { debounce, yearOf } from '../util.js';
@@ -23,16 +23,22 @@ export function shelf() {
   tb.append(search, sortSel, viewBtn);
   page.append(h('div', { class: 'page-h' }, h('h1', { text: 'Shelf' })), contBox, tb, typeChips, out);
 
+  let byMedia = new Map();
+  let stopFill = () => {};
   function state(item) {
     const rec = store.getProgress(item.id, null);
-    const eps = store.allProgress().filter((r) => r.mediaId === item.id);
+    const eps = byMedia.get(item.id) || [];
     const watched = rec?.watched || (item.type === 'series' && eps.some((r) => r.episodeId && r.watched));
     const prog = isInProgress(rec, s.threshold) || eps.some((r) => r.episodeId && isInProgress(r, s.threshold));
     const last = Math.max(0, ...eps.map((r) => r.updatedAt || 0));
     return { watched: !!rec?.watched, any: !!watched, prog, last };
   }
 
-  function draw() {
+  function draw() { keepFocus(page, drawNow); }
+  function drawNow() {
+    stopFill();
+    byMedia = new Map();
+    for (const r of store.allProgress()) { if (!byMedia.has(r.mediaId)) byMedia.set(r.mediaId, []); byMedia.get(r.mediaId).push(r); }
     const lib = store.library();
     clear(typeChips);
     const g1 = h('div', { class: 'chips', role: 'group', 'aria-label': 'Type' });
@@ -59,14 +65,16 @@ export function shelf() {
     tb.hidden = typeChips.hidden = !lib.length;
     if (!lib.length) { out.append(emptyPage('list', 'Your shelf is empty', 'Add movies and series to your shelf with the + button. They stay here even if a source goes away.', h('a', { class: 'btn pri', href: '#/', text: 'Browse titles' }))); return; }
     if (!items.length) { out.append(emptyState('Nothing matches', 'Try clearing the filters.', h('button', { class: 'btn', type: 'button', text: 'Clear filters', onClick: () => { text = ''; search.value = ''; type = 'all'; filter = 'all'; draw(); } }))); return; }
-    if (mode === 'grid') out.append(h('div', { class: 'grid', role: 'list' }, items.map(({ i }) => { const c = posterCard(i); c.setAttribute('role', 'listitem'); return c; })));
-    else out.append(h('div', { class: 'list', role: 'list' }, items.map(({ i, st }) => h('a', { class: 'lrow', href: titleHref(i), role: 'listitem' },
+    const box = h('div', { class: mode === 'grid' ? 'grid' : 'list', role: 'list' });
+    out.append(box);
+    if (mode === 'grid') stopFill = progressive(box, items, ({ i }) => { const c = posterCard(i); c.setAttribute('role', 'listitem'); return c; });
+    else stopFill = progressive(box, items, ({ i, st }) => h('a', { class: 'lrow', href: titleHref(i), role: 'listitem' },
       h('div', { class: 'art' }, artImg(i.poster, '') || h('div', { class: 'ph' })),
       h('div', {}, h('div', { class: 'serif', text: i.name }), h('div', { class: 'mute', text: [i.type === 'series' ? 'Series' : 'Movie', yearOf(i)].filter(Boolean).join(' · ') }), st.any ? h('span', { class: 'badge ok', text: 'Watched' }) : st.prog ? h('span', { class: 'badge', text: 'In progress' }) : null),
-      h('button', { class: 'ibtn', type: 'button', 'aria-label': `Actions for ${i.name}`, onClick: (e) => { e.preventDefault(); itemMenu(i); } }, icon('more'))))));
+      h('button', { class: 'ibtn', type: 'button', 'aria-label': `Actions for ${i.name}`, onClick: (e) => { e.preventDefault(); itemMenu(i); } }, icon('more'))));
   }
   const unsub = store.subscribe((k) => { if (k === 'library' || k === 'progress') draw(); });
   renderContinueRow(contBox, ctl.signal, { onChange: () => renderContinueRow(contBox, ctl.signal) });
   draw();
-  return { destroy() { ctl.abort(); unsub(); } };
+  return { destroy() { ctl.abort(); unsub(); stopFill(); } };
 }

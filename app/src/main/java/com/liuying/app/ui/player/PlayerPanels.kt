@@ -44,6 +44,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import com.liuying.app.ui.player.logic.Languages
 import com.liuying.app.ui.player.logic.TimeFormat
 import com.liuying.app.ui.player.logic.TrackInfo
@@ -74,7 +79,9 @@ internal fun SidePanel(c: PlayerController) {
             }
             Spacer(Modifier.height(10.dp))
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                PanelTab.entries.forEach { t -> Chip(t.title, t == tab) { c.panelTab = t } }
+                PanelTab.entries.filter { it != PanelTab.STREAMS || c.canSwitch }.forEach { t ->
+                    Chip(t.title, t == tab) { c.panelTab = t; if (t == PanelTab.STREAMS) c.loadStreamList() }
+                }
             }
             Spacer(Modifier.height(12.dp))
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
@@ -84,6 +91,8 @@ internal fun SidePanel(c: PlayerController) {
                     PanelTab.STYLE -> StyleTab(c)
                     PanelTab.TIMING -> TimingTab(c)
                     PanelTab.SPEED -> SpeedTab(c)
+                    PanelTab.STREAMS -> StreamsTab(c)
+                    PanelTab.MORE -> MoreTab(c)
                 }
             }
         }
@@ -136,6 +145,12 @@ private fun SubtitlesTab(c: PlayerController) {
 @Composable
 private fun StyleTab(c: PlayerController) {
     val s = c.settings
+    SectionLabel("Presets")
+    val current = SubtitlePreset.current(s)
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        SubtitlePreset.entries.forEach { p -> Chip(p.label, current == p) { c.updateSettings { p.apply(it) } } }
+    }
+    Spacer(Modifier.height(4.dp))
     Muted("Changes preview live on the video.")
     Spacer(Modifier.height(8.dp))
     LabeledSlider("Text size ${s.subtitleSizePercent}%", s.subtitleSizePercent.toFloat(), 50f..200f, 14,
@@ -226,24 +241,98 @@ private fun SpeedTab(c: PlayerController) {
 
 @Composable
 internal fun ErrorOverlay(c: PlayerController, e: ErrorInfo, onClose: () -> Unit) {
+    val copy = e.copy
     Box(Modifier.fillMaxSize().background(Ink.copy(alpha = 0.92f)).clickable(indication = null, interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }) {}, contentAlignment = Alignment.Center) {
         Column(
-            Modifier.width(420.dp).clip(RoundedCornerShape(16.dp)).background(InkSurface)
-                .border(1.dp, Gold.copy(alpha = 0.45f), RoundedCornerShape(16.dp)).padding(24.dp),
+            Modifier.widthIn(max = 460.dp).clip(RoundedCornerShape(16.dp)).background(InkSurface)
+                .border(1.dp, Gold.copy(alpha = 0.45f), RoundedCornerShape(16.dp)).padding(24.dp).verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(e.title, style = MaterialTheme.typography.titleLarge, color = Paper, textAlign = TextAlign.Center)
-            Spacer(Modifier.height(8.dp))
-            Text(e.message, style = MaterialTheme.typography.bodyMedium, color = PaperMuted, textAlign = TextAlign.Center)
-            e.technical?.let { Spacer(Modifier.height(6.dp)); Text(it, style = MaterialTheme.typography.labelMedium, color = PaperMuted.copy(alpha = 0.6f)) }
+            Spacer(Modifier.height(10.dp))
+            Text(copy?.what ?: e.message, style = MaterialTheme.typography.bodyLarge, color = Paper, textAlign = TextAlign.Center)
+            if (copy != null) {
+                Spacer(Modifier.height(6.dp))
+                Text(copy.why, style = MaterialTheme.typography.bodyMedium, color = PaperMuted, textAlign = TextAlign.Center)
+                Spacer(Modifier.height(10.dp))
+                Text(copy.next, style = MaterialTheme.typography.bodyMedium, color = Gold, textAlign = TextAlign.Center)
+            }
+            e.technical?.let { Spacer(Modifier.height(8.dp)); Text(it, style = MaterialTheme.typography.labelMedium, color = PaperMuted.copy(alpha = 0.6f)) }
             Spacer(Modifier.height(20.dp))
+            val tryAnotherFirst = copy?.primary == com.liuying.app.ui.player.logic.ErrorAction.TRY_ANOTHER
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                PillButton("Retry", { c.retry() }, emphasized = true)
-                PillButton("Try another stream", { c.tryAnotherStream() })
+                if (tryAnotherFirst) {
+                    PillButton("Try another stream", { if (c.canSwitch) { c.openStreamsFromError() } else c.tryAnotherStream() }, emphasized = true)
+                    PillButton("Retry", { c.retry() })
+                } else {
+                    PillButton("Retry", { c.retry() }, emphasized = true)
+                    PillButton("Try another stream", { if (c.canSwitch) { c.openStreamsFromError() } else c.tryAnotherStream() })
+                }
                 PillButton("Close", onClose)
             }
         }
     }
+}
+
+// ---------- streams (L045) ----------
+
+@Composable
+private fun StreamsTab(c: PlayerController) {
+    val snap = c.streamList
+    Muted("Switching keeps your place in the video.")
+    Spacer(Modifier.height(8.dp))
+    if (snap == null) { Muted("Asking your sources..."); return }
+    var quality by remember { mutableStateOf<Int?>(null) }
+    val all = snap.choices.sortedWith(compareByDescending<StreamChoice> { it.resolutionHeight }.thenByDescending { it.sizeBytes })
+    val heights = all.map { it.resolutionHeight }.filter { it > 0 }.distinct()
+    if (heights.size > 1) {
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Chip("All", quality == null) { quality = null }
+            heights.forEach { h -> Chip(if (h >= 2160) "4K" else "${h}p", quality == h) { quality = h } }
+        }
+        Spacer(Modifier.height(8.dp))
+    }
+    val shown = all.filter { quality == null || it.resolutionHeight == quality }
+    if (c.switching) Muted("Switching...")
+    shown.forEach { ch ->
+        val current = ch.url != null && ch.url == c.request.url
+        val line = listOf(ch.source) + ch.badges
+        Column(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                .background(if (current) Gold.copy(alpha = 0.14f) else Color.Transparent)
+                .semantics(mergeDescendants = true) { role = Role.Button; if (current) stateDescription = "Playing now" }
+                .clickable(enabled = ch.playable && !current) { c.switchStream(ch) }.padding(horizontal = 12.dp, vertical = 10.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(ch.title, color = if (ch.playable) Paper else PaperMuted, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                if (current) Text("Playing", color = Gold, style = MaterialTheme.typography.labelMedium)
+            }
+            Text(line.joinToString(" · "), color = PaperMuted, style = MaterialTheme.typography.labelMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (!ch.playable) Text("Can't play inside Liuying", color = PaperMuted, style = MaterialTheme.typography.labelMedium)
+        }
+    }
+    if (snap.loading) { Spacer(Modifier.height(6.dp)); Muted("Still asking sources...") }
+    else if (shown.isEmpty()) Muted(if (snap.failedSources > 0) "No sources answered. Check your connection." else "No other streams found.")
+}
+
+// ---------- more: sleep timer, stats (L052, L049) ----------
+
+@Composable
+private fun MoreTab(c: PlayerController) {
+    SectionLabel("Sleep timer")
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        com.liuying.app.ui.player.logic.SleepTimer.Choices.forEach { ch ->
+            Chip(com.liuying.app.ui.player.logic.SleepTimer.label(ch), c.sleepChoice == ch) { c.startSleep(ch) }
+        }
+    }
+    c.sleepStatus?.let {
+        Spacer(Modifier.height(6.dp))
+        Muted(it)
+        PillButton("Turn off", { c.cancelSleep() })
+    } ?: run { Spacer(Modifier.height(6.dp)); Muted("Pauses playback after the time you pick, or at the end of this episode.") }
+    SectionLabel("Playback info")
+    SwitchRow("Show stats overlay", c.statsVisible) { c.statsVisible = it }
+    Muted("Resolution, bitrate, dropped frames and buffer, live.")
 }
 
 // ---------- widgets ----------

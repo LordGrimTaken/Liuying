@@ -26,6 +26,8 @@ class SearchViewModel(private val c: AppContainer) : ViewModel() {
     val query = MutableStateFlow("")
     /** "all" | "movie" | "series" | any other catalog type (see Ux.typeFilters). */
     val typeFilter = MutableStateFlow("all")
+    /** Per-source filter chip (L008): null shows every source. */
+    val sourceFilter = MutableStateFlow<String?>(null)
     private val eager = SharingStarted.WhileSubscribed(5_000)
 
     /** The query the results below belong to (after the typing pause). */
@@ -33,7 +35,7 @@ class SearchViewModel(private val c: AppContainer) : ViewModel() {
 
     /** Null while there is nothing to search for. */
     val results: StateFlow<SearchResults?> = settled
-        .flatMapLatest { q -> if (q.length < 2) flowOf(null) else c.catalogs.search(q) }
+        .flatMapLatest { q -> if (!com.liuying.app.domain.QaGuards.isSearchable(q)) flowOf(null) else c.catalogs.search(q) }
         .stateIn(viewModelScope, eager, null)
 
     val recent: StateFlow<List<String>> = combine(c.recentSearches.observe(8), c.settings.settings) { l, s ->
@@ -49,13 +51,16 @@ class SearchViewModel(private val c: AppContainer) : ViewModel() {
 
     val savedKeys: StateFlow<Set<String>> = c.library.observeAll().map { l -> l.map { it.type + "|" + it.id }.toSet() }.stateIn(viewModelScope, eager, emptySet())
 
-    fun setQuery(q: String) { query.value = q; typeFilter.value = "all" }
+    val actions = com.liuying.app.ui.common.TitleActions(c, viewModelScope)
+
+    fun setQuery(q: String) { query.value = q; typeFilter.value = "all"; sourceFilter.value = null }
+    fun setSource(name: String?) { sourceFilter.value = name }
     fun setType(t: String) { typeFilter.value = t }
 
     /** Remembers the current query (when enabled in settings). Called on search/IME action and when a result is opened. */
     fun commitRecent(q: String = query.value) {
         val text = q.trim()
-        if (text.length < 2) return
+        if (!com.liuying.app.domain.QaGuards.isSearchable(text)) return
         viewModelScope.launch {
             if (!c.settings.current().recentSearchesEnabled) return@launch
             c.recentSearches.upsert(RecentSearchEntity(text, System.currentTimeMillis()))

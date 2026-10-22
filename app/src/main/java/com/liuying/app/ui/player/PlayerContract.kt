@@ -49,6 +49,12 @@ data class PlaybackRequest(
     val startPositionMs: Long = 0L,
     val externalSubtitles: List<ExternalSubtitle> = emptyList(),
     val nextEpisode: NextEpisodeInfo? = null,
+    /** L044: the episode before this one, for the previous button. */
+    val previousEpisode: NextEpisodeInfo? = null,
+    /** The video id the sources were asked for (episode id, or the movie's video id); lets the player ask again for a stream switch. */
+    val videoId: String? = null,
+    /** The chosen stream's binge group, so the next episode can pick a matching stream. */
+    val bingeGroup: String? = null,
 )
 
 /** Called by the player roughly every 10 s while playing and on pause/seek/stop/exit. */
@@ -90,6 +96,8 @@ data class PlayerSettings(
     val swipeScrubEnabled: Boolean = true,
     val longPressSpeedEnabled: Boolean = true,
     val seekStepSeconds: Int = 10,
+    /** L042: the +85 s style button. */
+    val longSkipSeconds: Int = 85,
     val autoPlayNext: Boolean = true,
     /** Seconds of the auto-advance countdown (5..30). */
     val nextCountdownSec: Int = 10,
@@ -121,6 +129,45 @@ sealed interface PlayerExit {
     data class PlayNext(val mediaId: String, val nextEpisodeId: String) : PlayerExit
 }
 
+/** One stream offered inside the player (L045). */
+data class StreamChoice(
+    val key: String,
+    val title: String,
+    val source: String,
+    val badges: List<String>,
+    val detail: String?,
+    val playable: Boolean,
+    val resolutionHeight: Int,
+    val sizeBytes: Long,
+    val url: String?,
+)
+
+data class StreamsSnapshot(val choices: List<StreamChoice>, val loading: Boolean, val failedSources: Int)
+
+/**
+ * What the player needs from the app to switch streams or episodes without leaving the screen (L044, L045).
+ * Null in [PlayerDependencies.gateway] hides those controls.
+ */
+interface PlaybackGateway {
+    fun streams(request: PlaybackRequest): kotlinx.coroutines.flow.Flow<StreamsSnapshot>
+    /** The same title and episode through another stream, starting at [startMs]; null if it cannot be played. */
+    suspend fun requestForChoice(base: PlaybackRequest, key: String, startMs: Long): PlaybackRequest?
+    /** Another episode with a stream picked automatically (same binge group first); null if no stream was found within [waitMs]. */
+    suspend fun requestForEpisode(base: PlaybackRequest, episodeId: String, waitMs: Long): PlaybackRequest?
+}
+
+/** Remembers the audio and subtitle language chosen for a series (L047). Keys are opaque to the player. */
+interface TrackMemoryStore {
+    fun get(key: String): com.liuying.app.ui.player.logic.TrackChoice?
+    fun put(key: String, choice: com.liuying.app.ui.player.logic.TrackChoice)
+}
+
+internal class InMemoryTrackMemory : TrackMemoryStore {
+    private val map = java.util.concurrent.ConcurrentHashMap<String, com.liuying.app.ui.player.logic.TrackChoice>()
+    override fun get(key: String) = map[key]
+    override fun put(key: String, choice: com.liuying.app.ui.player.logic.TrackChoice) { map[key] = choice }
+}
+
 /** App-level injection point. Defaults are no-ops so the player works standalone. */
 object PlayerDependencies {
     @Volatile var progressReporter: ProgressReporter = object : ProgressReporter {
@@ -132,6 +179,10 @@ object PlayerDependencies {
         override fun current(): PlayerSettings = value
         override fun save(settings: PlayerSettings) { value = settings }
     }
+
+    @Volatile var gateway: PlaybackGateway? = null
+
+    @Volatile var trackMemory: TrackMemoryStore = InMemoryTrackMemory()
 
     /** Invoked (main thread) whenever PlayerActivity finishes. */
     @Volatile var onExit: ((PlayerExit) -> Unit)? = null
