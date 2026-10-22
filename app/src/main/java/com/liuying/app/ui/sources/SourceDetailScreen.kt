@@ -116,7 +116,7 @@ fun SourceDetailScreen(sourceId: Long, navigator: Navigator) {
 
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 8.dp)) {
-            IconCircleButton(GlyphKind.Close, "Back", navigator::back)
+            com.liuying.app.ui.common.BackTextButton(navigator::back)
             Text("Source", style = MaterialTheme.typography.titleLarge, color = Paper, modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp))
         }
         val s = source

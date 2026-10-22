@@ -22,6 +22,8 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.liuying.app.ui.theme.LiuyingTheme
 
 class PlayerActivity : ComponentActivity() {
@@ -47,8 +49,11 @@ class PlayerActivity : ComponentActivity() {
         val c = PlayerController(this, request)
         controller = c
         c.start()
+        val container = (application as com.liuying.app.LiuyingApplication).container
         setContent {
-            LiuyingTheme(com.liuying.app.ui.theme.Accent.choice.key) { PlayerScreen(c, onClose = { onPlayerFinished(PlayerExit.Closed) }) }
+            // QA #24: honour the Appearance text-size setting in the player too
+            val appSettings by container.settings.settings.collectAsStateWithLifecycle(com.liuying.app.data.settings.AppSettings())
+            LiuyingTheme(com.liuying.app.ui.theme.Accent.choice.key, appSettings.fontScale) { PlayerScreen(c, onClose = { onPlayerFinished(PlayerExit.Closed) }) }
         }
         if (Build.VERSION.SDK_INT >= 26) registerPipReceiver()
     }

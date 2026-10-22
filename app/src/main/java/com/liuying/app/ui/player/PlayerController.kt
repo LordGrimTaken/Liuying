@@ -241,11 +241,11 @@ class PlayerController(private val activity: PlayerActivity, initialRequest: Pla
         })
         originalBrightness = activity.window.attributes.screenBrightness
         scope.launch {
-            preparedSubs = prepareExternalSubtitles()
-            if (released) return@launch
+            // QA #22: first frame no longer waits for subtitle downloads; they are attached when ready.
             player.setMediaItem(buildItem(), request.startPositionMs.coerceAtLeast(0))
             player.playWhenReady = true
             player.prepare()
+            attachExternalSubtitlesLater()
             if (request.startPositionMs > 5_000) {
                 resumedToast = "Resumed at ${com.liuying.app.ui.player.logic.TimeFormat.clock(request.startPositionMs)}"
                 delay(2500); resumedToast = null
@@ -254,7 +254,8 @@ class PlayerController(private val activity: PlayerActivity, initialRequest: Pla
         scope.launch {
             while (true) {
                 delay(250)
-                sync()
+                // QA #23: no 250 ms UI sync while the activity is stopped (PiP stays STARTED)
+                if (activity.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) sync()
             }
         }
         scope.launch {
@@ -376,9 +377,24 @@ class PlayerController(private val activity: PlayerActivity, initialRequest: Pla
             .filter { it.value.url !in failedSubtitleUrls && !(strippedExternalOnce) }
             .map { it.index to it.value }
 
+    /** False until the external subtitle downloads finished (QA #22); the first item starts without them. */
+    private var externalReady = false
+
+    private fun attachExternalSubtitlesLater() {
+        if (request.externalSubtitles.isEmpty()) return
+        val forUrl = request.url
+        scope.launch {
+            val prepared = prepareExternalSubtitles()
+            if (released || request.url != forUrl) return@launch
+            preparedSubs = prepared
+            externalReady = true
+            if (prepared.isNotEmpty() && player.currentMediaItem != null) rebuildKeepingPosition()
+        }
+    }
+
     private fun buildItem(): MediaItem {
         val subs = ArrayList<MediaItem.SubtitleConfiguration>()
-        for ((i, e) in activeExternal()) {
+        for ((i, e) in if (externalReady || request.externalSubtitles.isEmpty()) activeExternal() else emptyList()) {
             val prepared = preparedSubs[i]
             val mime = prepared?.mime ?: SubtitleFormat.fromExtension(e.url) ?: SubtitleFormat.SUBRIP
             subs += MediaItem.SubtitleConfiguration.Builder(if (prepared != null) Uri.fromFile(prepared.file) else Uri.parse(e.url))
@@ -930,13 +946,12 @@ class PlayerController(private val activity: PlayerActivity, initialRequest: Pla
         throttle.reset()
         phase = UiPhase.LOADING
         streamList = null
-        scope.launch {
-            preparedSubs = prepareExternalSubtitles()
-            if (released) return@launch
-            player.setMediaItem(buildItem(), startMs.coerceAtLeast(0))
-            player.playWhenReady = true
-            player.prepare()
-        }
+        externalReady = false
+        preparedSubs = emptyMap()
+        player.setMediaItem(buildItem(), startMs.coerceAtLeast(0))
+        player.playWhenReady = true
+        player.prepare()
+        attachExternalSubtitlesLater()
     }
 
     fun tryAnotherStream() {

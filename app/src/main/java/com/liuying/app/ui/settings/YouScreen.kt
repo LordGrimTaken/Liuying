@@ -31,6 +31,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.autofill.ContentType
+import androidx.compose.ui.semantics.contentType
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import android.widget.Toast
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -129,9 +132,12 @@ fun YouScreen(navigator: Navigator) {
                     Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("Optional. Sign in to keep your shelf, sources and progress in step with liuyingapp.com.", color = PaperMuted, style = MaterialTheme.typography.bodyMedium)
                         if (account.status is SyncStatus.Failed) Text(syncLine(account.status), color = Vermilion, style = MaterialTheme.typography.bodyMedium)
-                        OutlinedTextField(form.username, vm::setUsername, label = { Text("Username") }, singleLine = true, colors = fieldColors(), modifier = Modifier.fillMaxWidth(),
+                        OutlinedTextField(form.username, vm::setUsername, label = { Text("Username") }, singleLine = true, colors = fieldColors(),
+                            // The server only accepts letters, digits and underscore (server/src/auth.js), so the ASCII keyboard stays (QA #34).
+                            modifier = Modifier.fillMaxWidth().semantics { contentType = ContentType.Username },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii))
-                        OutlinedTextField(form.password, vm::setPassword, label = { Text("Password") }, singleLine = true, colors = fieldColors(), modifier = Modifier.fillMaxWidth(),
+                        OutlinedTextField(form.password, vm::setPassword, label = { Text("Password") }, singleLine = true, colors = fieldColors(),
+                            modifier = Modifier.fillMaxWidth().semantics { contentType = ContentType.Password },
                             visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
                         form.error?.let { Text(it, color = Vermilion, style = MaterialTheme.typography.bodyMedium) }
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {

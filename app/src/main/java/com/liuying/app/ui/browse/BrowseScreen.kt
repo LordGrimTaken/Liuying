@@ -55,7 +55,7 @@ fun BrowseScreen(catalogKey: String, initialGenre: String?, navigator: Navigator
     val entry = ui.entry
     androidx.compose.foundation.layout.Column(Modifier.fillMaxSize().statusBarsPadding()) {
         Row(Modifier.fillMaxWidth().padding(end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconCircleButton(GlyphKind.Close, "Back", navigator::back, modifier = Modifier.padding(start = 8.dp))
+            com.liuying.app.ui.common.BackTextButton(navigator::back, modifier = Modifier.padding(start = 4.dp))
             Text(
                 entry?.title ?: "Browse", style = MaterialTheme.typography.titleLarge, color = Paper, maxLines = 1,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(horizontal = 12.dp, vertical = 12.dp),

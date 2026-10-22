@@ -52,6 +52,7 @@ class Updater(
                 val total = body.contentLength().takeIf { it > 0 } ?: m.sizeBytes
                 val digest = MessageDigest.getInstance("SHA-256")
                 var done = 0L
+                var lastPct = -1
                 body.byteStream().use { input ->
                     part.outputStream().use { out ->
                         val buf = ByteArray(64 * 1024)
@@ -60,7 +61,11 @@ class Updater(
                             if (n < 0) break
                             out.write(buf, 0, n); digest.update(buf, 0, n)
                             done += n
-                            if (total > 0) onProgress((done.toFloat() / total).coerceIn(0f, 1f))
+                            if (total > 0) {
+                                val f = (done.toFloat() / total).coerceIn(0f, 1f)
+                                val pct = ProgressThrottle.percent(f)
+                                if (pct != lastPct) { lastPct = pct; onProgress(f) } // QA #33: at most ~100 emissions
+                            }
                         }
                     }
                 }
@@ -74,6 +79,9 @@ class Updater(
         } catch (e: UpdateException) { part.delete(); throw e
         } catch (e: IOException) { part.delete(); throw UpdateException("The download was interrupted. Please try again.") }
     }
+
+    /** Whole-percent bucket of a 0..1 fraction; callers emit only when it changes. */
+    object ProgressThrottle { fun percent(f: Float): Int = (f.coerceIn(0f, 1f) * 100).toInt() }
 
     companion object {
         const val DEFAULT_BASE_URL = "https://www.liuyingapp.com"

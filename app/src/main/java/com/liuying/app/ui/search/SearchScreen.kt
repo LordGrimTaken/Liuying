@@ -152,7 +152,7 @@ fun SearchScreen(navigator: Navigator) {
                                 }
                             }
                         } else {
-                            item { EmptyBlock("Look for something", "Type at least two letters. Results come from every enabled source that supports search.") }
+                            item { EmptyBlock("Look for something", "Type at least two letters (one for Chinese, Japanese or Korean). Results come from every enabled source that supports search.") }
                         }
                     }
                 }

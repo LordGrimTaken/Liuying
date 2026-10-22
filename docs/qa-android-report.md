@@ -28,30 +28,30 @@ Severity: H wrong/lost data or crash in a normal flow, M edge-case crash/wrong b
 | 18 | L | ui/update/UpdateUi.kt | Long release notes were not scrollable in the dialog (clipped at large font). | Scrollable column. | yes |
 | 19 | M | ui/sources/SourceDetailScreen.kt | Three `Switch`es had no accessible name (TalkBack: "switch, on"). | contentDescription on each. | yes |
 | 20 | L | ShelfScreen | Grid/list keys were `type + id` (can collide). Long-press menu not announced to TalkBack. | Separator in key; `onLongClickLabel`. | yes |
-| 21 | L | Today row titles | Row title "Popular Movies - Movie" repeats the type that the subtitle ("Movies from X") already states, and wraps to two 24 sp lines. | Drop the type suffix on Android (web uses the same title, so left for a design decision). | open |
-| 22 | M | PlayerController.start | First frame waits for external subtitle downloads (up to 2.5 s) before `setMediaItem`. | Start playback first, attach subtitles when ready. | open |
-| 23 | L | PlayerController | 250 ms sync loop keeps running while the activity is stopped. | Gate on lifecycle STARTED. | open |
-| 24 | L | PlayerActivity | Theme ignores the Appearance text-size setting. | Pass fontScale. | open |
-| 25 | M | Details (process death) | A route with `play=primary` replays the auto-play (stream pick) after process death restore. | Consume via SavedStateHandle. | open |
-| 26 | L | Details BackBar | "‹ Back" is read as "single left-pointing angle quotation mark Back". | Chevron glyph + contentDescription. | open |
-| 27 | L | Browse / Source detail | Back is an "X" glyph labelled "Back" while Details uses "‹ Back": inconsistent affordance. | One back pattern. | open |
-| 28 | L | Hero dots | Dot hit areas are 22-30 x 32 dp (< 48). | Pad to 48 dp. | open |
-| 29 | L | TypePageScreen | `PullToRefreshBox(isRefreshing=false)`: spinner vanishes at once. | Drive from row loading state. | open |
-| 30 | L | TodayScreen | `Ux.pickFeatured` is computed twice per recomposition (not remembered). | `remember(firstItems)`. | open |
-| 31 | L | Long-press menus (Continue card, Episode row) | Not exposed to TalkBack as actions. | `onLongClickLabel` (done on Shelf only). | open |
-| 32 | L | SourceRepository.refreshStale | Sources refreshed one after another at startup. | Parallel with a limit. | open |
-| 33 | L | Updater | Progress state emitted per 64 KB chunk (hundreds of recompositions). | Throttle to 1 %. | open |
-| 34 | L | YouScreen (not touched, being refactored) | Username field uses `KeyboardType.Ascii` (no CJK usernames); no autofill hints on password. | Check server rules; `ContentType` autofill. | open |
-| 35 | L | Offline Today | Offline rows read "The source did not return valid data" in the fake-server run (connection reset mapped to NotJson?). Needs a real-network check. | Verify mapping of resets. | open |
-| 36 | L | Search | Empty-state text says "at least two letters" (one for CJK). | Copy tweak. | open |
-| 37 | M | manifest | `allowBackup` with the Room DB: meta cache is backed up (size). | Exclude `liuying.db` meta or whole DB if sources contain tokens. | open |
+| 21 | L | Today row titles | Row title "Popular Movies - Movie" repeats the type that the subtitle ("Movies from X") already states, and wraps to two 24 sp lines. | Drop the type suffix on Android (web uses the same title, so left for a design decision). | yes |
+| 22 | M | PlayerController.start | First frame waits for external subtitle downloads (up to 2.5 s) before `setMediaItem`. | Start playback first, attach subtitles when ready. | yes |
+| 23 | L | PlayerController | 250 ms sync loop keeps running while the activity is stopped. | Gate on lifecycle STARTED. | yes |
+| 24 | L | PlayerActivity | Theme ignores the Appearance text-size setting. | Pass fontScale. | yes |
+| 25 | M | Details (process death) | A route with `play=primary` replays the auto-play (stream pick) after process death restore. | Consume via SavedStateHandle. | yes (SavedStateHandle, tested) |
+| 26 | L | Details BackBar | "‹ Back" is read as "single left-pointing angle quotation mark Back". | Chevron glyph + contentDescription. | yes |
+| 27 | L | Browse / Source detail | Back is an "X" glyph labelled "Back" while Details uses "‹ Back": inconsistent affordance. | One back pattern. | yes |
+| 28 | L | Hero dots | Dot hit areas are 22-30 x 32 dp (< 48). | Pad to 48 dp. | yes |
+| 29 | L | TypePageScreen | `PullToRefreshBox(isRefreshing=false)`: spinner vanishes at once. | Drive from row loading state. | yes |
+| 30 | L | TodayScreen | `Ux.pickFeatured` is computed twice per recomposition (not remembered). | `remember(firstItems)`. | yes |
+| 31 | L | Long-press menus (Continue card, Episode row) | Not exposed to TalkBack as actions. | `onLongClickLabel` (done on Shelf only). | yes (Continue card, Episode row) |
+| 32 | L | SourceRepository.refreshStale | Sources refreshed one after another at startup. | Parallel with a limit. | yes (parallel, limit 4) |
+| 33 | L | Updater | Progress state emitted per 64 KB chunk (hundreds of recompositions). | Throttle to 1 %. | yes (1 % buckets, tested) |
+| 34 | L | YouScreen (not touched, being refactored) | Username field uses `KeyboardType.Ascii` (no CJK usernames); no autofill hints on password. | Check server rules; `ContentType` autofill. | partly: server only accepts A-Za-z0-9_ (server/src/auth.js), so ASCII keyboard stays; autofill hints added |
+| 35 | L | Offline Today | Offline rows read "The source did not return valid data" in the fake-server run (connection reset mapped to NotJson?). Needs a real-network check. | Verify mapping of resets. | yes (AddonFailure.fromIo, tested; message now "Can't reach the source") |
+| 36 | L | Search | Empty-state text says "at least two letters" (one for CJK). | Copy tweak. | yes |
+| 37 | M | manifest | `allowBackup` with the Room DB: meta cache is backed up (size). | Exclude `liuying.db` meta or whole DB if sources contain tokens. | yes (Room DB excluded from both backup rules) |
 | 38 | L | manifest | Cleartext allowed globally (by design, warned at add time). | Per-host config impossible for LAN; keep. | accepted |
 | 39 | L | build | R8 off: APK larger, no obfuscation of embedded strings. | By choice (0.3.0 regression). | accepted |
 | 40 | M | Settings | `metadataApiKey` in plain DataStore (excluded from backup). | Keystore wrapper. | open (earlier audit) |
 | 41 | M | Player | No foreground service/notification for background audio; no `POST_NOTIFICATIONS`. | Media3 session service. | open (earlier audit) |
-| 42 | L | Details | Episode rows and stream rows have no combined content description. | Merge semantics. | open |
-| 43 | L | Today | "Continue watching" section header has no list key. | Key it. | open |
-| 44 | L | Calendar | Section header for "Hide watched" chip (other agent) lacks accessible state. | Add `selected`. | open |
+| 42 | L | Details | Episode rows and stream rows have no combined content description. | Merge semantics. | yes |
+| 43 | L | Today | "Continue watching" section header has no list key. | Key it. | yes |
+| 44 | L | Calendar | Section header for "Hide watched" chip (other agent) lacks accessible state. | Add `selected`. | yes (InkChip already exposes selected) |
 | 45 | L | ArtImage | No placeholder shimmer while decoding; monogram only. Works offline. | Optional. | accepted |
 | 46 | L | Search | Each keystroke after the 350 ms debounce queries every catalog; no request budget. | Cancel works (flatMapLatest); acceptable. | accepted |
 | 47 | L | Deep links | `https://*/manifest.json` filter matches any browser link ending in manifest.json (also PWA manifests) and offers Liuying. | Acceptable; preview validates. | accepted |
@@ -62,7 +62,7 @@ Severity: H wrong/lost data or crash in a normal flow, M edge-case crash/wrong b
 | 52 | L | Main-thread IO | No `runBlocking`, no `allowMainThreadQueries`; all DAOs suspend/Flow; SharedPreferences reads only for session/update. | none | ok |
 | 53 | L | Crash risks | Remaining `!!` are guarded (`ui.meta!!` behind a null check, `item.url!!` behind a kind check, `dao.getById(..)!!` inside a catching transaction). | none | ok |
 
-Counts: 53 findings. By severity: H 0, M 27, L 26. Fixed 20 (all medium that were cheap and local), open 25, accepted/ok 8 (the earlier `docs/android-audit.md` open list also stays valid).
+Counts: 53 findings. Open after the second pass: #40 (Keystore wrapper for metadataApiKey) and #41 (foreground media service); #34 is partly fixed (server accepts ASCII usernames only). All other rows 21-44 fixed.
 
 ## Critique (visual design, against docs/design-reference.md)
 

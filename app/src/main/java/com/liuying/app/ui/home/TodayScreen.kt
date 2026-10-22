@@ -85,7 +85,8 @@ fun TodayScreen(navigator: Navigator) {
     // the hero comes from the first catalog on Today
     val first = rows?.firstOrNull()
     val firstItems = (first?.state as? RowState.Loaded)?.items.orEmpty()
-    val hasHero = settings.heroEnabled && first != null && (Ux.pickFeatured(firstItems, 5).isNotEmpty() || first.state == RowState.Loading)
+    val featured = androidx.compose.runtime.remember(firstItems) { Ux.pickFeatured(firstItems, 5) } // QA #30
+    val hasHero = settings.heroEnabled && first != null && (featured.isNotEmpty() || first.state == RowState.Loading)
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val scrolled by androidx.compose.runtime.remember { androidx.compose.runtime.derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 60 } }
     // over the hero the top bar is a bare scrim; once scrolled (or without a hero) it is solid
@@ -95,7 +96,6 @@ fun TodayScreen(navigator: Navigator) {
         contentPadding = androidx.compose.foundation.layout.PaddingValues(top = if (hasHero) 0.dp else topBarInset(), bottom = DockClearance),
     ) {
         if (settings.heroEnabled && first != null) {
-            val featured = Ux.pickFeatured(firstItems, 5)
             if (featured.isNotEmpty()) {
                 item(key = "hero") {
                     FeaturedHero(
@@ -131,8 +131,8 @@ fun TodayScreen(navigator: Navigator) {
             }
         }
         if (cw.isNotEmpty()) {
-            item { SectionHeader("Continue watching") }
-            item {
+            item(key = "continue-header") { SectionHeader("Continue watching") }
+            item(key = "continue-row") {
                 LazyRow(contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     items(cw, key = { it.key }) { item ->
                         ContinueCard(item, onOpen = { navigator.openTitle(item.type, item.titleId, item.videoId) },
@@ -142,7 +142,7 @@ fun TodayScreen(navigator: Navigator) {
             }
         }
         if (hasSources == true && rows == null) {
-            item { SectionHeader("Loading") ; PlaceholderRow() }
+            item(key = "loading-rows") { SectionHeader("Loading") ; PlaceholderRow() }
         }
         rows?.let { list ->
             items(list, key = { it.key }) { row -> CatalogRow(row, navigator, saved, { vm.toggleSave(it, row.entry.catalog.type) }, onRetry = { vm.retry(row.key) }, watched = watched, onToggleWatched = { vm.toggleWatched(it, row.entry.catalog.type) }) }
@@ -210,7 +210,7 @@ internal fun CatalogRow(
 private fun ContinueCard(item: ContinueItem, onOpen: () -> Unit, onDetails: () -> Unit, onDismiss: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(8.dp)
-    Column(Modifier.width(androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.let { (it * 0.72f).coerceAtMost(270f) }.dp).combinedClickable(onClick = onOpen, onLongClick = { menu = true })) {
+    Column(Modifier.width(androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.let { (it * 0.72f).coerceAtMost(270f) }.dp).combinedClickable(onClick = onOpen, onLongClick = { menu = true }, onLongClickLabel = "More options")) {
         Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(shape).border(BorderStroke(0.5.dp, GoldHairline), shape)) {
             ArtImage(item.thumbnail ?: item.poster, item.title ?: "?", Modifier.fillMaxSize())
             if (item.kind == ContinueKind.UpNext) {

@@ -36,7 +36,8 @@ data class CatalogEntry(val source: Source, val catalog: ManifestCatalog) {
     val key: String get() = catalogKey(source.id, catalog.type, catalog.id)
     /** Key shared with the web player's layout settings. */
     val webKey: String get() = com.liuying.app.domain.Ux.webCatalogKey(source.manifestUrl, catalog.type, catalog.id)
-    val title: String get() = "${catalog.displayName} - ${catalog.type.replaceFirstChar { it.uppercase() }}"
+    /** QA #21: no type suffix (the subtitle states the type). */
+    val title: String get() = catalog.displayName
 }
 
 fun catalogKey(sourceId: Long, type: String, catalogId: String) = "$sourceId:$type:$catalogId"

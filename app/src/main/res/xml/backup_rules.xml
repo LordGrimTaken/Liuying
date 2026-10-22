@@ -4,4 +4,6 @@
     <exclude domain="sharedpref" path="liuying_account.xml" />
     <exclude domain="sharedpref" path="liuying_update.xml" />
     <exclude domain="file" path="datastore" />
+    <!-- QA #37: Room DB holds source URLs (may carry tokens) plus a large meta cache -->
+    <exclude domain="database" path="." />
 </full-backup-content>

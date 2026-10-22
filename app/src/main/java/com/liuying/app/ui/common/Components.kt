@@ -1,5 +1,6 @@
 package com.liuying.app.ui.common
 
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import android.content.Context
 import android.content.ContextWrapper
 import androidx.activity.ComponentActivity
@@ -192,12 +193,26 @@ fun ErrorNote(message: String, modifier: Modifier = Modifier, onRetry: (() -> Un
 }
 
 @Composable
-fun InkTextButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, color: androidx.compose.ui.graphics.Color = Gold) {
+fun InkTextButton(
+    text: String, onClick: () -> Unit, modifier: Modifier = Modifier, color: androidx.compose.ui.graphics.Color = Gold,
+    description: String? = null,
+) {
     Box(
-        modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(6.dp)).semantics { role = Role.Button }.clickable(onClick = onClick).padding(horizontal = 10.dp),
+        modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(6.dp))
+            .semantics { role = Role.Button; if (description != null) contentDescription = description }
+            .clickable(onClick = onClick).padding(horizontal = 10.dp),
         contentAlignment = Alignment.Center,
-    ) { Text(text, color = color, style = MaterialTheme.typography.labelLarge) }
+    ) {
+        // a decorative glyph in the label must not be read out ("single left-pointing angle quotation mark")
+        Text(text, color = color, style = MaterialTheme.typography.labelLarge,
+            modifier = if (description != null) Modifier.clearAndSetSemantics { } else Modifier)
+    }
 }
+
+/** The one back affordance (QA #26/#27): chevron glyph, read as "Back". */
+@Composable
+fun BackTextButton(onClick: () -> Unit, modifier: Modifier = Modifier) =
+    InkTextButton("‹ Back", onClick, modifier, color = Paper, description = "Back")
 
 @Composable
 fun InkButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, filled: Boolean = true) {

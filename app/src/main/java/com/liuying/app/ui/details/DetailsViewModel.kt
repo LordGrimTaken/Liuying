@@ -81,8 +81,11 @@ class DetailsViewModel(
     private val c: AppContainer,
     val type: String,
     val id: String,
-    private val initialPlay: String?,
+    initialPlayArg: String?,
+    private val saved: androidx.lifecycle.SavedStateHandle? = null,
 ) : ViewModel() {
+    /** QA #25: a `play=` route argument is consumed once; after process death the restored entry must not replay it. */
+    private val initialPlay: String? = PlayRouteArg.effective(initialPlayArg, saved?.get<Boolean>(PlayRouteArg.KEY) == true)
     private val hint = c.hint(type, id)
     private val reloadTick = MutableStateFlow(0)
     private val selectedSeason = MutableStateFlow<Int?>(null)
@@ -129,6 +132,7 @@ class DetailsViewModel(
         }
         if (initialPlay != null) viewModelScope.launch {
             ui.first { it.meta != null && (it.states.isNotEmpty() || it.load?.loading == false) }
+            saved?.set(PlayRouteArg.KEY, true)
             if (initialPlay == com.liuying.app.ui.nav.Routes.PLAY_PRIMARY) playPrimary() else openStreams(targetFor(initialPlay))
         }
     }
@@ -291,4 +295,11 @@ class DetailsViewModel(
             _sheet.value = null
         }.invokeOnCompletion { starting = false }
     }
+}
+
+
+/** Pure rule for the one-shot `play=` route argument (unit tested). */
+object PlayRouteArg {
+    const val KEY = "playConsumed"
+    fun effective(arg: String?, alreadyConsumed: Boolean): String? = if (alreadyConsumed) null else arg
 }

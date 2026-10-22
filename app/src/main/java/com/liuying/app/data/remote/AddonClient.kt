@@ -230,13 +230,7 @@ class AddonClient(
         return Result.success(text)
     }
 
-    private fun mapIo(e: IOException): AddonFailure = when {
-        e is SSLException -> AddonFailure(AddonErrorKind.Tls, e.message ?: "TLS error", cause = e)
-        e is UnknownHostException || e is ConnectException -> AddonFailure(AddonErrorKind.NoConnection, e.message ?: "Cannot connect", cause = e)
-        e is InterruptedIOException || e.message?.contains("timeout", ignoreCase = true) == true ->
-            AddonFailure(AddonErrorKind.Timeout, "Timed out", cause = e)
-        else -> AddonFailure(AddonErrorKind.NoConnection, e.message ?: "Network error", cause = e)
-    }
+    private fun mapIo(e: IOException): AddonFailure = AddonFailure.fromIo(e)
 
     private suspend fun Call.await(): Response = suspendCancellableCoroutine { cont ->
         cont.invokeOnCancellation { runCatching { cancel() } }

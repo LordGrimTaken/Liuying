@@ -22,6 +22,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -78,7 +79,11 @@ fun TypePageScreen(type: String, navigator: Navigator) {
     val scrolled by remember { derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 60 } }
     ChromeSolid(!heroOn || scrolled)
 
-    PullToRefreshBox(isRefreshing = false, onRefresh = vm::refresh, modifier = Modifier.fillMaxSize()) {
+    // QA #29: the spinner follows the rows' loading state after a pull (not the first load, which has skeletons)
+    var pulled by remember { androidx.compose.runtime.mutableStateOf(false) }
+    val rowsLoading = rows?.any { it.state == com.liuying.app.data.repo.RowState.Loading } == true
+    androidx.compose.runtime.LaunchedEffect(rowsLoading) { if (!rowsLoading) pulled = false }
+    PullToRefreshBox(isRefreshing = pulled && rowsLoading, onRefresh = { pulled = true; vm.refresh() }, modifier = Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(top = if (heroOn) 0.dp else topBarInset(), bottom = DockClearance)) {
             if (heroOn) item(key = "hero") {
                 val entry = vm.heroEntry

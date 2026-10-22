@@ -27,6 +27,10 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import com.liuying.app.domain.Ux
+import com.liuying.app.ui.common.LocalContainer
+import androidx.lifecycle.createSavedStateHandle
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import com.liuying.app.ui.common.Glyph
 import com.liuying.app.ui.common.GlyphKind
 import com.liuying.app.ui.common.IconCircleButton
@@ -99,7 +103,13 @@ import com.liuying.app.ui.theme.Vermilion
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DetailsScreen(type: String, id: String, playVideoId: String?, navigator: Navigator) {
-    val vm = containerViewModel(key = "details:$type:$id") { DetailsViewModel(it, type, id, playVideoId) }
+    val container = LocalContainer.current
+    val vm = androidx.lifecycle.viewmodel.compose.viewModel<DetailsViewModel>(
+        key = "details:$type:$id",
+        factory = viewModelFactory {
+            initializer { DetailsViewModel(container, type, id, playVideoId, createSavedStateHandle()) }
+        },
+    )
     val ui by vm.ui.collectAsStateWithLifecycle()
     val sheet by vm.sheet.collectAsStateWithLifecycle()
     val ask by vm.ask.collectAsStateWithLifecycle()
@@ -153,7 +163,7 @@ fun DetailsScreen(type: String, id: String, playVideoId: String?, navigator: Nav
 @Composable
 private fun BackBar(navigator: Navigator, trailing: (@Composable () -> Unit)? = null) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        InkTextButton("‹ Back", navigator::back, color = Paper)
+        com.liuying.app.ui.common.BackTextButton(navigator::back)
         Spacer(Modifier.weight(1f))
         trailing?.invoke()
     }
@@ -317,7 +327,10 @@ private fun EpisodeRow(e: EpisodeState, isNext: Boolean, onPlay: () -> Unit, onT
     var menu by remember { mutableStateOf(false) }
     Box {
         Row(
-            Modifier.fillMaxWidth().combinedClickable(onClick = onPlay, onLongClick = { menu = true }).padding(horizontal = 20.dp, vertical = 8.dp).alpha(if (e.released) 1f else 0.5f),
+            Modifier.fillMaxWidth().semantics(mergeDescendants = true) {
+                // QA #42: one readable description per episode row
+                contentDescription = listOfNotNull("Episode ${e.episode}", e.video.displayTitle, when { !e.released -> "not released yet"; e.watched -> "watched"; e.inProgress -> "in progress"; else -> null }).joinToString(", ")
+            }.combinedClickable(onClick = onPlay, onLongClick = { menu = true }, onLongClickLabel = if (e.watched) "Mark as unwatched" else "Mark as watched").padding(horizontal = 20.dp, vertical = 8.dp).alpha(if (e.released) 1f else 0.5f),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(Modifier.width(120.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(6.dp)).alpha(if (e.watched) 0.5f else 1f)) {
@@ -480,6 +493,9 @@ private fun StreamRow(item: StreamItem, showRaw: Boolean, showSource: Boolean, o
     val shape = RoundedCornerShape(10.dp)
     Column(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).clip(shape).background(InkSurface).border(BorderStroke(0.5.dp, GoldHairline), shape)
+            .semantics(mergeDescendants = true) {
+                contentDescription = listOfNotNull(item.displayName, item.source.displayName.takeIf { showSource }, item.quality.badges.joinToString(" ").ifBlank { null }, item.disabledReason).joinToString(", ")
+            }
             .clickable(onClick = onClick).padding(12.dp).alpha(if (item.enabled) 1f else 0.5f),
     ) {
         Text(item.displayName, color = Paper, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)

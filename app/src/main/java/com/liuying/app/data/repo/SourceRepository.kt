@@ -20,6 +20,9 @@ import com.liuying.app.domain.model.isAdult
 import com.liuying.app.domain.model.isHomeEligible
 import com.liuying.app.domain.model.providesCatalogs
 import com.liuying.app.domain.model.usableCatalogs
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -216,7 +219,12 @@ class SourceRepository(
     /** App-start refresh: only sources not refreshed within [maxAgeMs] (default 12 h). Returns per-source results. */
     suspend fun refreshStale(maxAgeMs: Long = 12L * 3600 * 1000): Map<Long, Result<Source>> {
         val now = clock.nowMs()
-        return dao.getAll().filter { now - it.fetchedAt >= maxAgeMs }.associate { it.id to refreshManifest(it.id) }
+        val stale = dao.getAll().filter { now - it.fetchedAt >= maxAgeMs }
+        // QA #32: refresh in parallel, at most 4 at a time
+        val gate = kotlinx.coroutines.sync.Semaphore(4)
+        return kotlinx.coroutines.coroutineScope {
+            stale.map { e -> async { gate.withPermit { e.id to refreshManifest(e.id) } } }.awaitAll().toMap()
+        }
     }
 
     /**

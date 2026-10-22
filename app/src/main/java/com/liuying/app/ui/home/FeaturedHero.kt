@@ -238,7 +238,7 @@ private fun HeroDots(page: Int, count: Int, paused: Boolean, onTogglePause: () -
             repeat(count) { i ->
                 val on = i == page
                 Box(
-                    Modifier.height(32.dp).width(if (on) 30.dp else 22.dp)
+                    Modifier.height(48.dp).width(48.dp)
                         .semantics { contentDescription = "Show featured title ${i + 1} of $count"; role = Role.Button }
                         .clickable { onGo(i) },
                     contentAlignment = Alignment.Center,
