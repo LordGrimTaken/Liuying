@@ -1,7 +1,9 @@
-import { test } from 'node:test';
+import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { setup, post, SITE } from './helpers.js';
+import { setup, post, SITE, closeAll } from './helpers.js';
 import { hashPassword, verifyPassword, needsRehash, DEFAULT_PARAMS } from '../src/auth.js';
+
+after(() => closeAll());
 
 const GOOD = { username: 'Alice_01', password: 'correct horse battery' };
 

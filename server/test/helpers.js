@@ -1,10 +1,13 @@
 import { fileURLToPath } from 'node:url';
+import http from 'node:http';
 import request from 'supertest';
 import { createApp } from '../src/app.js';
 import { createMemoryDb, migrate } from '../src/db.js';
 
 export const SITE = fileURLToPath(new URL('./site', import.meta.url));
 const FAST = { N: 2 ** 10, r: 8, p: 1, keylen: 64 };
+const servers = [];
+export const closeAll = () => Promise.all(servers.map((s) => new Promise((r) => s.close(r))));
 const silent = { info() {}, error() {} };
 
 export async function setup(opts = {}) {
@@ -14,7 +17,9 @@ export async function setup(opts = {}) {
   const app = createApp({
     db, siteDir: SITE, logger: silent, hashParams: FAST, now: () => clock.t, ...opts,
   });
-  return { db, app, clock, agent: () => request.agent(app), request: () => request(app) };
+  const server = http.createServer(app).listen(0, '127.0.0.1');
+  servers.push(server);
+  return { db, app, clock, agent: () => request.agent(server), request: () => request(server) };
 }
 
 export const json = (r) => r.set('Content-Type', 'application/json');
