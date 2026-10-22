@@ -6,7 +6,9 @@ import { describeError } from '../addon/client.js';
 import { posterCard, rowSection, showSkeletons, errorCard, emptyState, artImg, titleHref, toggleLibrary } from './components.js';
 import { renderContinueRow, streamsHref } from './continue.js';
 import { href, enc, restoreScroll } from '../router.js';
-import { imgUrl, yearOf } from '../util.js';
+import { imgUrl, yearOf, typeLabel } from '../util.js';
+import { pickFeatured, orderRows } from '../ux.js';
+import { openSearch } from './searchOverlay.js';
 
 const cache = new Map(); // key -> {items, at}
 const TTL = 5 * 60e3;
@@ -16,7 +18,8 @@ export const defaultExtra = (cat) => {
   return c.genreRequired && c.genreOptions.length ? { genre: c.genreOptions[0] } : undefined;
 };
 
-export function homeRows() {
+/** Every home-eligible catalog in the user's saved order, with a `hidden` flag (used by Settings). */
+export function allHomeRows() {
   const s = store.settings();
   const rows = [];
   for (const src of store.enabledSources()) {
@@ -24,12 +27,18 @@ export function homeRows() {
     for (const cat of src.manifest.catalogs) {
       if (!isHomeEligible(cat)) continue;
       const key = catalogKey(src.url, cat);
-      if (s.hiddenCatalogs?.[key]) continue;
-      rows.push({ src, cat, key });
+      rows.push({ src, cat, key, hidden: !!s.hiddenCatalogs?.[key] });
     }
   }
-  return rows;
+  return orderRows(rows, s.homeOrder);
 }
+export const homeRows = () => allHomeRows().filter((r) => !r.hidden);
+
+const PLURAL = { movie: 'Movies', series: 'Series', tv: 'TV', channel: 'Channels' };
+export const rowSubtitle = (cat, src) => `${PLURAL[cat.type] || typeLabel(cat.type)} from ${src.manifest.name}`;
+
+/** Titles seen in already-loaded catalogs; feeds search suggestions. */
+export const cachedTitles = () => [...cache.values()].flatMap((c) => c.items.map((i) => i.name)).filter(Boolean);
 
 export function today() {
   const view = document.getElementById('view');
@@ -42,7 +51,7 @@ export function today() {
   const rowsBox = h('div', { class: 'rows-box' });
   const failBanner = h('div', { class: 'fail-box' });
   const refreshBtn = h('button', { class: 'btn sm', type: 'button', onClick: () => build(true) }, icon('refresh', 18), 'Refresh');
-  page.append(h('div', { class: 'page-h' }, h('div', { class: 'grow brandline' }, h('span', { class: 'seal sm', 'aria-hidden': 'true' }, '流', h('br'), '影'), h('h1', { text: 'Today' })), refreshBtn),
+  page.append(h('div', { class: 'page-h' }, h('div', { class: 'grow brandline' }, h('span', { class: 'seal sm', 'aria-hidden': 'true' }, '流', h('br'), '影'), h('h1', { text: 'Today' })), h('button', { class: 'ibtn ring', type: 'button', 'aria-label': 'Search', title: 'Search ( / )', onClick: () => openSearch() }, icon('search', 20)), refreshBtn),
     failBanner, heroBox, contBox, rowsBox);
 
   let status = {};
@@ -63,10 +72,11 @@ export function today() {
         h('a', { class: 'btn pri', href: '#/sources', text: 'Open sources' })));
       return;
     }
+    if (store.settings().hero) heroBox.append(h('div', { class: 'sk hero', 'aria-hidden': 'true' }));
     const heroKey = store.settings().heroCatalog && rows.find((r) => r.key === store.settings().heroCatalog) ? store.settings().heroCatalog : rows[0].key;
     let first = true;
     for (const r of rows) {
-      const sec = rowSection(catalogTitle(r.cat), { allHref: href(`/browse/${store.sourceId(r.src)}/${enc(r.cat.type)}/${enc(r.cat.id)}`) });
+      const sec = rowSection(catalogTitle(r.cat), { allHref: href(`/browse/${store.sourceId(r.src)}/${enc(r.cat.type)}/${enc(r.cat.id)}`), sub: rowSubtitle(r.cat, r.src) });
       sec.el.hidden = false;
       rowsBox.append(sec.el);
       loadRow(r, sec, bypass, r.key === heroKey);
@@ -87,6 +97,7 @@ export function today() {
     } catch (e) {
       if (ctl.signal.aborted) return;
       status[r.key] = 'err';
+      if (isHero) clear(heroBox);
       clear(sec.scroller);
       sec.scroller.classList.remove('scroller');
       sec.scroller.replaceChildren(errorCard(`Couldn't load ${r.cat.name || r.cat.id}`, `${r.src.manifest.name}: ${describeError(e)}`, () => { sec.scroller.className = 'scroller'; loadRow(r, sec, true, isHero); }));
@@ -103,7 +114,7 @@ export function today() {
         c.setAttribute('role', 'listitem');
         sec.scroller.append(c);
       }
-      if (isHero && store.settings().hero) renderHero(items.filter((i) => i.background || i.poster).slice(0, 5), r);
+      if (isHero) { const feat = store.settings().hero ? pickFeatured(items, 5) : []; if (feat.length) renderHero(feat, r); else clear(heroBox); }
       restoreScroll();
     }
   }
@@ -120,39 +131,58 @@ export function today() {
   }
 
   function renderHero(items, r) {
-    if (!items.length) return;
     clear(heroBox);
     let i = 0;
-    const bgs = items.map((it, k) => { const im = artImg(it.background || it.poster); if (im) { im.className = 'bg' + (k === 0 ? ' on' : ''); im.alt = ''; im.loading = 'eager'; } return im; });
-    const copy = h('div', { class: 'copy' });
-    const dots = h('div', { class: 'dots' }, items.map((_, k) => h('button', { type: 'button', 'aria-label': `Show featured title ${k + 1}`, onClick: () => { show(k); stopAuto(); } })));
-    const hero = h('section', { class: 'hero', 'aria-roledescription': 'carousel', 'aria-label': 'Featured' }, bgs, copy, dots);
+    let paused = false;
+    const sid = store.sourceId(r.src);
+    const bgs = items.map((it, k) => {
+      const useBg = !!it.background;
+      const im = artImg(it.background || it.poster);
+      if (im) { im.className = 'bg' + (useBg ? '' : ' fromposter') + (k === 0 ? ' on' : ''); im.alt = ''; im.loading = 'eager'; }
+      return im;
+    });
+    const copy = h('div', { class: 'copy', 'aria-live': 'off' });
+    const pauseBtn = h('button', { class: 'ibtn hbtn', type: 'button', 'aria-label': 'Pause rotation', onClick: () => { paused = !paused; syncPause(); } });
+    const dots = h('div', { class: 'dots' }, items.map((_, k) => h('button', { type: 'button', 'aria-label': `Show featured title ${k + 1} of ${items.length}`, onClick: () => { show(k); } })));
+    const ctrls = h('div', { class: 'hctl' }, items.length > 1 ? pauseBtn : null, items.length > 1 ? dots : null);
+    const hero = h('section', { class: 'hero', 'aria-roledescription': 'carousel', 'aria-label': 'Featured titles' }, bgs, copy, ctrls);
     heroBox.append(hero);
+    function syncPause() {
+      pauseBtn.replaceChildren(icon(paused ? 'play' : 'pause', 18));
+      pauseBtn.setAttribute('aria-label', paused ? 'Resume rotation' : 'Pause rotation');
+    }
     function show(k) {
       i = k;
       const it = items[k];
       bgs.forEach((b, j) => b && b.classList.toggle('on', j === k));
       [...dots.children].forEach((d, j) => d.setAttribute('aria-current', j === k ? 'true' : 'false'));
       const inLib = store.inLibrary(it.id);
-      const genres = (it.genres || it.genre || []).slice?.(0, 3) || [];
+      const genres = (Array.isArray(it.genres) ? it.genres : Array.isArray(it.genre) ? it.genre : []).slice(0, 3);
+      const more = titleHref(it, sid);
+      const type = it.type || 'movie';
       clear(copy).append(
-        h('p', { class: 'eyebrow', text: 'Featured' }),
-        h('h2', {}, h('a', { href: titleHref(it, store.sourceId(r.src)), text: it.name || it.id })),
-        h('div', { class: 'meta' }, yearOf(it) ? h('span', { text: yearOf(it) }) : null, it.imdbRating ? h('span', { class: 'rate', text: `★ ${it.imdbRating}` }) : null, ...genres.map((g) => h('span', { text: g }))),
+        h('p', { class: 'eyebrow', text: `Featured · ${k + 1} of ${items.length}` }),
+        h('h2', { text: it.name || it.id }),
+        h('div', { class: 'chipline' },
+          it.imdbRating ? h('span', { class: 'hchip rate' }, icon('star', 13), String(it.imdbRating)) : null,
+          yearOf(it) ? h('span', { class: 'hchip', text: yearOf(it) }) : null,
+          h('span', { class: 'hchip', text: typeLabel(type) }),
+          ...genres.map((g) => h('span', { class: 'hchip', text: g }))),
         it.description ? h('p', { class: 'desc', text: it.description }) : null,
         h('div', { class: 'acts' },
-          it.type === 'series'
-            ? h('a', { class: 'btn pri', href: titleHref(it, store.sourceId(r.src)) }, icon('eye', 18), 'Details')
-            : h('a', { class: 'btn pri', href: streamsHref(it.type || 'movie', it.id) }, icon('play', 18), 'Play'),
-          h('button', { class: 'btn', type: 'button', 'aria-pressed': String(inLib), onClick: () => { toggleLibrary(it); show(i); } }, icon(inLib ? 'bookmarkOn' : 'bookmark', 18), inLib ? 'On shelf' : 'Add to shelf')));
+          h('a', { class: 'btn pri', href: type === 'series' ? href(`/title/${enc(type)}/${enc(it.id)}`, { src: sid, play: 1 }) : streamsHref(type, it.id) }, icon('play', 18), 'Play'),
+          h('a', { class: 'btn', href: more }, icon('info', 18), 'More info'),
+          h('button', { class: 'ibtn ring', type: 'button', 'aria-pressed': String(inLib), 'aria-label': inLib ? `Remove ${it.name} from shelf` : `Add ${it.name} to shelf`, title: inLib ? 'On your shelf' : 'Add to shelf', onClick: () => { toggleLibrary(it); show(i); } }, icon(inLib ? 'check' : 'plus', 20))));
     }
-    const stopAuto = () => clearInterval(timer);
     show(0);
+    syncPause();
     const reduce = store.settings().reduceMotion || matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (items.length > 1 && !reduce) {
-      timer = setInterval(() => show((i + 1) % items.length), 8000);
-      hero.addEventListener('mouseenter', stopAuto); hero.addEventListener('focusin', stopAuto);
-    }
+      let hover = false;
+      timer = setInterval(() => { if (!paused && !hover) show((i + 1) % items.length); }, 8000);
+      hero.addEventListener('mouseenter', () => { hover = true; }); hero.addEventListener('mouseleave', () => { hover = false; });
+      hero.addEventListener('focusin', () => { paused = true; syncPause(); });
+    } else paused = true, syncPause();
   }
 
   build();

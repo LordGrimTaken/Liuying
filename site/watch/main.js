@@ -9,18 +9,22 @@ import { sources } from './ui/sources.js';
 import { settings } from './ui/settings.js';
 import { browse } from './ui/browse.js';
 import { details } from './ui/details.js';
+import { calendar } from './ui/calendar.js';
+import { openSearch, closeSearch, initSearchShortcut } from './ui/searchOverlay.js';
 import { streams } from './ui/streams.js';
 import { player } from './player/player.js';
 import { refreshManifests, applyTimeoutSetting } from './addon/service.js';
 
-const NAV = [['today', '#/', 'Today'], ['search', '#/search', 'Search'], ['shelf', '#/shelf', 'Shelf'], ['sources', '#/sources', 'Sources'], ['settings', '#/settings', 'Settings']];
-const SECTION = { today: 'today', browse: 'today', title: 'today', streams: 'today', play: 'today', search: 'search', shelf: 'shelf', sources: 'sources', settings: 'settings' };
-const TITLES = { today: 'Today', search: 'Search', shelf: 'Shelf', sources: 'Sources', settings: 'Settings', browse: 'Browse', title: 'Details', streams: 'Streams', play: 'Now playing' };
+const NAV = [['today', '#/', 'Today'], ['search', '#/search', 'Search'], ['shelf', '#/shelf', 'Shelf'], ['calendar', '#/calendar', 'Calendar'], ['sources', '#/sources', 'Sources'], ['settings', '#/settings', 'Settings']];
+const SECTION = { today: 'today', browse: 'today', title: 'today', streams: 'today', play: 'today', search: 'search', shelf: 'shelf', calendar: 'calendar', sources: 'sources', settings: 'settings' };
+const TITLES = { today: 'Today', search: 'Search', shelf: 'Shelf', calendar: 'Calendar', sources: 'Sources', settings: 'Settings', browse: 'Browse', title: 'Details', streams: 'Streams', play: 'Now playing' };
 
 function applySettings() {
   const s = store.settings();
   document.documentElement.dataset.theme = s.theme || 'dark';
   document.documentElement.dataset.poster = s.posterSize || 'm';
+  document.documentElement.dataset.accent = s.accent || 'vermilion';
+  document.documentElement.dataset.font = s.fontScale || 'm';
   document.body.classList.toggle('reduce-motion', !!s.reduceMotion);
   const tc = { dark: '#14110f', black: '#000000', paper: '#f2e9da' }[s.theme] || '#14110f';
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', tc);
@@ -32,7 +36,7 @@ function buildRail() {
   clear(rail);
   rail.append(
     h('a', { class: 'brand', href: '#/', 'aria-label': 'Liuying home' }, h('span', { class: 'seal' }, '流', h('br'), '影')),
-    h('div', { class: 'nav' }, NAV.map(([k, hr, label]) => h('a', { class: 'navlink', href: hr, 'data-nav': k }, icon(k === 'today' ? 'today' : k, 22), h('span', { text: label })))),
+    h('div', { class: 'nav' }, NAV.map(([k, hr, label]) => h('a', { class: 'navlink', href: hr, 'data-nav': k, onClick: k === 'search' ? (e) => { if (e.ctrlKey || e.metaKey || e.shiftKey) return; e.preventDefault(); openSearch(); } : undefined }, icon(k === 'today' ? 'today' : k, 22), h('span', { text: label })))),
     h('div', { class: 'railfoot', id: 'railfoot' }));
 }
 function markNav() {
@@ -65,10 +69,12 @@ async function main() {
   applySettings();
   store.subscribe((k) => { if (k === 'settings') applySettings(); });
   buildRail();
+  initSearchShortcut();
 
   route('/', today, 'today');
   route('/search', search, 'search');
   route('/shelf', shelf, 'shelf');
+  route('/calendar', calendar, 'calendar');
   route('/sources', sources, 'sources');
   route('/settings', settings, 'settings');
   route('/browse/:sid/:type/:cid', browse, 'browse');
@@ -78,7 +84,7 @@ async function main() {
 
   let first = true;
   let lastRaw = '';
-  onRoute((cur) => { markNav(); drawBanner(sync.getStatus()); if (!first && cur.raw !== lastRaw && cur.name !== 'play') document.getElementById('view')?.focus({ preventScroll: true }); lastRaw = cur.raw; });
+  onRoute((cur) => { if (cur.name !== 'search') closeSearch(); markNav(); drawBanner(sync.getStatus()); if (!first && cur.raw !== lastRaw && cur.name !== 'play') document.getElementById('view')?.focus({ preventScroll: true }); lastRaw = cur.raw; });
   await startRouter();
   first = false;
 

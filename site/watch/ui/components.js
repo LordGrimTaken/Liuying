@@ -40,6 +40,18 @@ export function posterCard(item, { srcId, showTitle = true, onMenu } = {}) {
     s.titlesUnder && yearOf(item) ? h('span', { class: 'sub', text: yearOf(item) }) : null);
   const open = (e) => { e.preventDefault(); e.stopPropagation(); itemMenu(item); };
   card.append(h('button', { class: 'more', type: 'button', 'aria-label': `Actions for ${name}`, onClick: open }, icon('more', 18)));
+  if (item.id) {
+    const q = h('button', { class: 'quick', type: 'button', 'aria-pressed': String(inLib), 'aria-label': `${inLib ? 'Remove' : 'Add'} ${name} ${inLib ? 'from' : 'to'} shelf`, title: inLib ? 'On your shelf' : 'Add to shelf' }, icon(inLib ? 'check' : 'plus', 18));
+    q.addEventListener('click', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      toggleLibrary(item);
+      const on = store.inLibrary(item.id);
+      q.setAttribute('aria-pressed', String(on)); q.title = on ? 'On your shelf' : 'Add to shelf';
+      q.setAttribute('aria-label', `${on ? 'Remove' : 'Add'} ${name} ${on ? 'from' : 'to'} shelf`);
+      q.replaceChildren(icon(on ? 'check' : 'plus', 18));
+    });
+    card.querySelector('.art').append(q);
+  }
   card.addEventListener('contextmenu', open);
   let t;
   card.addEventListener('touchstart', () => { t = setTimeout(() => itemMenu(item), 550); }, { passive: true });
@@ -84,11 +96,16 @@ export function sheet(title, entries) {
 
 export function posterSkeleton() { return h('div', { class: 'sk poster', 'aria-hidden': 'true' }); }
 
-/** Horizontal row with title, optional "See all" link, and a scroller. */
+/** Horizontal row: heading, short subtitle, optional "See all", paging arrows (desktop) and a snap scroller. */
 export function rowSection(title, { allHref, sub } = {}) {
   const scroller = h('div', { class: 'scroller', role: 'list' });
-  const head = h('div', { class: 'row-h' }, h('h2', { text: title }), sub ? h('span', { class: 'mute', text: sub }) : null,
-    allHref ? h('a', { class: 'all', href: allHref, 'aria-label': `See all: ${title}`, text: 'See all' }) : null);
+  const page = (dir) => scroller.scrollBy({ left: dir * Math.max(200, scroller.clientWidth * 0.85), behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  const head = h('div', { class: 'row-h' },
+    h('div', { class: 'ht' }, h('h2', { text: title }), sub ? h('p', { class: 'rsub', text: sub }) : null),
+    allHref ? h('a', { class: 'all', href: allHref, 'aria-label': `See all: ${title}`, text: 'See all' }) : null,
+    h('div', { class: 'pager' },
+      h('button', { class: 'ibtn ring', type: 'button', 'aria-label': `Scroll ${title} left`, onClick: () => page(-1) }, icon('back', 18)),
+      h('button', { class: 'ibtn ring', type: 'button', 'aria-label': `Scroll ${title} right`, onClick: () => page(1) }, icon('right', 18))));
   const el = h('section', { class: 'row', 'aria-label': title }, head, scroller);
   return { el, scroller, head };
 }

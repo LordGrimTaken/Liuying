@@ -5,7 +5,7 @@ import { shortId, debounce } from './util.js';
 
 export const DEFAULT_SETTINGS = {
   theme: 'dark', reduceMotion: false, posterSize: 'm', titlesUnder: true, showBadges: true,
-  showContinue: true, showUpNext: true, hero: true, heroCatalog: '', hideAdult: true, hiddenCatalogs: {},
+  showContinue: true, showUpNext: true, hero: true, heroCatalog: '', hideAdult: true, hiddenCatalogs: {}, homeOrder: [], accent: 'vermilion', fontScale: 'm',
   resume: 'auto', threshold: 0.9, autoNext: true, countdown: 10, seekStep: 10, speed: 1, autoSelect: false,
   streamGroup: 'source', streamSort: 'default', hideUnplayable: false, patient: false,
   subLangs: ['en'], subMode: 'on', subBold: false, subSize: 100, subColor: '#ffffff', subBg: 'shadow', subBgOpacity: 0.6, subOffset: 8,

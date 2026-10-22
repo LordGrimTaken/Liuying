@@ -86,7 +86,7 @@ export function renderContinueRow(container, signal, { onChange } = {}) {
     clear(container);
     if (!cards.length) return;
     const scroller = h('div', { class: 'scroller', role: 'list' }, cards.map((c) => continueCard(c, { onChange: () => { onChange?.(); } })));
-    container.append(h('section', { class: 'row', 'aria-label': 'Continue watching' }, h('div', { class: 'row-h' }, h('h2', { text: 'Continue Watching' })), scroller));
+    container.append(h('section', { class: 'row', 'aria-label': 'Continue watching' }, h('div', { class: 'row-h' }, h('div', { class: 'ht' }, h('h2', { text: 'Continue Watching' }), h('p', { class: 'rsub', text: 'Pick up where you left off' }))), scroller));
   };
   return computeContinue(draw, signal);
 }
