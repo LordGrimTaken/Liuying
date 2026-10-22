@@ -70,7 +70,12 @@ export function browse({ params, query }) {
       if (gen !== generation || ctl.signal.aborted) return;
       if (!items.length) clear(grid);
       clear(foot).append(errorCard(items.length ? "Couldn't load more" : "Couldn't load this catalog", describeError(e), () => { loading = false; more(); }));
-    } finally { if (gen === generation) loading = false; }
+    } finally {
+      if (gen === generation) {
+        loading = false;
+        requestAnimationFrame(() => { if (!end && gen === generation && !foot.querySelector('.state.err') && foot.getBoundingClientRect().top < innerHeight + 600) more(); });
+      }
+    }
   }
   io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) more(); }, { rootMargin: '600px' });
   io.observe(foot);

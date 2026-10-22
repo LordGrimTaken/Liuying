@@ -88,7 +88,7 @@ export function search({ query }) {
           drawTypes(); applyFilter();
           if (pending <= 0) {
             live.remove();
-            if (!found && !results.querySelector('.state.err')) results.append(emptyState(`No results for “${q}”`, 'Check the spelling, or add a source that supports search.'));
+            if (!found) results.append(emptyState(`No results for “${q}”`, 'Check the spelling, or add a source that supports search.'));
           } else live.lastChild.textContent = `Searching ${pending} catalog${pending > 1 ? 's' : ''}…`;
         }
       };

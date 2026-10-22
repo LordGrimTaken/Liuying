@@ -66,7 +66,7 @@ export function streams({ params, query }) {
       s.badges.length ? badges(s.badges) : null,
       c.playable && c.warn ? h('div', { class: 'badges' }, h('span', { class: 'badge warn', text: c.warn })) : null,
       !c.playable && c.note ? h('div', { class: 'note' }, icon('warn', 14), c.note) : null,
-      h('div', { class: 'src', text: s.source.manifest?.name || '' })),
+      h('div', { class: 'ssrc', text: s.source.manifest?.name || '' })),
     h('span', { class: 'go' }, icon(c.playable ? 'play' : c.openUrl ? 'external' : 'close', c.playable ? 18 : 16))];
     if (c.playable) return h('button', { class: 'srow', type: 'button', onClick: () => play(s) }, body);
     if (c.openUrl) return h('a', { class: 'srow', href: c.openUrl, target: '_blank', rel: 'noopener noreferrer' }, body);

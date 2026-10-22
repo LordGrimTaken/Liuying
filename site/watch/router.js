@@ -3,6 +3,8 @@ const routes = [];
 let current = null;
 let cleanup = null;
 const scrollMemo = new Map();
+const afterHooks = new Set();
+export const onRoute = (fn) => { afterHooks.add(fn); return () => afterHooks.delete(fn); };
 
 export function route(pattern, handler, name) {
   const keys = [];
@@ -40,9 +42,11 @@ export async function render() {
     r.keys.forEach((k, i) => { params[k] = decodeURIComponent(m[i + 1]); });
     current = { name: r.name, params, query, raw, path };
     const token = current;
+    document.body.dataset.route = r.name;
     const result = await r.handler(current);
     if (token !== current) { try { result?.destroy?.(); } catch { /* ignore */ } return; }
     cleanup = result?.destroy || null;
+    afterHooks.forEach((f) => { try { f(current); } catch (e) { console.error(e); } });
     const y = scrollMemo.get(raw);
     window.scrollTo(0, y || 0);
     return;

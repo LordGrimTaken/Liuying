@@ -1,6 +1,6 @@
 import * as store from './store.js';
 import * as sync from './sync.js';
-import { route, start as startRouter, render, currentRoute } from './router.js';
+import { route, start as startRouter, render, currentRoute, onRoute } from './router.js';
 import { h, icon, clear } from './ui/dom.js';
 import { today } from './ui/today.js';
 import { search } from './ui/search.js';
@@ -77,9 +77,9 @@ async function main() {
   route('/play/:type/:id', player, 'play');
 
   let first = true;
-  addEventListener('hashchange', () => { queueMicrotask(() => { markNav(); drawBanner(sync.getStatus()); if (!first) document.getElementById('view')?.focus({ preventScroll: true }); first = false; }); });
+  let lastRaw = '';
+  onRoute((cur) => { markNav(); drawBanner(sync.getStatus()); if (!first && cur.raw !== lastRaw && cur.name !== 'play') document.getElementById('view')?.focus({ preventScroll: true }); lastRaw = cur.raw; });
   await startRouter();
-  markNav();
   first = false;
 
   sync.subscribeStatus((st) => { drawSyncChip(st); drawBanner(st); });
