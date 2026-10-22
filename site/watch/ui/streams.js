@@ -1,0 +1,172 @@
+import { h, icon, clear } from './dom.js';
+import * as store from '../store.js';
+import { loadStreams } from '../addon/service.js';
+import { describeError } from '../addon/client.js';
+import { pickSimilar, sortStreams, RES_RANK } from '../addon/streams.js';
+import { normalizeVideos, parseEpisodeId } from '../progress.js';
+import { href, enc, navigate } from '../router.js';
+import { imgUrl } from '../util.js';
+import { artImg, emptyState } from './components.js';
+import { badges } from './components.js';
+
+export function rememberStream(type, mediaId, videoId, s) {
+  const stream = {
+    url: s.raw.url, kind: s.cls.kind, name: s.title, desc: s.desc,
+    subtitles: Array.isArray(s.raw.subtitles) ? s.raw.subtitles : [], hints: s.raw.behaviorHints || {},
+    sourceUrl: s.source.url, sourceName: s.source.manifest?.name || '', bingeGroup: s.bingeGroup, res: s.res,
+  };
+  store.setPref('nowPlaying', { type, mediaId, videoId: videoId || null, stream, at: Date.now() });
+  store.setPrefMap('lastStream', mediaId, { sourceUrl: stream.sourceUrl, bingeGroup: stream.bingeGroup, res: stream.res });
+}
+export const playHref = (type, id, videoId) => href(`/play/${enc(type)}/${enc(id)}`, videoId ? { v: videoId } : undefined);
+
+export function streams({ params, query }) {
+  const { type, id } = params;
+  const videoId = query.v || '';
+  const streamId = videoId || id;
+  const view = document.getElementById('view');
+  const ctl = new AbortController();
+  const page = h('div', { class: 'page' });
+  clear(view).append(page);
+  const meta = store.cachedMeta(id);
+  const lib = store.library().find((i) => i.id === id);
+  const name = meta?.name || lib?.name || store.getProgress(id, videoId || null)?.name || id;
+  const poster = meta?.poster || lib?.poster || '';
+  let epLabel = '';
+  if (videoId) {
+    const ep = meta ? normalizeVideos(meta.videos).find((v) => v.id === videoId) : null;
+    const p = parseEpisodeId(videoId);
+    const s = ep?.season ?? p?.season, e = ep?.episode ?? p?.episode;
+    if (s !== undefined) epLabel = `S${s} E${e}`;
+    if (ep?.title) epLabel += ` · ${ep.title}`;
+  }
+  const groups = new Map(); // source url -> {source, status, streams, error}
+  let order = [];
+  let filter = 'all';
+  let autoTimer = null;
+  let autoCancelled = false;
+
+  const back = h('a', { class: 'ibtn ring', href: href(`/title/${enc(type)}/${enc(id)}`), 'aria-label': 'Back to details' }, icon('back'));
+  const head = h('div', { class: 's-head' }, back, artImg(poster, '') || h('div', { class: 'ph' }), h('div', {}, h('p', { class: 'eyebrow', text: 'Choose a stream' }), h('h1', { text: name }), epLabel ? h('p', { class: 'mute', text: epLabel }) : null));
+  const chipsEl = h('div', { class: 'chips', role: 'group', 'aria-label': 'Filter by source' });
+  const listEl = h('div', { class: 'slist' });
+  const progEl = h('div', {});
+  const autoEl = h('div', {});
+  page.append(head, autoEl, chipsEl, listEl, progEl);
+
+  function play(s) {
+    clearTimeout(autoTimer);
+    rememberStream(type, id, videoId, s);
+    navigate(`/play/${enc(type)}/${enc(id)}`, videoId ? { v: videoId } : undefined);
+  }
+
+  function row(s) {
+    const c = s.cls;
+    const body = [h('div', {}, h('div', { class: 't', text: s.title }), s.desc ? h('div', { class: 'd', text: s.desc }) : null,
+      s.badges.length ? badges(s.badges) : null,
+      c.playable && c.warn ? h('div', { class: 'badges' }, h('span', { class: 'badge warn', text: c.warn })) : null,
+      !c.playable && c.note ? h('div', { class: 'note' }, icon('warn', 14), c.note) : null,
+      h('div', { class: 'src', text: s.source.manifest?.name || '' })),
+    h('span', { class: 'go' }, icon(c.playable ? 'play' : c.openUrl ? 'external' : 'close', c.playable ? 18 : 16))];
+    if (c.playable) return h('button', { class: 'srow', type: 'button', onClick: () => play(s) }, body);
+    if (c.openUrl) return h('a', { class: 'srow', href: c.openUrl, target: '_blank', rel: 'noopener noreferrer' }, body);
+    return h('div', { class: 'srow off', role: 'group', 'aria-disabled': 'true' }, body);
+  }
+
+  function drawChips() {
+    clear(chipsEl);
+    if (groups.size < 2) return;
+    chipsEl.append(h('button', { class: 'chip', type: 'button', 'aria-pressed': String(filter === 'all'), onClick: () => { filter = 'all'; render(); } }, 'All'));
+    for (const url of order) {
+      const g = groups.get(url);
+      chipsEl.append(h('button', { class: 'chip', type: 'button', 'aria-pressed': String(filter === url), onClick: () => { filter = url; render(); } },
+        g.source.manifest?.name || 'Source',
+        g.status === 'loading' ? h('span', { class: 'spin', 'aria-label': 'loading' }) : g.status === 'err' ? h('span', { class: 'edot', title: 'Failed' }) : h('span', { class: 'n', text: String(g.streams.length) })));
+    }
+  }
+
+  function render() {
+    drawChips();
+    const s = store.settings();
+    clear(listEl);
+    const visible = order.filter((u) => filter === 'all' || filter === u).map((u) => groups.get(u));
+    const keep = (x) => !(s.hideUnplayable && !x.cls.playable && !x.cls.openUrl);
+    if (s.streamGroup === 'flat') {
+      const all = visible.flatMap((g) => g.streams).filter(keep);
+      const sorted = sortStreams(all, s.streamSort === 'default' ? 'resolution' : s.streamSort);
+      if (sorted.length) listEl.append(h('div', { class: 'sgroup' }, sorted.map(row)));
+    } else {
+      for (const g of visible) {
+        const list = sortStreams(g.streams.filter(keep), s.streamSort);
+        if (g.status === 'ok' && !list.length) continue;
+        const el = h('div', { class: 'sgroup' }, h('h3', { text: g.source.manifest?.name || 'Source' }));
+        if (g.status === 'loading') el.append(h('div', { class: 'sk line' }), h('div', { class: 'sk line' }));
+        else if (g.status === 'err') el.append(h('div', { class: 'state err', role: 'alert' }, icon('warn', 22), h('div', { class: 'grow' }, h('strong', { text: 'This source failed' }), h('span', { class: 'mute', text: describeError(g.error) })), h('button', { class: 'btn sm', type: 'button', text: 'Retry', onClick: () => retry(g) })));
+        else list.forEach((x) => el.append(row(x)));
+        listEl.append(el);
+      }
+    }
+    const loading = [...groups.values()].filter((g) => g.status === 'loading').length;
+    clear(progEl);
+    if (loading) progEl.append(h('div', { class: 'progress-line', role: 'status' }, h('span', { class: 'spin' }), `Still searching ${loading} source${loading > 1 ? 's' : ''}…`));
+    else if (groups.size) {
+      const total = [...groups.values()].reduce((n, g) => n + g.streams.length, 0);
+      const errs = [...groups.values()].filter((g) => g.status === 'err').length;
+      if (!total && errs === groups.size && !listEl.querySelector('.state.err')) progEl.append(h('p', { class: 'mute', text: 'Every source failed.' }));
+      if (!total && errs < groups.size) progEl.append(emptyState('No streams found', 'Your enabled sources have nothing for this title. Try another source, or check that the right sources are enabled.', h('button', { class: 'btn', type: 'button', text: 'Retry', onClick: start }), h('a', { class: 'btn', href: '#/sources', text: 'Check sources' })));
+    }
+    if (!groups.size && started) progEl.append(emptyState('No source can provide streams', store.sources().length ? 'None of your enabled sources offers streams for this kind of title.' : 'Add a source to find streams.', h('a', { class: 'btn pri', href: '#/sources', text: 'Open sources' })));
+  }
+
+  function retry(g) {
+    g.status = 'loading'; render();
+    import('../addon/client.js').then(async ({ fetchStreamsFrom }) => {
+      try {
+        const raw = await fetchStreamsFrom(g.source, type, streamId, { signal: ctl.signal });
+        const { describeStream } = await import('../addon/streams.js');
+        g.streams = raw.map((r, i) => describeStream(r, g.source, i, { pageSecure: location.protocol === 'https:' }));
+        g.status = 'ok';
+      } catch (e) { if (ctl.signal.aborted) return; g.status = 'err'; g.error = e; }
+      render();
+    });
+  }
+
+  // auto-pick: binge match for next episode, or auto-select setting
+  function considerAuto() {
+    if (autoCancelled || autoTimer) return;
+    const wantBinge = query.auto === '1';
+    if (!wantBinge && !store.settings().autoSelect) return;
+    const all = order.flatMap((u) => groups.get(u).streams);
+    let pick = wantBinge ? pickSimilar(all, store.prefs().lastStream?.[id]) : null;
+    if (!pick && !wantBinge) {
+      const playable = all.filter((x) => x.cls.playable);
+      pick = sortStreams(playable, 'resolution').sort((a, b) => (RES_RANK[b.res] || 0) - (RES_RANK[a.res] || 0))[0] || null;
+      if (!pick) return;
+    }
+    if (!pick) return;
+    let n = 3;
+    const label = h('span', {});
+    const cancel = h('button', { class: 'btn sm', type: 'button', text: 'Show the list', onClick: () => { autoCancelled = true; clearTimeout(autoTimer); autoTimer = null; clear(autoEl); } });
+    const tick = () => { label.textContent = `Starting “${pick.title}” in ${n}…`; if (n-- <= 0) { play(pick); return; } autoTimer = setTimeout(tick, 1000); };
+    clear(autoEl).append(h('div', { class: 'banner', role: 'status' }, h('div', { class: 'grow' }, label), cancel));
+    tick();
+  }
+
+  let started = false;
+  function start() {
+    ctl.signal.aborted || (groups.clear(), order = [], started = true);
+    render();
+    loadStreams(type, streamId, {
+      signal: ctl.signal,
+      onSource: (src) => { groups.set(src.url, { source: src, status: 'loading', streams: [], error: null }); order.push(src.url); render(); },
+      onResult: (r) => {
+        const g = groups.get(r.source.url);
+        if (!g) return;
+        if (r.ok) { g.status = 'ok'; g.streams = r.streams; } else { g.status = 'err'; g.error = r.error; }
+        render(); considerAuto();
+      },
+    }).then(() => { if (!ctl.signal.aborted) render(); });
+  }
+  start();
+  return { destroy() { ctl.abort(); clearTimeout(autoTimer); } };
+}

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Liuying Web Player</title>
+<meta name="description" content="Watch from your own Stremio-protocol sources in the browser. Local-first, syncs with your Liuying account.">
+<meta name="theme-color" content="#14110f">
+<meta name="referrer" content="no-referrer">
+<link rel="icon" href="/watch/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/watch/app.css">
+</head>
+<body>
+<a class="skip" href="#view">Skip to content</a>
+<div id="shell">
+  <nav id="rail" aria-label="Primary"></nav>
+  <div id="stage">
+    <div id="banner" hidden></div>
+    <main id="view" tabindex="-1" aria-live="polite"><p class="boot" role="status">Loading Liuying&hellip;</p></main>
+  </div>
+</div>
+<div id="toast" role="status" aria-live="polite" hidden></div>
+<div id="modal" hidden></div>
+<noscript><p class="boot">The Liuying web player needs JavaScript.</p></noscript>
+<script src="/vendor/hls.min.js" defer></script>
+<script type="module" src="/watch/main.js"></script>
+</body>
+</html>
