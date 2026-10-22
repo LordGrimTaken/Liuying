@@ -122,7 +122,7 @@ export function streams({ params, query }) {
     g.status = 'loading'; render();
     try {
       const raw = await fetchStreamsFrom(g.source, type, streamId, { signal: ctl.signal });
-      g.streams = raw.map((r, i) => describeStream(r, g.source, i, { pageSecure: location.protocol === 'https:' }));
+      g.streams = raw.map((r, i) => describeStream(r, g.source, i, { pageSecure: true }));
       g.status = 'ok';
     } catch (e) { if (ctl.signal.aborted) return; g.status = 'err'; g.error = e; }
     render();

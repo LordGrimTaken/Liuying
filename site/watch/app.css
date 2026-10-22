@@ -425,3 +425,13 @@ body.playing .skip{display:none}
 }
 body.reduce-motion *,body.reduce-motion *::before,body.reduce-motion *::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
 body.reduce-motion .sk{animation:none}
+.player .surface{position:absolute;inset:0;z-index:2}
+.list .lrow .art{width:56px}
+.list .lrow .art img{width:56px;aspect-ratio:2/3;object-fit:cover;border-radius:2px}
+.pl-prev .cue{display:inline-block;padding:.1em .5em;border-radius:3px}
+.pl-prev .cue.box{background:rgba(0,0,0,.6)}
+.pl-prev .cue.shadow{text-shadow:0 0 4px #000,0 1px 3px #000,1px 1px 2px #000,-1px -1px 2px #000}
+.eps .ep{min-height:78px}
+.hero-box:empty{display:none}
+.slist:empty{display:none}
+.foot:empty{display:none}

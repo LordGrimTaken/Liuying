@@ -33,7 +33,7 @@ export function loadMeta(type, id, { signal, onUpdate, originUrl } = {}) {
 export function loadStreams(type, id, { signal, onSource, onResult }) {
   const list = sourcesFor(store.sources(), 'stream', type, id);
   list.forEach((s, i) => onSource?.(s, i));
-  const opts = { pageSecure: location.protocol === 'https:' };
+  const opts = { pageSecure: true }; // CSP only allows https media/connect targets, so plain http is always blocked
   return perSource(list, (s) => fetchStreamsFrom(s, type, id, { signal }), (r) => {
     if (r.ok) {
       const streams = r.value.map((raw, i) => describeStream(raw, r.source, i, opts));
@@ -52,8 +52,10 @@ export const loadCatalog = (source, cat, extra, opts) => fetchCatalog(source, ca
 /** Refresh manifests at most every 12 h per source. Failures are remembered, never fatal. */
 export async function refreshManifests({ force = false } = {}) {
   const now = Date.now();
+  let n = 0;
   await Promise.all(store.sources().map(async (s) => {
     if (!force && s.manifest && now - (s.fetchedAt || 0) < 12 * 3600e3) return;
+    n++;
     try {
       const { manifest } = await fetchManifest(s.url);
       store.updateSource(s.url, { manifest, fetchedAt: Date.now(), error: null });
@@ -61,4 +63,5 @@ export async function refreshManifests({ force = false } = {}) {
       store.updateSource(s.url, { error: { kind: e.kind || 'unknown', message: e.message, at: Date.now() } });
     }
   }));
+  return n;
 }
