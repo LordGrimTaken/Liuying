@@ -1,9 +1,13 @@
 import { h, icon, clear, toast as appToast, trapFocus } from '../ui/dom.js';
 import * as store from '../store.js';
 import { navigate, href, enc } from '../router.js';
-import { applySample, resumePosition, normalizeVideos, followingEpisode, parseEpisodeId } from '../progress.js';
-import { loadSubtitles } from '../addon/service.js';
-import { pickAutoSubtitle, languageName, langCode, fmtDelay, COMMON_LANGS } from './subtitles.js';
+import { applySample, resumeStartSec, normalizeVideos, followingEpisode, previousEpisode, parseEpisodeId } from '../progress.js';
+import { loadSubtitles, loadStreams } from '../addon/service.js';
+import { pickAutoSubtitle, languageName, langCode, fmtDelay, COMMON_LANGS, SUB_PRESETS, presetOf, ENCODING_CHOICES } from './subtitles.js';
+import { createStallWatch, playbackErrorInfo, startSleep, sleepStatus, sleepLabel, SLEEP_CHOICES, statsRows, bufferAhead, pickAudioIndex, ERROR_ACTIONS } from './playback.js';
+import { rememberStream } from '../ui/streams.js';
+import { pickSimilar, pickBestPlayable, sortStreams } from '../addon/streams.js';
+import { fmtBytes } from '../ux.js';
 import { SubtitleController } from './subs-controller.js';
 import { fmtTime, clamp } from '../util.js';
 import { streamsHref } from '../ui/continue.js';
@@ -20,19 +24,23 @@ export function player({ params, query }) {
     queueMicrotask(() => navigate(`/streams/${enc(type)}/${enc(id)}`, videoId ? { v: videoId } : undefined, { replace: true }));
     return {};
   }
-  const stream = np.stream;
+  let stream = np.stream;
   const view = document.getElementById('view');
   document.body.classList.add('playing');
   const S = () => store.settings();
-  const meta = store.cachedMeta(id);
+  let meta = store.cachedMeta(id);
   const lib = store.library().find((i) => i.id === id);
   const prevRec = store.getProgress(id, videoId);
-  const title = meta?.name || lib?.name || prevRec?.name || id;
-  const poster = meta?.poster || lib?.poster || prevRec?.poster || '';
-  const episodes = meta ? normalizeVideos(meta.videos) : [];
-  const ep = videoId ? episodes.find((v) => v.id === videoId) : null;
-  const pe = videoId ? parseEpisodeId(videoId) : null;
-  const epLabel = videoId ? [`S${ep?.season ?? pe?.season ?? '?'} E${ep?.episode ?? pe?.episode ?? '?'}`, ep?.title].filter(Boolean).join(' · ') : '';
+  let title = meta?.name || lib?.name || prevRec?.name || id;
+  let poster = meta?.poster || lib?.poster || prevRec?.poster || '';
+  let episodes = meta ? normalizeVideos(meta.videos) : [];
+  const makeLabel = () => {
+    if (!videoId) return '';
+    const e = episodes.find((v) => v.id === videoId), pe = parseEpisodeId(videoId);
+    return [`S${e?.season ?? pe?.season ?? '?'} E${e?.episode ?? pe?.episode ?? '?'}`, e?.title].filter(Boolean).join(' · ');
+  };
+  let epLabel = makeLabel();
+  const longStep = () => clamp(Number(S().longSkip) || 85, 5, 300);
   const cleanups = [];
   const on = (t, ev, fn, opt) => { t.addEventListener(ev, fn, opt); cleanups.push(() => t.removeEventListener(ev, fn, opt)); };
   const ctl = new AbortController();
@@ -57,6 +65,12 @@ export function player({ params, query }) {
   const ccBtn = h('button', { class: 'ibtn', type: 'button', 'aria-label': 'Subtitles (c)', 'aria-pressed': 'false', onClick: () => openPanel('subs') }, icon('cc'));
   const audioBtn = h('button', { class: 'ibtn', type: 'button', 'aria-label': 'Audio and quality', hidden: true, onClick: () => openPanel('audio') }, icon('audio'));
   const spdBtn = h('button', { class: 'spd', type: 'button', 'aria-label': 'Playback speed', text: '1×', onClick: () => openPanel('play') });
+  const lskipBtn = h('button', { class: 'ibtn lskip', type: 'button', 'aria-label': `Skip forward ${longStep()} seconds (S)`, title: `Skip forward ${longStep()} s (S)`, onClick: () => skip(longStep()) }, icon('ffwd', 20), h('span', { class: 'lk', 'aria-hidden': 'true', text: `+${longStep()}` }));
+  const prevBtn = h('button', { class: 'ibtn', type: 'button', 'aria-label': 'Previous episode (Shift+P)', hidden: true, onClick: () => goPrev() }, icon('skipPrev', 22));
+  const nextBtn = h('button', { class: 'ibtn', type: 'button', 'aria-label': 'Next episode (Shift+N)', hidden: true, onClick: () => goNext() }, icon('skipNext', 22));
+  const sleepChip = h('button', { class: 'btn sm sleepchip', type: 'button', hidden: true, 'aria-label': 'Sleep timer. Open to change.', onClick: () => openPanel('play') }, icon('moon', 16), h('span', { class: 'sl-t' }));
+  const suggestEl = h('div', { class: 'pl-suggest', role: 'status', hidden: true });
+  const statsEl = h('div', { class: 'pl-stats', hidden: true });
   const loadEl = h('div', { class: 'pl-load', role: 'status' }, h('span', { class: 'spin' }), h('span', { text: `Opening ${title}…` }));
   const errEl = h('div', { class: 'pl-err', role: 'alert', hidden: true });
   const toastEl = h('div', { class: 'pl-toast', role: 'status' });
@@ -70,7 +84,7 @@ export function player({ params, query }) {
     h('div', { class: 'pl-top' },
       h('button', { class: 'ibtn', type: 'button', 'aria-label': 'Back to details', onClick: exit }, icon('back')),
       h('div', { class: 'ttl' }, h('b', { id: 'pl-title', text: title }), h('span', { id: 'pl-ep', text: epLabel })),
-      h('a', { class: 'btn sm', href: streamsHref(type, id, videoId), onClick: () => saveProgress() }, 'Streams')),
+      sleepChip, h('button', { class: 'btn sm', type: 'button', onClick: () => openStreams() }, 'Streams')),
     h('div', { class: 'pl-center' }, loadEl, errEl),
     resumeEl,
     h('div', { class: 'pl-mid' },
@@ -78,11 +92,12 @@ export function player({ params, query }) {
       h('button', { class: 'ibtn', type: 'button', 'aria-label': 'Forward 10 seconds', onClick: () => skip(step()) }, icon('fwd10', 30))),
     h('div', { class: 'pl-bot' },
       h('div', { class: 'pl-seek' }, curT, h('div', { class: 'track' }, h('div', { class: 'base' }), bufEl, seek), durT),
-      h('div', { class: 'pl-btns' }, smallPlay,
+      h('div', { class: 'pl-btns' }, smallPlay, prevBtn,
         h('button', { class: 'ibtn', type: 'button', 'aria-label': 'Back 10 seconds', onClick: () => skip(-step()) }, icon('back10')),
         h('button', { class: 'ibtn', type: 'button', 'aria-label': 'Forward 10 seconds', onClick: () => skip(step()) }, icon('fwd10')),
+        lskipBtn, nextBtn,
         muteBtn, volume, h('span', { class: 'sp' }), spdBtn, ccBtn, audioBtn, pipBtn, fsBtn)),
-    nextEl, panel, toastEl);
+    nextEl, suggestEl, statsEl, panel, toastEl);
   clear(view).append(root);
   const step = () => S().seekStep || 10;
   // fix aria labels with current step
@@ -93,6 +108,16 @@ export function player({ params, query }) {
   let toastT;
   function pToast(msg) { toastEl.textContent = msg; toastEl.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => toastEl.classList.remove('on'), 2200); }
   const dur = () => (Number.isFinite(video.duration) ? video.duration : 0);
+  // a nudge with a button (the plain toast ignores clicks)
+  let suggestT;
+  function hideSuggest() { suggestEl.hidden = true; clearTimeout(suggestT); }
+  function suggest(msg, label, fn) {
+    clear(suggestEl).append(h('span', { text: msg }), h('button', { class: 'btn pri sm', type: 'button', text: label, onClick: () => { hideSuggest(); fn(); } }),
+      h('button', { class: 'ibtn', type: 'button', 'aria-label': 'Dismiss', onClick: hideSuggest }, icon('close', 16)));
+    suggestEl.hidden = false; showUi(); clearTimeout(suggestT); suggestT = setTimeout(hideSuggest, 25000);
+  }
+  // Buffering for more than 15 s (or never starting) offers another stream (L048)
+  const stall = createStallWatch({ onStall: () => { if (!errEl.hidden || ctl.signal.aborted) return; suggest(video.readyState < 2 && !startedOnce ? 'This stream is slow to start.' : 'Still buffering. This stream may be slow.', ERROR_ACTIONS.another, openStreams); } });
 
   // ---------- subtitles ----------
   const subs = new SubtitleController(video, cuesBox, { onChange: () => { if (panelOpen) renderPanel(); ccBtn.setAttribute('aria-pressed', String(!!subs.current)); } });
@@ -147,30 +172,51 @@ export function player({ params, query }) {
   let wantPlaying = true;
   let lastPos = 0;
   let mediaRecoveries = 0;
+  let lastStatus = 0;
+  let audioApplied = false;
+  let hlsLoading = null;
+  function loadHls() {
+    if (window.Hls) return Promise.resolve();
+    if (!hlsLoading) hlsLoading = new Promise((resolve, reject) => {
+      const el = document.createElement('script');
+      el.src = '/vendor/hls.min.js';
+      el.onload = resolve;
+      el.onerror = () => { hlsLoading = null; el.remove(); reject(new Error('hls.js failed to load')); };
+      document.head.append(el);
+    });
+    return hlsLoading;
+  }
   function attach(startAt) {
     teardownHls();
     clear(errEl); errEl.hidden = true;
     root.classList.remove('err');
     root.classList.add('loading');
+    stall.end(); stall.begin(); // opening counts as buffering too
     const url = stream.url;
     const isHls = stream.kind === 'hls';
+    // hls.js (400 KB) is loaded on demand; browsers with native HLS (Safari) never need it
+    if (isHls && !window.Hls && !video.canPlayType('application/vnd.apple.mpegurl')) {
+      loadHls().then(() => { if (!exited && stream.url === url) attach(startAt); }).catch(() => showError("Couldn't load the HLS player. Check your connection and try again."));
+      return;
+    }
     if (isHls && window.Hls && window.Hls.isSupported()) {
       hls = new window.Hls({ enableWorker: true, startPosition: startAt > 0 ? startAt : -1 });
       hls.on(window.Hls.Events.ERROR, (_e, data) => {
         if (!data.fatal) return;
+        lastStatus = data.response?.code || lastStatus;
         if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR) return netError(() => hls?.startLoad());
         if (data.type === window.Hls.ErrorTypes.MEDIA_ERROR && mediaRecoveries < 3) {
           mediaRecoveries++;
           try { if (mediaRecoveries === 2) hls.swapAudioCodec(); hls.recoverMediaError(); return; } catch { /* fall through */ }
         }
-        showError('This stream could not be played. Try another stream.');
+        showError(playbackErrorInfo({ status: lastStatus, hlsType: data.type, hlsDetail: data.details, offline: !navigator.onLine }));
       });
       hls.on(window.Hls.Events.MANIFEST_PARSED, () => { refreshAudio(); });
       hls.on(window.Hls.Events.AUDIO_TRACKS_UPDATED, refreshAudio);
       hls.loadSource(url);
       hls.attachMedia(video);
     } else if (isHls && !video.canPlayType('application/vnd.apple.mpegurl')) {
-      showError("Your browser can't play HLS streams.");
+      showError(playbackErrorInfo({ noHls: true }));
       return;
     } else {
       video.src = url;
@@ -180,30 +226,46 @@ export function player({ params, query }) {
   function teardownHls() { if (hls) { try { hls.destroy(); } catch { /* ignore */ } hls = null; } }
 
   function netError(retryFn) {
-    if (retries >= 4) { showError('The connection to this stream was lost.'); return; }
+    if (retries >= 4) { showError(playbackErrorInfo({ mediaCode: 2, status: lastStatus, offline: !navigator.onLine })); return; }
     const wait = [1500, 3000, 6000, 12000][retries++];
     loadEl.lastChild.textContent = 'Reconnecting…';
     root.classList.add('loading');
     setTimeout(() => { if (ctl.signal.aborted) return; retryFn ? retryFn() : attach(lastPos); }, wait);
   }
 
-  function showError(msg, { expired = false } = {}) {
+  /** info: playbackErrorInfo() result, or a plain string for one-off messages. Says what happened, why, and what to do. */
+  function showError(info) {
+    if (typeof info === 'string') info = { title: "This stream didn't play", why: info, next: '', primary: 'retry', actions: ['retry', 'another', 'close'] };
+    stall.end(); hideSuggest();
     root.classList.remove('loading'); root.classList.add('ui', 'err');
-    clear(errEl).append(h('h3', { text: "This stream didn't play" }), h('p', { text: msg }),
-      h('div', { class: 'btns' },
-        h('button', { class: 'btn pri', type: 'button', text: 'Retry', onClick: () => { retries = 0; attach(lastPos || 0); } }),
-        h('a', { class: 'btn', href: streamsHref(type, id, videoId), text: 'Try another stream', onClick: () => saveProgress() }),
-        h('button', { class: 'btn', type: 'button', text: 'Close', onClick: exit })));
+    const act = {
+      retry: () => h('button', { class: 'btn' + (info.primary === 'retry' ? ' pri' : ''), type: 'button', text: ERROR_ACTIONS.retry, onClick: () => { retries = 0; mediaRecoveries = 0; attach(lastPos || 0); } }),
+      another: () => h('button', { class: 'btn' + (info.primary === 'another' ? ' pri' : ''), type: 'button', text: ERROR_ACTIONS.another, onClick: () => openStreams() }),
+      close: () => h('button', { class: 'btn', type: 'button', text: ERROR_ACTIONS.close, onClick: exit }),
+    };
+    const order = [info.primary, ...info.actions.filter((a) => a !== info.primary)].filter((a, i, arr) => arr.indexOf(a) === i && info.actions.includes(a));
+    clear(errEl).append(h('h3', { text: info.title }), h('p', { class: 'why', text: info.why }), info.next ? h('p', { class: 'next', text: info.next }) : null,
+      h('div', { class: 'btns' }, order.map((a) => act[a]())));
     errEl.hidden = false;
     errEl.querySelector('button')?.focus();
   }
-  on(video, 'error', () => {
+  /** Best-effort: ask the server why the video failed (only works when the source allows CORS). */
+  async function probeStatus(url) {
+    try {
+      const c = new AbortController(); const t = setTimeout(() => c.abort(), 3000);
+      const res = await fetch(url, { method: 'GET', headers: { Range: 'bytes=0-0' }, credentials: 'omit', signal: c.signal });
+      clearTimeout(t);
+      try { res.body?.cancel(); } catch { /* ignore */ }
+      return res.ok ? 0 : res.status;
+    } catch { return 0; }
+  }
+  on(video, 'error', async () => {
     const c = video.error?.code;
     if (!video.src && !hls) return;
     if (c === 2) return netError();
-    if (c === 4) return showError("Your browser can't play this stream's format or the link no longer works (it may have expired). Try another stream, or use the Android app for exotic formats.");
-    if (c === 3) return showError('The video could not be decoded by your browser. Try another stream.');
-    showError('Playback failed. Try another stream.');
+    const status = c === 3 || c === 4 ? await probeStatus(stream.url) : 0;
+    if (exited) return;
+    showError(playbackErrorInfo({ mediaCode: c, status, offline: !navigator.onLine }));
   });
 
   on(video, 'loadedmetadata', () => {
@@ -213,7 +275,7 @@ export function player({ params, query }) {
     refreshAudio();
     if (!startedOnce) {
       startedOnce = true;
-      const pos = S().resume === 'never' ? 0 : resumePosition(prevRec, dur() * 1000, S().threshold) / 1000;
+      const pos = S().resume === 'never' ? 0 : resumeStartSec(prevRec, dur() * 1000, S().threshold, S().resumeRewind);
       if (pos > 1) {
         if (S().resume === 'ask') { askResume(pos); return; }
         try { video.currentTime = pos; } catch { /* ignore */ }
@@ -231,12 +293,12 @@ export function player({ params, query }) {
   function start() {
     video.play().catch(() => { wantPlaying = false; syncPlayState(); showUi(true); });
   }
-  on(video, 'canplay', () => { root.classList.remove('loading'); retries = 0; });
-  on(video, 'playing', () => { retries = 0; mediaRecoveries = 0; root.classList.remove('loading'); errEl.hidden = true; syncPlayState(); startSaveTimer(); autoSubtitleOnce(); });
-  on(video, 'waiting', () => { loadEl.lastChild.textContent = 'Buffering…'; root.classList.add('loading'); });
+  on(video, 'canplay', () => { root.classList.remove('loading'); retries = 0; stall.end(); });
+  on(video, 'playing', () => { retries = 0; mediaRecoveries = 0; root.classList.remove('loading'); errEl.hidden = true; stall.end(); hideSuggest(); syncPlayState(); startSaveTimer(); autoSubtitleOnce(); });
+  on(video, 'waiting', () => { loadEl.lastChild.textContent = 'Buffering…'; root.classList.add('loading'); stall.begin(); });
   on(video, 'seeking', () => { if (video.readyState < 3) root.classList.add('loading'); });
   on(video, 'seeked', () => { saveProgress(); });
-  on(video, 'pause', () => { syncPlayState(); saveProgress(); });
+  on(video, 'pause', () => { stall.end(); syncPlayState(); saveProgress(); });
   on(video, 'play', syncPlayState);
   on(video, 'ratechange', () => { spdBtn.textContent = `${video.playbackRate}×`; });
   on(video, 'volumechange', () => {
@@ -248,7 +310,7 @@ export function player({ params, query }) {
   on(video, 'durationchange', () => { durT.textContent = fmtTime(dur()); });
   on(video, 'progress', paintBuffer);
   on(video, 'timeupdate', onTime);
-  on(video, 'ended', () => { saveProgress(true); const nx = nextEp(); if (nx && S().autoNext) goNext(); else if (nx) showNext(true); else exitSoon(); });
+  on(video, 'ended', () => { saveProgress(true); if (sleepTimer?.mode === 'end') { fireSleep(); return; } const nx = nextEp(); if (nx && S().autoNext) goNext(); else if (nx) showNext(true); else exitSoon(); });
   let subTried = false;
   function autoSubtitleOnce() { if (!subTried) { subTried = true; loadSubs(); } }
 
@@ -336,7 +398,11 @@ export function player({ params, query }) {
       case 'f': case 'F': toggleFs(); break;
       case 'm': case 'M': toggleMute(); break;
       case 'c': case 'C': toggleSubs(); break;
-      case 'p': case 'P': if (pipBtn) togglePip(); break;
+      case 's': case 'S': skip(longStep()); break;
+      case 'i': case 'I': setStats(!statsOn); break;
+      case 'p': if (pipBtn) togglePip(); break;
+      case 'P': goPrev(); break;
+      case 'N': goNext(); break;
       case 'Escape': if (panelOpen) closePanel(); else if (!document.fullscreenElement) exit(); break;
       default: return;
     }
@@ -370,12 +436,48 @@ export function player({ params, query }) {
     nextTimer = setInterval(() => { n--; bar.firstChild.style.setProperty('--p', ((total - n) / total) * 100 + '%'); lbl.textContent = `Starting in ${n} s`; if (n <= 0) { clearInterval(nextTimer); goNext(); } }, 1000);
   }
   function hideNext() { nextShown = false; nextEl.hidden = true; clearInterval(nextTimer); }
-  function goNext() {
-    const nx = nextEp(); if (!nx) return;
-    clearInterval(nextTimer);
-    saveProgress(true);
-    navigate(`/streams/${enc(type)}/${enc(id)}`, { v: nx.id, auto: '1' });
+  const prevEp = () => (videoId && episodes.length ? previousEpisode(episodes, videoId) : null);
+  const epName = (e) => `S${e.season} E${e.episode}${e.title ? ' · ' + e.title : ''}`;
+  function syncEpButtons() {
+    const p = prevEp(), n = nextEp();
+    prevBtn.hidden = !p; nextBtn.hidden = !n;
+    if (p) prevBtn.setAttribute('aria-label', `Previous episode: ${epName(p)} (Shift+P)`);
+    if (n) nextBtn.setAttribute('aria-label', `Next episode: ${epName(n)} (Shift+N)`);
   }
+  /**
+   * Go to another episode without the stream list: look for the same kind of stream (binge group, same source and quality),
+   * else the best playable one, and start it. Falls back to the list when nothing playable turns up.
+   */
+  let switching = false;
+  async function switchEpisode(ep) {
+    if (switching) return;
+    switching = true;
+    clearInterval(nextTimer); hideNext(); hideSuggest();
+    saveProgress(true);
+    loadEl.lastChild.textContent = `Finding a stream for ${epName(ep)}…`;
+    root.classList.add('loading');
+    const sc = new AbortController();
+    const abortAll = () => sc.abort();
+    ctl.signal.addEventListener('abort', abortAll, { once: true });
+    const all = []; const prev = store.prefs().lastStream?.[id];
+    let pick = null;
+    try {
+      await loadStreams(type, ep.id, { signal: sc.signal, onResult: (r) => {
+        if (!r.ok) return;
+        all.push(...r.streams);
+        if (!pick) { pick = pickSimilar(all, prev); if (pick) sc.abort(); }
+      } });
+    } catch { /* fall through to the list */ }
+    ctl.signal.removeEventListener('abort', abortAll);
+    if (ctl.signal.aborted || exited) return;
+    pick = pick || pickBestPlayable(all);
+    switching = false;
+    if (pick) { rememberStream(type, id, ep.id, pick); navigate(`/play/${enc(type)}/${enc(id)}`, { v: ep.id }); return; }
+    appToast('No playable stream found automatically. Choose one.');
+    navigate(`/streams/${enc(type)}/${enc(id)}`, { v: ep.id });
+  }
+  function goNext() { const nx = nextEp(); if (nx) switchEpisode(nx); }
+  function goPrev() { const pv = prevEp(); if (pv) switchEpisode(pv); }
 
   // ---------- progress ----------
   let saveInt = null;
@@ -397,7 +499,7 @@ export function player({ params, query }) {
   const untrap = trapFocus(panel);
   function openPanel(t) { tab = t; panelOpen = true; panel.classList.add('open'); renderPanel(); showUi(true); panel.querySelector('[aria-selected="true"]')?.focus(); }
   function closePanel() { panelOpen = false; panel.classList.remove('open'); scheduleHide(); root.focus(); }
-  const tabsDef = [['subs', 'Subtitles'], ['style', 'Style'], ['timing', 'Timing'], ['audio', 'Audio'], ['play', 'Playback']];
+  const tabsDef = [['subs', 'Subtitles'], ['style', 'Style'], ['timing', 'Timing'], ['audio', 'Audio'], ['streams', 'Streams'], ['play', 'Playback']];
   function opt(label, checked, onClick, extra, small) {
     return h('button', { class: 'opt', type: 'button', role: 'menuitemradio', 'aria-checked': String(!!checked), onClick },
       h('span', { class: 'ck' }, checked ? icon('check', 16) : null), h('span', { text: label }), extra || null, small ? h('small', { text: small }) : null);
@@ -429,12 +531,14 @@ export function player({ params, query }) {
       const file = h('input', { type: 'file', accept: '.srt,.vtt,text/vtt,application/x-subrip', class: 'sr', 'aria-label': 'Choose subtitle file', onChange: async () => {
         const f = file.files[0]; if (!f) return;
         const buf = await f.arrayBuffer();
-        const { decodeSubtitleBytes } = await import('./subtitles.js');
-        const entry = { key: 'file:' + f.name, url: '', lang: 'und', langName: 'File', label: f.name, source: 'This device', origin: 'file', forced: false, sdh: false, n: 1 };
+        const entry = { key: 'file:' + f.name, url: '', lang: S().subLangs?.[0] || 'und', langName: 'File', label: f.name, source: 'This device', origin: 'file', forced: false, sdh: false, n: 1 };
         manualSub = true;
-        const r = await subs.select(entry, { fileText: decodeSubtitleBytes(buf) });
+        const r = await subs.select(entry, { fileBuf: buf });
         pToast(r.ok ? `Loaded ${f.name}` : r.error);
       } });
+      if (subs.current && subs.raw) body.append(h('h4', { text: 'Wrong characters?' }), h('label', { class: 'encl', for: 'pl-enc', text: 'Text encoding (detected automatically)' }),
+        h('select', { class: 'inp', id: 'pl-enc', onChange: async (e) => { const r = await subs.redecode(e.target.value); pToast(r.ok ? 'Re-read the subtitle file' : r.error); } },
+          ENCODING_CHOICES.map(([v, l]) => h('option', { value: v, selected: v === (subs.encoding || ''), text: l }))));
       body.append(h('h4', { text: 'Add' }), h('button', { class: 'opt', type: 'button', onClick: () => file.click() }, h('span', { class: 'ck' }, icon('plus', 16)), 'Choose a file from this device (SRT or VTT)'), file);
     } else if (tab === 'style') {
       const s = S();
@@ -443,10 +547,15 @@ export function player({ params, query }) {
         const o = h('output', { text: fmt(s[key]) }); paintRange(r);
         return h('div', { class: 'ctl' }, h('span', { text: label }), r, o);
       };
+      const cur = presetOf(s);
+      body.append(h('h4', { text: 'Preset' }), h('div', { class: 'chips wrap presets', role: 'group', 'aria-label': 'Subtitle style presets' },
+        SUB_PRESETS.map((p) => h('button', { class: 'chip', type: 'button', title: p.hint, 'aria-pressed': String(cur === p.id), onClick: () => { store.setSettings(p.values); applySubStyle(); renderPanel(); } }, p.label)),
+        cur === 'custom' ? h('span', { class: 'chip static', text: 'Custom' }) : null));
       body.append(h('div', { class: 'pl-prev' }, h('div', { class: `cue ${s.subBg}`, style: { '--sub-size': '1' } }, 'The quick brown fox')));
       body.querySelector('.pl-prev .cue').style.setProperty('font-size', `${(s.subSize || 100) / 100 * 22}px`);
       body.querySelector('.pl-prev .cue').style.setProperty('color', s.subColor);
       body.querySelector('.pl-prev .cue').style.setProperty('font-weight', s.subBold ? '700' : '500');
+      if (s.subBg === 'box') body.querySelector('.pl-prev .cue').style.setProperty('background', `rgba(0,0,0,${s.subBgOpacity ?? 0.6})`);
       body.append(rng('Size', 'subSize', 50, 200, 5, (v) => `${v}%`), rng('Height', 'subOffset', 0, 40, 1, (v) => `${v}%`));
       body.append(h('h4', { text: 'Colour' }), h('div', { class: 'swatches' }, SWATCHES.map(([c, cls, name]) => h('button', { class: `sw ${cls}`, type: 'button', 'aria-label': name, 'aria-pressed': String(s.subColor === c), onClick: () => { store.setSettings({ subColor: c }); applySubStyle(); renderPanel(); } }))));
       body.append(h('h4', { text: 'Background' }), ...[['shadow', 'Outline shadow'], ['box', 'Dark box'], ['none', 'None']].map(([v, l]) => opt(l, s.subBg === v, () => { store.setSettings({ subBg: v }); applySubStyle(); renderPanel(); })));
@@ -466,34 +575,129 @@ export function player({ params, query }) {
     } else if (tab === 'audio') {
       const tracks = audioTracks();
       if (!tracks.length) body.append(h('p', { class: 'mute', style: { padding: '8px' }, text: "This stream has a single audio track, or your browser doesn't expose audio tracks for it." }));
-      else { body.append(h('h4', { text: 'Audio track' })); tracks.forEach((t) => body.append(opt(t.label, t.enabled, () => { t.select(); renderPanel(); }))); }
+      else { body.append(h('h4', { text: 'Audio track' })); tracks.forEach((t) => body.append(opt(t.label, t.enabled, () => { t.select(); if (t.lang) store.setPrefMap('audioLang', id, t.lang); renderPanel(); }, null, t.lang ? 'Remembered for this title' : ''))); }
       if (hls && hls.levels && hls.levels.length > 1) {
         body.append(h('h4', { text: 'Quality' }), opt('Auto', hls.currentLevel === -1 || hls.autoLevelEnabled, () => { hls.currentLevel = -1; renderPanel(); }));
         hls.levels.forEach((lv, i) => body.append(opt(`${lv.height ? lv.height + 'p' : Math.round(lv.bitrate / 1000) + ' kbps'}`, !hls.autoLevelEnabled && hls.currentLevel === i, () => { hls.currentLevel = i; renderPanel(); })));
       }
+    } else if (tab === 'streams') {
+      renderStreamsTab(body);
     } else {
       body.append(h('h4', { text: 'Speed' }), ...SPEEDS.map((v) => opt(`${v}×`, video.playbackRate === v, () => { video.playbackRate = v; renderPanel(); })));
       body.append(h('h4', { text: 'Picture' }), opt('Fit', !video.classList.contains('fill'), () => { video.classList.remove('fill'); renderPanel(); }), opt('Fill (crop)', video.classList.contains('fill'), () => { video.classList.add('fill'); renderPanel(); }));
-      body.append(h('h4', { text: 'Shortcuts' }), h('p', { class: 'mute', style: { padding: '4px 8px', 'font-size': '13px', 'line-height': '1.7' }, text: 'Space play/pause · ← → seek · ↑ ↓ volume · F fullscreen · M mute · C subtitles · P picture in picture · Esc close' }));
+      body.append(h('h4', { text: 'Sleep timer' }), ...SLEEP_CHOICES.map(([v, l]) => opt(l, sleepChoice === v, () => setSleep(v), null, sleepChoice === v && sleepTimer?.mode === 'minutes' ? sleepLabel(sleepTimer) : '')));
+      body.append(h('h4', { text: 'Diagnostics' }), opt('Playback stats', statsOn, () => setStats(!statsOn), null, 'I'));
+      body.append(h('h4', { text: 'Shortcuts' }), h('p', { class: 'mute', style: { padding: '4px 8px', 'font-size': '13px', 'line-height': '1.7' }, text: `Space play/pause · ← → seek ${step()} s · S skip ${longStep()} s · Shift+N / Shift+P next / previous episode · ↑ ↓ volume · F fullscreen · M mute · C subtitles · I stats · P picture in picture · Esc close` }));
     }
     clear(panel).append(
       h('div', { class: 'tabs', role: 'tablist' }, tabsDef.map(([k, l]) => h('button', { type: 'button', role: 'tab', 'aria-selected': String(tab === k), text: l, onClick: () => { tab = k; renderPanel(); panel.querySelector('[aria-selected="true"]').focus(); } })),
         h('button', { class: 'ibtn', type: 'button', 'aria-label': 'Close panel', onClick: closePanel }, icon('close', 18))), body);
     body.scrollTop = keep;
   }
+  // ---------- switch stream without leaving the player (L045) ----------
+  const alt = { started: false, groups: new Map(), order: [], done: false };
+  function loadAlt() {
+    alt.started = true; alt.done = false; alt.groups.clear(); alt.order = [];
+    const redraw = () => { if (panelOpen && tab === 'streams') renderPanel(); };
+    loadStreams(type, videoId || id, {
+      signal: ctl.signal,
+      onSource: (src) => { alt.groups.set(src.url, { src, status: 'loading', streams: [] }); alt.order.push(src.url); redraw(); },
+      onResult: (r) => { const g = alt.groups.get(r.source.url); if (!g) return; if (r.ok) { g.status = 'ok'; g.streams = r.streams; } else g.status = 'err'; redraw(); },
+    }).then(() => { alt.done = true; redraw(); }).catch(() => { alt.done = true; redraw(); });
+  }
+  function openStreams() { openPanel('streams'); if (!alt.started) loadAlt(); }
+  function renderStreamsTab(body) {
+    body.append(h('p', { class: 'mute', style: { padding: '2px 8px 8px', 'font-size': '13px' }, text: `Pick another stream. Playback continues from ${fmtTime(video.currentTime || lastPos)}.` }));
+    let playable = 0, hidden = 0;
+    for (const url of alt.order) {
+      const g = alt.groups.get(url);
+      body.append(h('h4', { text: g.src.manifest?.name || 'Source' }));
+      if (g.status === 'loading') { body.append(h('div', { class: 'sk line' }), h('div', { class: 'sk line' })); continue; }
+      if (g.status === 'err') { body.append(h('p', { class: 'mute', style: { padding: '4px 8px' }, text: 'This source did not answer.' })); continue; }
+      const ok = sortStreams(g.streams.filter((x) => x.cls.playable), 'resolution-size');
+      hidden += g.streams.length - ok.length; playable += ok.length;
+      if (!ok.length) body.append(h('p', { class: 'mute', style: { padding: '4px 8px' }, text: 'Nothing playable here.' }));
+      for (const x of ok) body.append(opt(x.title, x.raw.url === stream.url, () => switchStream(x), null, [x.res, fmtBytes(x.size)].filter(Boolean).join(' · ')));
+    }
+    if (!alt.order.length) body.append(h('p', { class: 'mute', style: { padding: '8px' }, text: alt.done ? 'None of your enabled sources offers streams for this title.' : 'Looking for streams…' }));
+    if (alt.done && alt.order.length && !playable) body.append(h('p', { class: 'mute', style: { padding: '8px' }, text: 'No other playable streams were found.' }));
+    if (hidden) body.append(h('p', { class: 'mute', style: { padding: '8px', 'font-size': '12.5px' }, text: `${hidden} more can't play in a browser (torrent, external or blocked links).` }));
+    body.append(h('button', { class: 'btn sm', type: 'button', style: { 'margin-top': '12px' }, text: 'Refresh list', onClick: () => { loadAlt(); renderPanel(); } }));
+  }
+  function switchStream(x) {
+    const t = video.currentTime || lastPos;
+    saveProgress();
+    rememberStream(type, id, videoId, x);
+    stream = store.prefs().nowPlaying?.stream || stream;
+    wantPlaying = true; retries = 0; mediaRecoveries = 0; audioApplied = false; startedOnce = true;
+    if (stream.subtitles?.length) subs.addGroup({ source: stream.sourceName || 'Stream', origin: 'stream', items: stream.subtitles });
+    hideSuggest(); closePanel(); errEl.hidden = true; root.classList.remove('err');
+    attach(t);
+    pToast(`Switched to ${x.title}`);
+  }
+
+  // ---------- sleep timer (L052) ----------
+  let sleepTimer = null, sleepChoice = 'off', sleepInt = null;
+  function setSleep(choice) {
+    sleepChoice = choice; sleepTimer = startSleep(choice); clearInterval(sleepInt);
+    sleepChip.hidden = !sleepTimer;
+    if (sleepTimer) { tickSleep(); sleepInt = setInterval(tickSleep, 1000); pToast(sleepTimer.mode === 'end' ? 'Sleep timer: pauses at the end of this episode' : `Sleep timer: pauses in ${choice} minutes`); }
+    else pToast('Sleep timer off');
+    renderPanel();
+  }
+  function tickSleep() {
+    if (!sleepTimer) return;
+    sleepChip.querySelector('.sl-t').textContent = sleepLabel(sleepTimer);
+    if (sleepStatus(sleepTimer).expired) fireSleep();
+  }
+  function fireSleep() {
+    clearInterval(sleepInt); sleepTimer = null; sleepChoice = 'off'; sleepChip.hidden = true;
+    wantPlaying = false; nextDismissed = true; hideNext(); clearInterval(nextTimer);
+    try { video.pause(); } catch { /* ignore */ }
+    pToast('Sleep timer ended. Playback paused.'); showUi(true); renderPanel();
+  }
+
+  // ---------- stats overlay (L049) ----------
+  let statsOn = false, statsInt = null;
+  function drawStats() {
+    const q = video.getVideoPlaybackQuality?.();
+    let levelBitrate = 0, bandwidth = 0;
+    if (hls) { const lv = hls.levels?.[hls.currentLevel >= 0 ? hls.currentLevel : hls.loadLevel]; levelBitrate = lv?.bitrate || 0; bandwidth = Math.round(hls.bandwidthEstimate || 0); }
+    let host = ''; try { host = new URL(stream.url).host; } catch { /* ignore */ }
+    const rows = statsRows({ width: video.videoWidth, height: video.videoHeight, bandwidth, levelBitrate, dropped: q?.droppedVideoFrames, total: q?.totalVideoFrames, bufferAhead: bufferAhead(video.buffered, video.currentTime), speed: video.playbackRate, kind: stream.kind, host });
+    clear(statsEl).append(h('dl', {}, rows.flatMap(([k, v]) => [h('dt', { text: k }), h('dd', { text: v })])));
+  }
+  function setStats(on) {
+    statsOn = on; statsEl.hidden = !on; clearInterval(statsInt);
+    if (on) { drawStats(); statsInt = setInterval(drawStats, 1000); }
+    renderPanel();
+  }
+
   function audioTracks() {
-    if (hls && hls.audioTracks && hls.audioTracks.length > 1) return hls.audioTracks.map((t, i) => ({ label: `${t.name || languageName(t.lang)}${t.lang ? ' (' + t.lang + ')' : ''}`, enabled: hls.audioTrack === i, select: () => { hls.audioTrack = i; } }));
+    if (hls && hls.audioTracks && hls.audioTracks.length > 1) return hls.audioTracks.map((t, i) => ({ label: `${t.name || languageName(t.lang)}${t.lang ? ' (' + t.lang + ')' : ''}`, lang: t.lang || '', enabled: hls.audioTrack === i, select: () => { hls.audioTrack = i; } }));
     const at = video.audioTracks;
-    if (at && at.length > 1) return Array.from(at).map((t, i) => ({ label: `${t.label || languageName(t.language) || 'Track ' + (i + 1)}${t.language ? ' (' + t.language + ')' : ''}`, enabled: t.enabled, select: () => { Array.from(at).forEach((x, j) => { x.enabled = j === i; }); } }));
+    if (at && at.length > 1) return Array.from(at).map((t, i) => ({ label: `${t.label || languageName(t.language) || 'Track ' + (i + 1)}${t.language ? ' (' + t.language + ')' : ''}`, lang: t.language || '', enabled: t.enabled, select: () => { Array.from(at).forEach((x, j) => { x.enabled = j === i; }); } }));
     return [];
   }
-  function refreshAudio() { audioBtn.hidden = !(audioTracks().length > 0 || (hls && hls.levels && hls.levels.length > 1)); }
+  function refreshAudio() { audioBtn.hidden = !(audioTracks().length > 0 || (hls && hls.levels && hls.levels.length > 1)); applyAudioPref(); }
+  /** Reuse the audio language chosen earlier for this series or film, when the stream has such a track (L047). */
+  function applyAudioPref() {
+    if (audioApplied) return;
+    const tracks = audioTracks();
+    if (tracks.length < 2) return;
+    audioApplied = true;
+    const pref = store.prefs().audioLang?.[id];
+    if (!pref) return;
+    const i = pickAudioIndex(tracks, pref);
+    if (i >= 0 && !tracks[i].enabled) { tracks[i].select(); pToast(`Audio: ${tracks[i].label}`); }
+  }
 
   // ---------- exit ----------
   let exited = false;
   function exit() {
     saveProgress();
-    location.hash = href(`/title/${enc(type)}/${enc(id)}`);
+    // replace (not push) so the browser Back button never lands on a finished player and restarts it
+    navigate(`/title/${enc(type)}/${enc(id)}`, undefined, { replace: true });
   }
   function exitSoon() { setTimeout(() => { if (!exited) exit(); }, 400); }
 
@@ -505,6 +709,8 @@ export function player({ params, query }) {
       navigator.mediaSession.setActionHandler('pause', () => video.pause());
       navigator.mediaSession.setActionHandler('seekbackward', () => skip(-step()));
       navigator.mediaSession.setActionHandler('seekforward', () => skip(step()));
+      navigator.mediaSession.setActionHandler('previoustrack', prevEp() ? () => goPrev() : null);
+      navigator.mediaSession.setActionHandler('nexttrack', nextEp() ? () => goNext() : null);
     } catch { /* ignore */ }
   }
   let wake = null;
@@ -518,6 +724,8 @@ export function player({ params, query }) {
       if (!r.meta || ctl.signal.aborted) return;
       meta = r.meta; title = meta.name || title; poster = meta.poster || poster; episodes = normalizeVideos(meta.videos); epLabel = makeLabel();
       root.querySelector('#pl-title').textContent = title; root.querySelector('#pl-ep').textContent = epLabel;
+      syncEpButtons();
+      try { if ('mediaSession' in navigator) { navigator.mediaSession.setActionHandler('previoustrack', prevEp() ? () => goPrev() : null); navigator.mediaSession.setActionHandler('nexttrack', nextEp() ? () => goNext() : null); } } catch { /* ignore */ }
     }).catch(() => {});
   }
   document.getElementById('toast').hidden = true;
@@ -527,6 +735,7 @@ export function player({ params, query }) {
   if (vol) { video.volume = clamp(vol.v ?? 1, 0, 1); video.muted = !!vol.m; }
   volume.value = video.muted ? 0 : video.volume; paintRange(volume); paintRange(seek);
   syncPlayState();
+  syncEpButtons();
   attach(0);
   root.focus();
   // test hook (read-only) for automated checks
@@ -537,7 +746,7 @@ export function player({ params, query }) {
       exited = true;
       saveProgress();
       ctl.abort();
-      clearInterval(saveInt); clearInterval(nextTimer); clearTimeout(hideT); clearTimeout(tapT); clearTimeout(toastT);
+      clearInterval(saveInt); clearInterval(nextTimer); clearInterval(sleepInt); clearInterval(statsInt); clearTimeout(hideT); clearTimeout(tapT); clearTimeout(toastT); clearTimeout(suggestT); stall.end();
       cleanups.forEach((f) => f()); untrap();
       subs.destroy(); teardownHls();
       try { video.pause(); video.removeAttribute('src'); video.load(); } catch { /* ignore */ }

@@ -24,6 +24,25 @@ export function append(el, kids) {
   return el;
 }
 export const clear = (el) => { while (el.firstChild) el.removeChild(el.firstChild); return el; };
+/** Child-index path from root to el, used to find the "same" control after a redraw. */
+const pathOf = (root, el) => { const p = []; for (let n = el; n && n !== root; n = n.parentNode) p.unshift([...n.parentNode.children].indexOf(n)); return p; };
+const nodeAt = (root, p) => p.reduce((n, i) => n?.children?.[i], root);
+/**
+ * Run a redraw of `root` without losing keyboard focus: afterwards the control at the same position
+ * (or, failing that, one with the same label) is focused again. Does nothing if focus was elsewhere.
+ */
+export function keepFocus(root, redraw) {
+  const a = document.activeElement;
+  const inside = a && a !== document.body && root.contains(a) && a !== root;
+  const path = inside ? pathOf(root, a) : null;
+  const label = inside ? (a.getAttribute('aria-label') || a.textContent || '').trim() : '';
+  const tag = inside ? a.tagName : '';
+  redraw();
+  if (!inside) return;
+  let el = nodeAt(root, path);
+  if (!el || el.tagName !== tag) el = [...root.querySelectorAll(tag.toLowerCase())].find((e) => (e.getAttribute('aria-label') || e.textContent || '').trim() === label);
+  if (el && el !== document.activeElement && typeof el.focus === 'function') el.focus({ preventScroll: true });
+}
 export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
@@ -70,6 +89,13 @@ const ICONS = {
   tv: '<rect x="3.5" y="7.5" width="17" height="12" rx="2"/><path d="m8.5 3.5 3.5 4 3.5-4"/>',
   user: '<circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/>',
   list: '<circle cx="5" cy="7" r="1.1" fill="currentColor"/><circle cx="5" cy="12" r="1.1" fill="currentColor"/><circle cx="5" cy="17" r="1.1" fill="currentColor"/><path d="M9.5 7h10M9.5 12h10M9.5 17h10" stroke-width="2.4"/>',
+  skipPrev: '<path d="M6 5v14"/><path d="M19 5.5v13L9.5 12z" fill="currentColor" stroke="none"/>',
+  skipNext: '<path d="M18 5v14"/><path d="M5 5.5v13L14.5 12z" fill="currentColor" stroke="none"/>',
+  ffwd: '<path d="M4 6l8 6-8 6zM12 6l8 6-8 6z" fill="currentColor" stroke="none"/>',
+  moon: '<path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/>',
+  stats: '<path d="M5 20V10M12 20V4M19 20v-7"/>',
+  dice: '<rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="9" cy="9" r="1.2" fill="currentColor"/><circle cx="15" cy="15" r="1.2" fill="currentColor"/><circle cx="15" cy="9" r="1.2" fill="currentColor"/><circle cx="9" cy="15" r="1.2" fill="currentColor"/>',
+  history: '<path d="M4 12a8 8 0 1 0 2.4-5.7M4 4v4h4M12 8v4.5l3 1.8"/>',
   gear: '<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/>',
 };
 export function icon(name, size = 22) {
@@ -108,14 +134,27 @@ export function modal({ title, body, actions }) {
     const prev = document.activeElement;
     const root = document.getElementById('modal');
     clear(root);
-    const close = (v) => { root.hidden = true; clear(root); document.removeEventListener('keydown', onKey, true); prev?.focus?.(); resolve(v); };
-    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(null); } };
+    const shell = document.getElementById('shell');
+    const wasInert = shell?.hasAttribute('inert');
+    const close = (v) => { root.hidden = true; clear(root); document.removeEventListener('keydown', onKey, true); if (!wasInert) shell?.removeAttribute('inert'); prev?.focus?.(); resolve(v); };
+    const onKey = (e) => {
+      if (e.key === 'Escape') { e.stopPropagation(); close(null); return; }
+      if (e.key !== 'Tab') return;
+      // keep Tab inside the dialog
+      const f = $$('button:not([disabled]),a[href],input:not([disabled]),select,textarea,[tabindex]:not([tabindex="-1"])', root).filter((x) => x.offsetParent !== null);
+      if (!f.length) return;
+      const first = f[0], last = f[f.length - 1];
+      if (!root.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
+      else if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
     document.addEventListener('keydown', onKey, true);
     const btns = actions.map((a) => h('button', { class: `btn ${a.primary ? 'pri' : 'sec'}${a.danger ? ' danger' : ''}`, type: 'button', text: a.label, onClick: () => close(a.value) }));
     const dlg = h('div', { class: 'dialog', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'dlg-t' },
       h('h2', { id: 'dlg-t', text: title }), h('div', { class: 'dlg-body' }, typeof body === 'function' ? body(close) : body), h('div', { class: 'dlg-actions' }, btns));
     root.append(h('div', { class: 'scrim', onClick: () => close(null) }), dlg);
     root.hidden = false;
+    if (!wasInert) shell?.setAttribute('inert', '');
     (btns.find((_, i) => actions[i].primary) || btns[0])?.focus();
   });
 }

@@ -6,6 +6,7 @@ export class SubtitleController {
   constructor(video, overlay, { onChange } = {}) {
     this.video = video; this.overlay = overlay; this.onChange = onChange || (() => {});
     this.entries = []; this.groups = []; this.current = null; this.status = new Map(); // key -> 'loading' | 'error'
+    this.raw = null; this.encoding = ''; // raw bytes of the current file, so the viewer can force another text encoding
     this.delay = 0; this.trackEl = null; this.blobUrl = null; this.base = []; this.style = { bg: 'shadow' };
     this._onCue = () => this.render();
     this._seq = 0;
@@ -31,20 +32,21 @@ export class SubtitleController {
   }
 
   /** Select an entry (or null for Off). Resolves {ok, error}. Keeps previous selection on failure. */
-  async select(entry, { fileText } = {}) {
+  async select(entry, { fileText, fileBuf, encoding = '' } = {}) {
     if (!entry) { this._seq++; this.clearTrack(); this.current = null; this.onChange(); return { ok: true }; }
     const seq = ++this._seq;
     this.status.set(entry.key, 'loading'); this.onChange();
     try {
       let text = fileText;
-      if (text === undefined) {
+      let buf = fileBuf;
+      if (text === undefined && buf === undefined) {
         let res;
         try { res = await fetch(entry.url, { credentials: 'omit' }); } catch { throw new Error('This subtitle source does not allow web access.'); }
         if (!res.ok) throw new Error(`The subtitle server answered HTTP ${res.status}.`);
-        const buf = await res.arrayBuffer();
+        buf = await res.arrayBuffer();
         if (buf.byteLength > 5 * 1024 * 1024) throw new Error('This subtitle file is too large.');
-        text = decodeSubtitleBytes(buf);
       }
+      if (text === undefined) text = decodeSubtitleBytes(buf, encoding, entry.lang);
       const { vtt, cues } = srtToVtt(text);
       if (!cues) throw new Error("This subtitle couldn't be read.");
       if (seq !== this._seq) return { ok: false, error: 'superseded' };
@@ -62,6 +64,7 @@ export class SubtitleController {
       el.track.addEventListener('cuechange', this._onCue);
       this.base = Array.from(el.track.cues).map((c) => ({ c, s: c.startTime, e: c.endTime }));
       this.current = entry;
+      this.raw = buf !== undefined ? { buf, entry } : null; this.encoding = encoding;
       this.status.delete(entry.key);
       this.applyDelay();
       this.onChange();
@@ -70,6 +73,12 @@ export class SubtitleController {
       if (seq === this._seq) { this.status.set(entry.key, 'error'); this.onChange(); }
       return { ok: false, error: e.message };
     }
+  }
+
+  /** Re-read the current file with a forced text encoding ('' = automatic). */
+  async redecode(encoding) {
+    if (!this.raw) return { ok: false, error: 'Nothing to re-read.' };
+    return this.select(this.raw.entry, { fileBuf: this.raw.buf, encoding });
   }
 
   setDelay(sec) {

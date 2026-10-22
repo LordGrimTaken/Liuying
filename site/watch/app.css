@@ -849,6 +849,6 @@ body.reduce-motion .scroller{scroll-behavior:auto}
 .lskip .lk{position:absolute;right:1px;bottom:3px;font:700 9.5px var(--sans);color:var(--gold);pointer-events:none}
 .pl-panel .encl{display:block;padding:2px 8px 6px;font-size:13px;color:#b3a893}
 .pl-panel .presets{padding:4px 0 8px}
-.pl-panel .sk.line{height:34px;margin:6px 8px;background:rgba(242,233,218,.08)}
+.pl-panel .sk.line{height:34px;margin:6px 8px}
 @media(max-width:600px){.pl-suggest{bottom:128px;flex-wrap:wrap}.pl-stats{top:64px}.pl-panel .tabs button{padding:0 5px;font-size:10.5px}}
 @media(prefers-reduced-motion:reduce){.pl-suggest,.pl-stats{transition:none;animation:none}}

@@ -10,6 +10,7 @@ export const DEFAULT_SETTINGS = {
   streamGroup: 'source', streamSort: 'default', hideUnplayable: false, patient: false,
   subLangs: ['en'], subMode: 'on', subBold: false, subSize: 100, subColor: '#ffffff', subBg: 'shadow', subBgOpacity: 0.6, subOffset: 8,
   libSort: 'added', libView: 'grid', saveHistory: true, recentSearches: true,
+  resumeRewind: 0, longSkip: 85, spoilers: false, hideWatched: false, calHideWatched: false,
 };
 
 const DB = 'liuying-web';
