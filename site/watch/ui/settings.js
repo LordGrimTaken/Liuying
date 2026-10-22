@@ -31,113 +31,182 @@ function range(label, desc, key, min, max, step, fmt) {
   inp.style.setProperty('--v', ((S()[key] - min) / (max - min)) * 100 + '%');
   return row(label, desc, h('div', {}, inp, out));
 }
-const group = (title, ...kids) => h('section', { class: 'setgroup', 'aria-label': title }, h('h2', { text: title }), kids);
 
-export function settings() {
+// ---------- accordion ----------
+const OPEN_KEY = 'liuying-settings-open';
+const readOpen = () => { try { const v = JSON.parse(localStorage.getItem(OPEN_KEY)); if (Array.isArray(v)) return new Set(v); } catch { /* ignore */ } return new Set(['account']); };
+const saveOpen = (set) => { try { localStorage.setItem(OPEN_KEY, JSON.stringify([...set])); } catch { /* ignore */ } };
+export const SECTION_IDS = ['account', 'security', 'appearance', 'layout', 'playback', 'subtitles', 'shelf', 'sources', 'plugins', 'integrations', 'storage', 'about'];
+
+export function settings({ query = {} } = {}) {
   const view = document.getElementById('view');
   const page = h('div', { class: 'page' });
   clear(view).append(page);
+  const open = readOpen();
+  const deep = SECTION_IDS.includes(query.open) ? query.open : '';
+  if (deep) { open.add(deep); saveOpen(open); }
+  const sums = [];
+  const refreshSums = () => sums.forEach((f) => f());
   const rerender = () => { const y = scrollY; build(); scrollTo(0, y); };
 
+  /** Collapsible section: header button (aria-expanded/controls) with a one-line summary, animated panel. */
+  function acc(id, title, summaryFn, ...body) {
+    const isOpen = open.has(id);
+    const bid = `acc-${id}-body`, hid = `acc-${id}-btn`;
+    const sum = h('span', { class: 'sum', text: summaryFn() });
+    const btn = h('button', { class: 'acc-h', type: 'button', id: hid, 'aria-expanded': String(isOpen), 'aria-controls': bid, onClick: () => set(!el.classList.contains('open')) }, h('span', { class: 't', text: title }), sum, icon('down', 20));
+    const panel = h('div', { class: 'acc-body', id: bid, role: 'region', 'aria-labelledby': hid }, h('div', { class: 'acc-in' }, h('div', { class: 'acc-pad' }, body)));
+    const el = h('section', { class: 'acc' + (isOpen ? ' open' : ''), 'data-acc': id }, h('h2', {}, btn), panel);
+    panel.inert = !isOpen;
+    function set(v) {
+      el.classList.toggle('open', v); btn.setAttribute('aria-expanded', String(v)); panel.inert = !v;
+      if (v) open.add(id); else open.delete(id);
+      saveOpen(open);
+    }
+    sums.push(() => { sum.textContent = summaryFn(); });
+    return el;
+  }
+
   function build() {
+    sums.length = 0;
     const rows = allHomeRows();
     const langOpts = COMMON_LANGS.map((c) => [c, languageName(c)]);
     const subLangs = S().subLangs || ['en'];
     const status = sync.getStatus();
     const storageNote = h('span', { text: 'Calculating…' });
-    const root = h('div', {},
-      h('div', { class: 'page-h' }, h('h1', { text: 'Settings' })),
-      jump(),
-      group('Account',
+    const opt = (key, list) => (list.find(([v]) => String(v) === String(S()[key])) || [0, String(S()[key])])[1];
+    const THEMES = [['dark', 'Ink'], ['black', 'Pure black'], ['paper', 'Paper']];
+    const ACC = [['vermilion', 'Vermilion'], ['gold', 'Gold'], ['jade', 'Jade'], ['indigo', 'Indigo']];
+    const SIZES = [['s', 'Small'], ['m', 'Medium'], ['l', 'Large']];
+    const RESUME = [['auto', 'Resume automatically'], ['ask', 'Ask me'], ['never', 'Always start over']];
+    const SUBBG = [['shadow', 'Outline shadow'], ['box', 'Dark box'], ['none', 'None']];
+    const onOff = (v) => (v ? 'on' : 'off');
+    const root = h('div', { class: 'acc-list' },
+      acc('account', 'Account', () => { const st = sync.getStatus(); return st.user ? `${st.user.username} · ${syncLabel(st)}` : 'Signed out · saved in this browser only'; },
         status.user
           ? h('div', {}, h('p', { text: `Signed in as ${status.user.username}. Sources, shelf, progress and settings sync.` }), h('p', { class: 'mute', text: `Status: ${syncLabel(status)}` }),
             h('div', { class: 'actions', style: { 'margin-top': '12px' } }, h('button', { class: 'btn sm', type: 'button', text: 'Sync now', onClick: async () => { await sync.pull(); sync.schedulePush.flush?.(); sync.push(); toast('Syncing…'); } }),
               h('a', { class: 'btn sm', href: '/account', text: 'Account' }), h('button', { class: 'btn sm', type: 'button', text: 'Delete synced data', onClick: delRemote })))
           : h('div', {}, h('p', { class: 'mute', text: 'You are using Liuying signed out. Everything is saved in this browser only.' }), h('a', { class: 'btn pri', href: '/login', text: 'Sign in to sync', style: { 'margin-top': '12px' } }))),
-      group('Appearance',
-        select('Theme', 'Ink is the default.', 'theme', [['dark', 'Ink'], ['black', 'Pure black'], ['paper', 'Paper (light)']]),
+      acc('security', 'Security and privacy', () => (sync.getStatus().user ? 'Password and sessions on your account page' : 'No tracking · sign in for account security'),
+        row('Password and sessions', 'Change your password or sign out other devices.', sync.getStatus().user ? h('a', { class: 'btn sm', href: '/account', text: 'Open account' }) : h('a', { class: 'btn sm', href: '/login', text: 'Sign in' })),
+        h('p', { class: 'mute', text: 'There is no analytics or tracking in this player. Requests go only to your own sources and, if you sign in, to the Liuying account service. Everything else stays in this browser.' })),
+      acc('appearance', 'Appearance', () => `${opt('theme', THEMES)} · ${opt('accent', ACC)} accent · ${opt('fontScale', SIZES).toLowerCase()} text`,
+        select('Theme', 'Ink is the default.', 'theme', [['dark', 'Ink'], ['black', 'Pure black'], ['paper', 'Paper (light)']], { after: refreshSums }),
         toggle('Reduce motion', 'Stops the rotating banner, shimmer and other movement.', 'reduceMotion'),
-        select('Accent colour', 'Used for buttons, selected chips and the seal.', 'accent', [['vermilion', 'Vermilion'], ['gold', 'Gold'], ['jade', 'Jade'], ['indigo', 'Indigo']]),
-        select('Text size', 'Scales the page content.', 'fontScale', [['s', 'Small'], ['m', 'Medium'], ['l', 'Large']]),
-        select('Poster size', null, 'posterSize', [['s', 'Small'], ['m', 'Medium'], ['l', 'Large']]),
+        select('Accent colour', 'Used for buttons, selected chips and the seal.', 'accent', ACC, { after: refreshSums }),
+        select('Text size', 'Scales the page content.', 'fontScale', SIZES, { after: refreshSums }),
+        select('Poster size', null, 'posterSize', SIZES),
         toggle('Titles under posters', null, 'titlesUnder'),
         toggle('Watched and shelf badges', null, 'showBadges')),
-      group('Today layout',
+      acc('layout', 'Today layout', () => { const r = allHomeRows(); return `${r.filter((x) => !x.hidden).length} of ${r.length} catalogs shown · banner ${onOff(S().hero)}`; },
         toggle('Continue Watching', 'Show in-progress titles at the top.', 'showContinue', rerender),
         toggle('Up next cards', 'Suggest the next episode of series you are watching.', 'showUpNext'),
-        toggle('Featured banner', null, 'hero'),
+        toggle('Featured banner', null, 'hero', refreshSums),
         select('Banner catalog', 'Which catalog feeds the banner.', 'heroCatalog', [['', 'First row'], ...rows.map((r) => [r.key, `${catalogTitle(r.cat)} (${r.src.manifest.name})`])]),
-        toggle('Hide adult-flagged sources', null, 'hideAdult'),
-        layoutList(rows),
-        row('Reset layout', 'Show every catalog again, in the sources\u2019 own order.', h('button', { class: 'btn sm', type: 'button', text: 'Reset layout', onClick: () => { store.setSettings({ hiddenCatalogs: {}, homeOrder: [], heroCatalog: '' }); toast('Today layout reset'); rerender(); } }))),
-      group('Playback',
-        select('When a title has progress', null, 'resume', [['auto', 'Resume automatically'], ['ask', 'Ask me'], ['never', 'Always start over']]),
+        toggle('Hide adult-flagged sources', null, 'hideAdult', () => { refreshSums(); rerender(); }),
+        layoutList()),
+      acc('playback', 'Playback', () => `${opt('resume', RESUME)} · auto-next ${onOff(S().autoNext)} · ${S().seekStep}s seek`,
+        select('When a title has progress', null, 'resume', RESUME, { after: refreshSums }),
         range('Mark watched at', 'Share of the runtime after which a title counts as watched.', 'threshold', 0.8, 0.98, 0.01, (v) => `${Math.round(v * 100)}%`),
-        toggle('Auto-play next episode', null, 'autoNext'),
+        toggle('Auto-play next episode', null, 'autoNext', refreshSums),
         select('Next episode countdown', null, 'countdown', [[5, '5 seconds'], [10, '10 seconds'], [15, '15 seconds']], { num: true }),
-        select('Seek step', 'For the skip buttons and arrow keys.', 'seekStep', [[5, '5 seconds'], [10, '10 seconds'], [15, '15 seconds'], [30, '30 seconds']], { num: true }),
+        select('Seek step', 'For the skip buttons and arrow keys.', 'seekStep', [[5, '5 seconds'], [10, '10 seconds'], [15, '15 seconds'], [30, '30 seconds']], { num: true, after: refreshSums }),
         select('Default speed', null, 'speed', [[0.75, '0.75×'], [1, '1×'], [1.25, '1.25×'], [1.5, '1.5×'], [2, '2×']], { num: true }),
         toggle('Auto-select a stream', 'Start the best playable stream after a short wait, with a cancel button.', 'autoSelect'),
         select('Stream list', null, 'streamGroup', [['source', 'Grouped by source'], ['flat', 'One list, best quality first']]),
         select('Sort inside groups', null, 'streamSort', [['default', 'As the source ordered them'], ['resolution', 'Resolution'], ['size', 'Size'], ['name', 'Name']]),
         toggle('Hide streams that cannot play here', 'Torrent and blocked streams are shown disabled by default.', 'hideUnplayable')),
-      group('Audio and subtitles',
-        row('Preferred subtitle language', 'Used to pick subtitles automatically.', h('select', { class: 'inp', id: 'set-_l1', 'aria-label': 'Preferred subtitle language', onChange: (e) => store.setSettings({ subLangs: [e.target.value, ...(S().subLangs || []).filter((x) => x !== e.target.value)].slice(0, 3) }) }, langOpts.map(([v, l]) => h('option', { value: v, selected: v === (subLangs[0] || 'en'), text: l })))),
-        select('Subtitles', null, 'subMode', [['on', 'Show preferred language when available'], ['off', 'Off until I choose']]),
+      acc('subtitles', 'Audio and subtitles', () => `${languageName((S().subLangs || ['en'])[0] || 'en')} · ${S().subMode === 'off' ? 'off until chosen' : 'on'} · ${opt('subBg', SUBBG).toLowerCase()}`,
+        row('Preferred subtitle language', 'Used to pick subtitles automatically.', h('select', { class: 'inp', id: 'set-_l1', 'aria-label': 'Preferred subtitle language', onChange: (e) => { store.setSettings({ subLangs: [e.target.value, ...(S().subLangs || []).filter((x) => x !== e.target.value)].slice(0, 3) }); refreshSums(); } }, langOpts.map(([v, l]) => h('option', { value: v, selected: v === (subLangs[0] || 'en'), text: l })))),
+        select('Subtitles', null, 'subMode', [['on', 'Show preferred language when available'], ['off', 'Off until I choose']], { after: refreshSums }),
         range('Text size', null, 'subSize', 50, 200, 5, (v) => `${v}%`),
         select('Text colour', null, 'subColor', [['#ffffff', 'White'], ['#ffe27a', 'Yellow'], ['#8de0ff', 'Cyan'], ['#9be58f', 'Green'], ['#ffb3a8', 'Rose']]),
-        select('Background', null, 'subBg', [['shadow', 'Outline shadow'], ['box', 'Dark box'], ['none', 'None']]),
+        select('Background', null, 'subBg', SUBBG, { after: refreshSums }),
         toggle('Bold', null, 'subBold'),
         range('Height from bottom', null, 'subOffset', 0, 40, 1, (v) => `${v}%`)),
-      group('Sources and content',
-        row('Manage sources', 'Add, enable, reorder or remove your sources.', h('a', { class: 'btn sm', href: '#/sources', text: 'Open sources' })),
-        toggle('Patient mode', 'Waits longer for slow sources before giving up.', 'patient', applyTimeoutSetting),
-        row('Insecure HTTP sources', 'Not available on the web player. Browsers block them on a secure page.', h('span', { class: 'badge', text: 'Blocked' })),
-        row('Manage sources', null, h('a', { class: 'btn sm', href: '#/sources', text: 'Open sources' }))),
-      group('Shelf and history',
-        toggle('Save watch history', 'Turn off to stop recording new progress.', 'saveHistory'),
+      acc('shelf', 'Shelf and history', () => `${store.library().length} on shelf · history ${onOff(S().saveHistory)}`,
+        toggle('Save watch history', 'Turn off to stop recording new progress.', 'saveHistory', refreshSums),
         toggle('Remember recent searches', null, 'recentSearches'),
         row('Clear all progress', 'Resume points, watched marks and Continue Watching.', h('button', { class: 'btn sm', type: 'button', text: 'Clear progress', onClick: clearProg })),
         row('Backup', 'Sources, shelf, progress and settings in one file.', h('div', { class: 'actions' }, h('button', { class: 'btn sm', type: 'button', text: 'Export', onClick: exportBackup }), h('button', { class: 'btn sm', type: 'button', text: 'Import', onClick: importBackup })))),
-      group('Repositories and plugins',
+      acc('sources', 'Sources', () => `${store.sources().length} added · ${store.enabledSources().length} enabled`,
+        row('Manage sources', store.sources().length ? store.sources().map((x) => x.manifest?.name || new URL(x.url).host).join(', ') : 'Add, enable, reorder or remove your sources.', h('a', { class: 'btn sm', href: '#/sources', text: 'Open sources' })),
+        toggle('Patient mode', 'Waits longer for slow sources before giving up.', 'patient', applyTimeoutSetting),
+        row('Insecure HTTP sources', 'Not available on the web player. Browsers block them on a secure page.', h('span', { class: 'badge', text: 'Blocked' }))),
+      acc('plugins', 'Repositories and plugins', () => `${plugins().length} saved link${plugins().length === 1 ? '' : 's'} · not runnable yet`,
         h('p', { class: 'mute', text: 'Plugin repositories add new kinds of sources, like on the Android app. Plugins cannot run in the web player yet: you can save a manifest link here, but nothing is installed or executed.' }),
         pluginForm(),
         pluginList()),
-      group('Integrations',
+      acc('integrations', 'Integrations', () => 'Trakt, Simkl, TMDb · coming soon',
         h('div', { class: 'intgrid' }, [['Trakt', 'Sync watch history and ratings.'], ['Simkl', 'Track what you watch across apps.'], ['TMDb', 'Richer artwork and cast details.']].map(([n, d]) =>
           h('div', { class: 'intcard', 'aria-disabled': 'true' }, h('div', { class: 'intn', 'aria-hidden': 'true', text: n[0] }), h('div', { class: 'grow' }, h('b', { text: n }), h('span', { class: 'mute', text: d })), h('span', { class: 'badge', text: 'Coming soon' }))))),
-      group('Storage',
+      acc('storage', 'Storage', () => `${(store.metaCacheSize() / 1024).toFixed(0)} KB cached details`,
         row('Cached details', 'Titles remembered so cards and Continue Watching load fast.', h('div', { class: 'actions' }, storageNote, h('button', { class: 'btn sm', type: 'button', text: 'Clear cache', onClick: () => { store.clearMetaCache(); toast('Cache cleared'); rerender(); } }))),
         row('Recent searches', null, h('button', { class: 'btn sm', type: 'button', text: 'Clear', onClick: () => { store.clearRecent(); toast('Recent searches cleared'); } })),
         row('Reset the web player', 'Removes sources, shelf, progress and settings from this browser.', h('button', { class: 'btn sm danger', type: 'button', text: 'Reset…', onClick: resetAll }))),
-      group('Privacy',
-        h('p', { class: 'mute', text: 'There is no analytics or tracking in this player. Requests go only to your own sources and, if you sign in, to the Liuying account service. Everything else stays in this browser.' })),
-      group('About',
+      acc('about', 'About', () => `Liuying Web Player ${VERSION}`,
         h('p', { text: `Liuying Web Player ${VERSION}` }),
         h('p', { class: 'mute', text: 'Liuying does not host, provide or endorse any content. Sources are added by the user, who is responsible for them.' }),
         h('div', { class: 'actions', style: { 'margin-top': '12px' } }, h('button', { class: 'btn sm', type: 'button', text: 'Copy debug info', onClick: copyDebug }), h('a', { class: 'btn sm', href: '/', text: 'Liuying home' }))));
-    clear(page).append(root);
+    clear(page).append(h('div', { class: 'page-h' }, h('h1', { text: 'Settings' })), root);
     storageNote.textContent = `${(store.metaCacheSize() / 1024).toFixed(0)} KB`;
+    if (deep) { const t = root.querySelector(`[data-acc="${deep}"]`); requestAnimationFrame(() => t?.scrollIntoView({ block: 'start' })); }
   }
 
-  const SECTIONS = ['Account', 'Appearance', 'Today layout', 'Playback', 'Shelf and history', 'Repositories and plugins', 'Integrations', 'About'];
-  function jump() {
-    return h('nav', { class: 'chips jump', 'aria-label': 'Settings sections' }, SECTIONS.map((t) => h('button', { class: 'chip', type: 'button', text: t.replace('Repositories and plugins', 'Plugins'), onClick: () => {
-      const el = [...document.querySelectorAll('.setgroup')].find((g) => g.getAttribute('aria-label')?.startsWith(t));
-      el?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
-      el?.querySelector('h2')?.setAttribute('tabindex', '-1'); el?.querySelector('h2')?.focus({ preventScroll: true });
-    } })));
-  }
-
-  function layoutList(rows) {
-    if (!rows.length) return h('p', { class: 'mute', text: 'Add a source to arrange its catalogs here.' });
-    const keys = rows.map((r) => r.key);
-    return h('div', { class: 'layout' }, h('p', { class: 'mute', text: 'Order the catalogs on Today and hide the ones you do not want.' }),
-      h('ol', { class: 'lrows' }, rows.map((r, i) => h('li', { class: r.hidden ? 'off' : '' },
-        h('div', { class: 'grow' }, h('b', { text: catalogTitle(r.cat) }), h('span', { class: 'mute', text: r.src.manifest.name })),
-        h('button', { class: 'ibtn', type: 'button', 'aria-label': `Move ${catalogTitle(r.cat)} up`, disabled: i === 0, onClick: () => { store.setSettings({ homeOrder: moveKey(keys, r.key, -1) }); rerender(); } }, icon('up', 18)),
-        h('button', { class: 'ibtn', type: 'button', 'aria-label': `Move ${catalogTitle(r.cat)} down`, disabled: i === rows.length - 1, onClick: () => { store.setSettings({ homeOrder: moveKey(keys, r.key, 1) }); rerender(); } }, icon('down', 18)),
-        h('input', { class: 'tg', type: 'checkbox', checked: !r.hidden, 'aria-label': `Show ${catalogTitle(r.cat)} on Today`, onChange: (e) => { store.setSettings({ hiddenCatalogs: { ...S().hiddenCatalogs, [r.key]: !e.target.checked } }); rerender(); } })))));
+  /** Today layout: catalogs grouped per source in sub-dropdowns, with a filter box and Show all / Hide all. */
+  function layoutList() {
+    if (!allHomeRows().length) return h('p', { class: 'mute', text: 'Add a source to arrange its catalogs here.' });
+    const openSrc = new Set();
+    let q = '';
+    const box = h('div', { class: 'lgroups' });
+    const filter = h('input', { class: 'inp', type: 'search', placeholder: 'Filter catalogs', 'aria-label': 'Filter catalogs', onInput: () => { q = filter.value.trim().toLowerCase(); draw(); } });
+    const setHidden = (keys, hidden) => { const cur = { ...S().hiddenCatalogs }; keys.forEach((k) => { cur[k] = hidden; }); store.setSettings({ hiddenCatalogs: cur }); refreshSums(); };
+    function draw(focusSel) {
+      const all = allHomeRows();
+      const order = all.map((r) => r.key);
+      const groups = new Map();
+      for (const r of all) { const id = store.sourceId(r.src); if (!groups.has(id)) groups.set(id, { id, name: r.src.manifest.name, rows: [] }); groups.get(id).rows.push(r); }
+      clear(box);
+      let shown = 0;
+      for (const g of groups.values()) {
+        const match = (r) => !q || `${catalogTitle(r.cat)} ${r.cat.name || ''} ${r.cat.id} ${g.name}`.toLowerCase().includes(q);
+        const vis = g.rows.filter(match);
+        if (!vis.length) continue;
+        shown += vis.length;
+        const on = g.rows.filter((r) => !r.hidden).length;
+        const isOpen = !!q || openSrc.has(g.id);
+        const sid = `lg-${g.id}`;
+        const btn = h('button', { class: 'sacc-h', type: 'button', 'aria-expanded': String(isOpen), 'aria-controls': sid, onClick: () => { if (openSrc.has(g.id)) openSrc.delete(g.id); else openSrc.add(g.id); draw(`[data-sg="${g.id}"]`); } }, h('span', { class: 't', text: g.name }), h('span', { class: 'sum', text: `${on} of ${g.rows.length} shown` }), icon('down', 18));
+        btn.dataset.sg = g.id;
+        const body = h('div', { class: 'sacc-body', id: sid, role: 'region', 'aria-label': `${g.name} catalogs` },
+          h('div', { class: 'bulk' },
+            h('button', { class: 'btn sm', type: 'button', text: 'Show all', onClick: () => { setHidden(g.rows.map((r) => r.key), false); draw(); } }),
+            h('button', { class: 'btn sm', type: 'button', text: 'Hide all', onClick: () => { setHidden(g.rows.map((r) => r.key), true); draw(); } })),
+          h('ol', { class: 'lrows' }, vis.map((r) => {
+            const i = g.rows.indexOf(r);
+            const move = (d) => { const nb = g.rows[i + d]; if (!nb) return; const a = [...order]; const x = a.indexOf(r.key), y = a.indexOf(nb.key); [a[x], a[y]] = [a[y], a[x]]; store.setSettings({ homeOrder: a }); draw(`[data-mv="${d < 0 ? 'u' : 'd'}:${r.key}"]`); };
+            const mv = (d, name, ic, dis) => { const b = h('button', { class: 'ibtn', type: 'button', 'aria-label': `Move ${catalogTitle(r.cat)} ${name}`, disabled: dis, onClick: () => move(d) }, icon(ic, 18)); b.dataset.mv = `${d < 0 ? 'u' : 'd'}:${r.key}`; return b; };
+            const sw = h('input', { class: 'tg', type: 'checkbox', checked: !r.hidden, 'aria-label': `Show ${catalogTitle(r.cat)} on Today`, onChange: (e) => { setHidden([r.key], !e.target.checked); draw(`[data-sw="${r.key}"]`); } });
+            sw.dataset.sw = r.key;
+            return h('li', { class: r.hidden ? 'off' : '' }, h('div', { class: 'grow' }, h('b', { text: catalogTitle(r.cat) })), mv(-1, 'up', 'up', i === 0), mv(1, 'down', 'down', i === g.rows.length - 1), sw);
+          })));
+        body.hidden = !isOpen;
+        box.append(h('div', { class: 'sacc' + (isOpen ? ' open' : '') }, btn, body));
+      }
+      if (!shown) box.append(h('p', { class: 'mute', text: 'No catalogs match.' }));
+      if (focusSel) { const el = [...box.querySelectorAll('[data-sg],[data-mv],[data-sw]')].find((n) => focusSel === `[data-sg="${n.dataset.sg}"]` || focusSel === `[data-mv="${n.dataset.mv}"]` || focusSel === `[data-sw="${n.dataset.sw}"]`); el?.focus({ preventScroll: true }); }
+    }
+    const wrap = h('div', { class: 'layout' },
+      h('h3', { class: 'subh', text: 'Catalogs' }),
+      h('p', { class: 'mute', text: 'Choose which catalogs appear on Today and in what order. Catalogs are grouped by source.' }),
+      h('div', { class: 'ltools' }, filter,
+        h('button', { class: 'btn sm', type: 'button', text: 'Show all', onClick: () => { setHidden(allHomeRows().map((r) => r.key), false); draw(); } }),
+        h('button', { class: 'btn sm', type: 'button', text: 'Hide all', onClick: () => { setHidden(allHomeRows().map((r) => r.key), true); draw(); } })),
+      box,
+      row('Reset layout', 'Show every catalog again, in the sources’ own order.', h('button', { class: 'btn sm', type: 'button', text: 'Reset layout', onClick: () => { store.setSettings({ hiddenCatalogs: {}, homeOrder: [], heroCatalog: '' }); toast('Today layout reset'); rerender(); } })));
+    draw();
+    return wrap;
   }
 
   const plugins = () => (Array.isArray(store.prefs().plugins) ? store.prefs().plugins : []);
@@ -157,10 +226,18 @@ export function settings() {
   function pluginList() {
     const list = plugins();
     if (!list.length) return h('p', { class: 'mute', text: 'No plugin links saved.' });
-    return h('ul', { class: 'plist' }, list.map((p) => h('li', {},
-      h('div', { class: 'grow' }, h('b', { text: new URL(p.url).host }), h('span', { class: 'mute purl', text: p.url })),
-      h('span', { class: 'badge warn', text: 'Not yet runnable' }),
-      h('button', { class: 'ibtn', type: 'button', 'aria-label': `Remove ${p.url}`, onClick: () => { store.setPref('plugins', plugins().filter((x) => x.url !== p.url)); rerender(); } }, icon('trash', 18)))));
+    const host = (u) => { try { return new URL(u).host; } catch { return u; } };
+    const ul = h('ul', { class: 'plist compact' });
+    const count = h('p', { class: 'mute pcount' });
+    const draw = (q = '') => {
+      const vis = list.filter((p) => !q || p.url.toLowerCase().includes(q));
+      clear(ul).append(...vis.map((p) => h('li', {},
+        h('div', { class: 'grow' }, h('b', { text: host(p.url) }), h('span', { class: 'mute purl', text: p.url })),
+        h('button', { class: 'ibtn', type: 'button', 'aria-label': `Remove ${p.url}`, onClick: () => { store.setPref('plugins', plugins().filter((x) => x.url !== p.url)); rerender(); } }, icon('trash', 18)))));
+      count.textContent = vis.length ? `${vis.length} of ${list.length} saved · not yet runnable` : 'No saved links match.';
+    };
+    draw();
+    return h('div', {}, h('input', { class: 'inp', type: 'search', placeholder: 'Search saved links', 'aria-label': 'Search saved plugin links', onInput: (e) => draw(e.target.value.trim().toLowerCase()) }), count, h('div', { class: 'plist-box' }, ul));
   }
 
   const syncLabel = (st) => ({ idle: 'up to date', syncing: 'syncing', offline: 'offline, will retry', error: `problem (${st.error || 'will retry'})`, checking: 'checking', signedout: 'signed out' }[st.state] || st.state);
@@ -206,7 +283,7 @@ export function settings() {
     try { await navigator.clipboard.writeText(t); toast('Debug info copied'); } catch { toast('Copy failed'); }
   }
 
-  const unsub = sync.subscribeStatus(() => { /* keep simple: status shown on build */ });
+  const unsub = sync.subscribeStatus(() => { refreshSums(); });
   build();
   return { destroy() { unsub(); } };
 }
