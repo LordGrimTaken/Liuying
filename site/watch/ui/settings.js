@@ -107,6 +107,7 @@ export function settings({ query = {} } = {}) {
         toggle('Continue Watching', 'Show in-progress titles at the top.', 'showContinue', rerender),
         toggle('Up next cards', 'Suggest the next episode of series you are watching.', 'showUpNext'),
         toggle('Featured banner', null, 'hero', refreshSums),
+        toggle('Hide watched titles', 'Leave titles you have finished out of catalog rows and Browse.', 'hideWatched'),
         select('Banner catalog', 'Which catalog feeds the banner.', 'heroCatalog', [['', 'First row'], ...rows.map((r) => [r.key, `${catalogTitle(r.cat)} (${r.src.manifest.name})`])]),
         toggle('Hide adult-flagged sources', null, 'hideAdult', () => { refreshSums(); rerender(); }),
         layoutList()),
