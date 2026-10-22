@@ -47,7 +47,13 @@ class MainActivity : ComponentActivity() {
         setContent {
             val settings by container.settings.settings.collectAsStateWithLifecycle(AppSettings())
             LiuyingTheme(settings.accent, settings.fontScale) {
-                CompositionLocalProvider(LocalContainer provides container) { LiuyingApp()
+                val systemReduce = androidx.compose.runtime.remember {
+                    android.provider.Settings.Global.getFloat(contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
+                }
+                CompositionLocalProvider(
+                    LocalContainer provides container,
+                    com.liuying.app.ui.common.LocalReduceMotion provides (settings.reduceMotion || systemReduce),
+                ) { LiuyingApp()
                     com.liuying.app.ui.update.UpdateDialog(container.updates)
                 }
             }

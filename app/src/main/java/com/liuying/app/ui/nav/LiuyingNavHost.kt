@@ -1,6 +1,14 @@
 package com.liuying.app.ui.nav
 
 import androidx.compose.foundation.background
+import com.liuying.app.ui.common.LocalReduceMotion
+import com.liuying.app.ui.common.EaseOutSoft
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.EnterTransition
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -26,6 +34,7 @@ import com.liuying.app.ui.common.LocalContainer
 import com.liuying.app.ui.details.DetailsScreen
 import com.liuying.app.ui.home.TodayScreen
 import com.liuying.app.ui.browse.BrowseScreen
+import com.liuying.app.ui.browse.TypePageScreen
 import com.liuying.app.ui.sources.SourceDetailScreen
 import com.liuying.app.ui.calendar.CalendarScreen
 import com.liuying.app.ui.library.ShelfScreen
@@ -33,7 +42,7 @@ import com.liuying.app.ui.search.SearchScreen
 import com.liuying.app.ui.settings.YouScreen
 
 /** Height reserved at the bottom of each screen so content clears the floating dock. */
-val DockClearance = 108.dp
+val DockClearance = 96.dp
 
 /** Opens the details page, remembering the list item it came from so it can render before the network answers. */
 class Navigator(private val nav: NavHostController, private val container: AppContainer) {
@@ -51,11 +60,12 @@ class Navigator(private val nav: NavHostController, private val container: AppCo
     }
 
     fun openSource(id: Long) = nav.navigate(Routes.source(id))
-    fun openBrowse(catalogKey: String) = nav.navigate(Routes.browse(catalogKey))
+    fun openBrowse(catalogKey: String, genre: String? = null) = nav.navigate(Routes.browse(catalogKey, genre))
+    fun openCalendar() = nav.navigate(Overlay.CALENDAR) { launchSingleTop = true }
     fun openTitle(type: String, id: String, play: String? = null) = nav.navigate(Routes.details(type, id, play))
     fun back() { nav.popBackStack() }
     /** The full-screen search overlay: it covers the dock and Back returns to where the user was. */
-    fun openSearch() { nav.navigate(Tab.Search.route) { launchSingleTop = true } }
+    fun openSearch() { nav.navigate(Overlay.SEARCH) { launchSingleTop = true } }
     fun goTab(tab: Tab) = nav.navigate(tab.route) {
         popUpTo(nav.graph.findStartDestination().id) { saveState = true }
         launchSingleTop = true
@@ -71,18 +81,32 @@ fun LiuyingApp() {
     val link by container.pendingLink.collectAsState()
     androidx.compose.runtime.LaunchedEffect(link) { if (link != null) navigator.goTab(Tab.You) }
     val entry by nav.currentBackStackEntryAsState()
-    val current = Tab.entries.firstOrNull { it.route == entry?.destination?.route }
+    val route = entry?.destination?.route
+    val current = Tab.entries.firstOrNull { it.route == route }
+    val showChrome = current != null || route == Overlay.CALENDAR
+    val account by container.sync.state.collectAsState()
+    val chrome = androidx.compose.runtime.remember { ChromeState() }
+    val reduce = LocalReduceMotion.current
+    val rise = with(androidx.compose.ui.platform.LocalDensity.current) { 10.dp.roundToPx() }
 
+    androidx.compose.runtime.CompositionLocalProvider(LocalChrome provides chrome) {
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         NavHost(
             navController = nav,
             startDestination = Tab.Today.route,
             modifier = Modifier.fillMaxSize(),
+            // a new page fades in and rises 10dp (320ms); only on navigation, never on background refresh
+            enterTransition = { if (reduce) EnterTransition.None else fadeIn(tween(320, easing = EaseOutSoft)) + slideInVertically(tween(320, easing = EaseOutSoft)) { rise } },
+            exitTransition = { if (reduce) ExitTransition.None else fadeOut(tween(160)) },
+            popEnterTransition = { if (reduce) EnterTransition.None else fadeIn(tween(320, easing = EaseOutSoft)) },
+            popExitTransition = { if (reduce) ExitTransition.None else fadeOut(tween(160)) },
         ) {
             composable(Tab.Today.route) { TodayScreen(navigator) }
-            composable(Tab.Search.route) { SearchScreen(navigator) }
+            composable(Tab.Movies.route) { TypePageScreen("movie", navigator) }
+            composable(Tab.Series.route) { TypePageScreen("series", navigator) }
+            composable(Overlay.SEARCH) { SearchScreen(navigator) }
             composable(Tab.Shelf.route) { ShelfScreen(navigator) }
-            composable(Tab.Calendar.route) { CalendarScreen(navigator) }
+            composable(Overlay.CALENDAR) { CalendarScreen(navigator) }
             composable(Tab.You.route) { YouScreen(navigator) }
             composable(
                 Routes.SOURCE,
@@ -90,8 +114,11 @@ fun LiuyingApp() {
             ) { e -> SourceDetailScreen(e.arguments?.getLong("id") ?: -1L, navigator) }
             composable(
                 Routes.BROWSE,
-                arguments = listOf(navArgument("key") { type = NavType.StringType }),
-            ) { e -> BrowseScreen(e.arguments?.getString("key").orEmpty(), navigator) }
+                arguments = listOf(
+                    navArgument("key") { type = NavType.StringType },
+                    navArgument("genre") { type = NavType.StringType; nullable = true; defaultValue = null },
+                ),
+            ) { e -> BrowseScreen(e.arguments?.getString("key").orEmpty(), e.arguments?.getString("genre"), navigator) }
             composable(
                 Routes.DETAILS,
                 arguments = listOf(
@@ -108,15 +135,15 @@ fun LiuyingApp() {
                 )
             }
         }
-        if (current != null && current != Tab.Search) {
-            InkDock(
-                current = current,
-                onSelect = { if (it == Tab.Search) navigator.openSearch() else navigator.goTab(it) },
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(horizontal = 20.dp, vertical = 14.dp),
+        if (showChrome) {
+            LiuyingTopBar(
+                solid = chrome.solid, account = account,
+                onSearch = navigator::openSearch, onCalendar = navigator::openCalendar,
+                onSettings = { navigator.goTab(Tab.You) }, onAccount = { navigator.goTab(Tab.You) },
+                modifier = Modifier.align(Alignment.TopCenter),
             )
+            InkDock(current = current, onSelect = { navigator.goTab(it) }, modifier = Modifier.align(Alignment.BottomCenter))
         }
+    }
     }
 }

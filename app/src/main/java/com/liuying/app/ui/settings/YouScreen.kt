@@ -95,7 +95,7 @@ fun YouScreen(navigator: Navigator) {
         message?.let { Toast.makeText(context, it, Toast.LENGTH_SHORT).show(); vm.clearMessage() }
     }
 
-    LazyColumn(Modifier.fillMaxSize().statusBarsPadding(), contentPadding = PaddingValues(bottom = DockClearance)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = com.liuying.app.ui.nav.topBarInset(), bottom = DockClearance)) {
         item { ScreenTitle("You") }
 
         // ---------------------------------------------------------------- account

@@ -91,7 +91,7 @@ fun ShelfScreen(navigator: Navigator) {
     }
 
     Box(Modifier.fillMaxSize()) {
-    Column(Modifier.fillMaxSize().statusBarsPadding()) {
+    Column(Modifier.fillMaxSize().padding(top = com.liuying.app.ui.nav.topBarInset())) {
         Row(Modifier.fillMaxWidth().padding(end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Shelf", style = MaterialTheme.typography.headlineMedium, color = Paper, modifier = Modifier.weight(1f).padding(horizontal = 20.dp, vertical = 12.dp))
             Box {
@@ -104,8 +104,8 @@ fun ShelfScreen(navigator: Navigator) {
         }
         if (!state.loaded) { CenterLoading(); return@Column }
         if (state.totalCount == 0) {
-            EmptyBlock("Your shelf is empty", "Open any title and press Save to keep it here. It stays on this device, and syncs if you sign in.",
-                action = { InkButton("Browse Today", { navigator.goTab(Tab.Today) }) })
+            EmptyBlock("Your shelf is empty", "Add movies and series to your shelf with the + button. It stays on this device, and syncs if you sign in.",
+                modifier = Modifier.weight(1f), action = { InkButton("Browse titles", { navigator.goTab(Tab.Today) }) })
             return@Column
         }
         OutlinedTextField(

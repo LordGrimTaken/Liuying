@@ -51,6 +51,10 @@ import com.liuying.app.ui.theme.Ink
 import com.liuying.app.ui.theme.InkSurface
 import com.liuying.app.ui.theme.OnAccent
 import com.liuying.app.ui.theme.Paper
+import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.draw.alpha
+import androidx.compose.runtime.remember
 import com.liuying.app.ui.theme.PaperMuted
 import com.liuying.app.ui.theme.Vermilion
 
@@ -62,7 +66,7 @@ tailrec fun Context.findActivity(): ComponentActivity? = when (this) {
     else -> null
 }
 
-val PosterShape = RoundedCornerShape(6.dp)
+val PosterShape = RoundedCornerShape(8.dp)
 
 @Composable
 fun ScreenTitle(text: String, modifier: Modifier = Modifier) {
@@ -71,11 +75,9 @@ fun ScreenTitle(text: String, modifier: Modifier = Modifier) {
 
 @Composable
 fun SectionHeader(text: String, modifier: Modifier = Modifier, subtitle: String? = null, trailing: (@Composable () -> Unit)? = null) {
-    Row(modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(width = 3.dp, height = if (subtitle != null) 32.dp else 16.dp).background(Vermilion))
-        Spacer(Modifier.width(10.dp))
+    Row(modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            Text(text, style = MaterialTheme.typography.titleMedium, color = Paper, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(text, style = MaterialTheme.typography.titleLarge.copy(fontSize = 24.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, lineHeight = 30.sp), color = Paper, maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.labelMedium, color = PaperMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         trailing?.invoke()
@@ -90,7 +92,12 @@ fun ArtImage(url: String?, label: String, modifier: Modifier = Modifier, content
             label.trim().take(1).uppercase().ifEmpty { "?" },
             style = MaterialTheme.typography.headlineSmall, color = Gold.copy(alpha = 0.55f), fontFamily = FontFamily.Serif,
         )
-        if (!url.isNullOrBlank()) AsyncImage(model = url, contentDescription = null, contentScale = contentScale, modifier = Modifier.fillMaxSize())
+        if (!url.isNullOrBlank()) {
+            val fade = motionMs(400)
+            val request = coil3.request.ImageRequest.Builder(coil3.compose.LocalPlatformContext.current).data(url)
+                .apply { if (fade > 0) crossfade(fade) }.build()
+            AsyncImage(model = request, contentDescription = null, contentScale = contentScale, modifier = Modifier.fillMaxSize())
+        }
     }
 }
 
@@ -100,7 +107,7 @@ fun PosterCard(
     title: String,
     poster: String?,
     modifier: Modifier = Modifier,
-    width: Dp = 120.dp,
+    width: Dp = 118.dp,
     subtitle: String? = null,
     progress: Float? = null,
     watched: Boolean = false,
@@ -112,7 +119,9 @@ fun PosterCard(
     fillWidth: Boolean = false,
     onClick: () -> Unit,
 ) {
-    Column(modifier.then(if (fillWidth) Modifier.fillMaxWidth() else Modifier.width(width)).combinedClickable(onClick = onClick, onLongClick = onLongClick)) {
+    val source = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    Column(modifier.then(if (fillWidth) Modifier.fillMaxWidth() else Modifier.width(width)).pressScale(source, 0.97f)
+        .combinedClickable(interactionSource = source, indication = null, onClick = onClick, onLongClick = onLongClick)) {
         Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(PosterShape).border(BorderStroke(0.5.dp, GoldHairline), PosterShape)) {
             ArtImage(poster, title, Modifier.fillMaxSize())
             if (watched) Text("Seen", style = MaterialTheme.typography.labelMedium, color = OnAccent,
@@ -153,10 +162,11 @@ fun ProgressBar(fraction: Float, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun PosterPlaceholder(width: Dp = 120.dp) {
+fun PosterPlaceholder(width: Dp = 118.dp) {
     Column(Modifier.width(width)) {
-        Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(PosterShape).background(InkSurface))
-        Box(Modifier.padding(top = 8.dp).size(width = width * 0.7f, height = 10.dp).background(InkSurface, RoundedCornerShape(3.dp)))
+        val hi = Paper.copy(alpha = 0.07f)
+        Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(PosterShape).background(InkSurface).shimmer(InkSurface, hi))
+        Box(Modifier.padding(top = 8.dp).size(width = width * 0.7f, height = 10.dp).clip(RoundedCornerShape(3.dp)).background(InkSurface).shimmer(InkSurface, hi))
     }
 }
 
@@ -191,9 +201,10 @@ fun InkTextButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifi
 fun InkButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, filled: Boolean = true) {
     val shape = RoundedCornerShape(10.dp)
     val bg = if (filled) (if (enabled) Vermilion else Vermilion.copy(alpha = 0.35f)) else androidx.compose.ui.graphics.Color.Transparent
+    val source = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
     Box(
-        modifier.clip(shape).background(bg, shape).then(if (filled) Modifier else Modifier.border(BorderStroke(1.dp, GoldHairline), shape))
-            .semantics { role = Role.Button }.clickable(enabled = enabled, onClick = onClick).heightIn(min = 48.dp).padding(horizontal = 18.dp, vertical = 11.dp),
+        modifier.pressScale(source, 0.97f).clip(shape).background(bg, shape).then(if (filled) Modifier else Modifier.border(BorderStroke(1.dp, GoldHairline), shape))
+            .semantics { role = Role.Button }.clickable(interactionSource = source, indication = null, enabled = enabled, onClick = onClick).heightIn(min = 48.dp).padding(horizontal = 18.dp, vertical = 11.dp),
         contentAlignment = Alignment.Center,
     ) { Text(text, color = if (!enabled) PaperMuted else if (filled) OnAccent else Paper, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center) }
 }
@@ -217,12 +228,12 @@ fun Badge(text: String, modifier: Modifier = Modifier) {
 
 @Composable
 fun EmptyBlock(title: String, message: String, modifier: Modifier = Modifier, action: (@Composable () -> Unit)? = null) {
-    Column(modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 40.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        com.liuying.app.ui.InkCircle(Modifier.size(96.dp))
-        Spacer(Modifier.height(18.dp))
-        Text(title, style = MaterialTheme.typography.titleLarge, color = Paper, textAlign = TextAlign.Center)
-        Spacer(Modifier.height(6.dp))
-        Text(message, style = MaterialTheme.typography.bodyMedium, color = PaperMuted, textAlign = TextAlign.Center)
-        if (action != null) { Spacer(Modifier.height(16.dp)); action() }
+    Column(modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 48.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        com.liuying.app.ui.InkCircle(Modifier.size(84.dp).alpha(0.6f))
+        Spacer(Modifier.height(20.dp))
+        Text(title, style = MaterialTheme.typography.titleLarge.copy(fontSize = 24.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold), color = Paper, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(8.dp))
+        Text(message, style = MaterialTheme.typography.bodyMedium, color = PaperMuted, textAlign = TextAlign.Center, modifier = Modifier.widthIn(max = 300.dp))
+        if (action != null) { Spacer(Modifier.height(20.dp)); action() }
     }
 }

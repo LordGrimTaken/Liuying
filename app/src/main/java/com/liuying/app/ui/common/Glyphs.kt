@@ -34,7 +34,7 @@ import com.liuying.app.ui.theme.OnAccent
 import com.liuying.app.ui.theme.Paper
 import com.liuying.app.ui.theme.Vermilion
 
-enum class GlyphKind { Play, Pause, Info, Plus, Check, Share, Close, Search, Eye, ChevronDown, ChevronUp, Calendar }
+enum class GlyphKind { Play, Pause, Info, Plus, Check, Share, Close, Search, Eye, ChevronDown, ChevronUp, Calendar, Home, Film, Tv, Books, Person, Gear, Star }
 
 /** Small hand-drawn line icons; there is no icon font dependency. */
 @Composable
@@ -81,6 +81,55 @@ fun Glyph(kind: GlyphKind, modifier: Modifier = Modifier, tint: Color = Paper, s
             }
             GlyphKind.ChevronDown -> drawPath(Path().apply { moveTo(w * .22f, h * .38f); lineTo(w * .5f, h * .66f); lineTo(w * .78f, h * .38f) }, tint, style = st)
             GlyphKind.ChevronUp -> drawPath(Path().apply { moveTo(w * .22f, h * .62f); lineTo(w * .5f, h * .34f); lineTo(w * .78f, h * .62f) }, tint, style = st)
+            GlyphKind.Home -> {
+                drawPath(Path().apply { moveTo(w * .12f, h * .5f); lineTo(w * .5f, h * .16f); lineTo(w * .88f, h * .5f) }, tint, style = st)
+                drawPath(Path().apply { moveTo(w * .24f, h * .44f); lineTo(w * .24f, h * .84f); lineTo(w * .76f, h * .84f); lineTo(w * .76f, h * .44f) }, tint, style = st)
+                drawPath(Path().apply { moveTo(w * .42f, h * .84f); lineTo(w * .42f, h * .62f); lineTo(w * .58f, h * .62f); lineTo(w * .58f, h * .84f) }, tint, style = st)
+            }
+            GlyphKind.Film -> {
+                drawRoundRect(tint, Offset(w * .14f, h * .14f), androidx.compose.ui.geometry.Size(w * .72f, h * .72f), androidx.compose.ui.geometry.CornerRadius(w * .08f), style = st)
+                drawLine(tint, Offset(w * .34f, h * .14f), Offset(w * .34f, h * .86f), sw, StrokeCap.Round)
+                drawLine(tint, Offset(w * .66f, h * .14f), Offset(w * .66f, h * .86f), sw, StrokeCap.Round)
+                listOf(.34f, .5f, .66f).forEach { y ->
+                    drawLine(tint, Offset(w * .14f, h * y), Offset(w * .34f, h * y), sw, StrokeCap.Round)
+                    drawLine(tint, Offset(w * .66f, h * y), Offset(w * .86f, h * y), sw, StrokeCap.Round)
+                }
+            }
+            GlyphKind.Tv -> {
+                drawRoundRect(tint, Offset(w * .1f, h * .3f), androidx.compose.ui.geometry.Size(w * .8f, h * .56f), androidx.compose.ui.geometry.CornerRadius(w * .1f), style = st)
+                drawLine(tint, Offset(w * .5f, h * .3f), Offset(w * .32f, h * .12f), sw, StrokeCap.Round)
+                drawLine(tint, Offset(w * .5f, h * .3f), Offset(w * .68f, h * .12f), sw, StrokeCap.Round)
+            }
+            GlyphKind.Books -> {
+                drawLine(tint, Offset(w * .14f, h * .88f), Offset(w * .86f, h * .88f), sw, StrokeCap.Round)
+                drawRect(tint, Offset(w * .18f, h * .2f), androidx.compose.ui.geometry.Size(w * .16f, h * .6f), style = st)
+                drawRect(tint, Offset(w * .42f, h * .12f), androidx.compose.ui.geometry.Size(w * .16f, h * .68f), style = st)
+                drawLine(tint, Offset(w * .7f, h * .8f), Offset(w * .84f, h * .24f), sw, StrokeCap.Round)
+            }
+            GlyphKind.Person -> {
+                drawCircle(tint, radius = w * .17f, center = Offset(w * .5f, h * .32f), style = st)
+                drawPath(Path().apply { moveTo(w * .16f, h * .88f); cubicTo(w * .2f, h * .56f, w * .8f, h * .56f, w * .84f, h * .88f) }, tint, style = st)
+            }
+            GlyphKind.Gear -> {
+                drawCircle(tint, radius = w * .16f, center = Offset(w * .5f, h * .5f), style = st)
+                for (i in 0 until 8) {
+                    val a = Math.toRadians(i * 45.0)
+                    val c = Offset(w * .5f, h * .5f)
+                    drawLine(tint, Offset(c.x + (w * .29f * Math.cos(a)).toFloat(), c.y + (w * .29f * Math.sin(a)).toFloat()),
+                        Offset(c.x + (w * .4f * Math.cos(a)).toFloat(), c.y + (w * .4f * Math.sin(a)).toFloat()), sw, StrokeCap.Round)
+                }
+                drawCircle(tint, radius = w * .29f, center = Offset(w * .5f, h * .5f), style = st)
+            }
+            GlyphKind.Star -> {
+                val p = Path()
+                for (i in 0 until 10) {
+                    val r = if (i % 2 == 0) w * .44f else w * .19f
+                    val a = Math.toRadians(-90.0 + i * 36.0)
+                    val x = w * .5f + (r * Math.cos(a)).toFloat(); val y = h * .54f + (r * Math.sin(a)).toFloat()
+                    if (i == 0) p.moveTo(x, y) else p.lineTo(x, y)
+                }
+                p.close(); drawPath(p, tint, style = Fill)
+            }
             GlyphKind.Calendar -> {
                 drawRoundRect(tint, Offset(w * .14f, h * .2f), androidx.compose.ui.geometry.Size(w * .72f, h * .66f), androidx.compose.ui.geometry.CornerRadius(w * .08f), style = st)
                 drawLine(tint, Offset(w * .14f, h * .42f), Offset(w * .86f, h * .42f), sw, StrokeCap.Round)

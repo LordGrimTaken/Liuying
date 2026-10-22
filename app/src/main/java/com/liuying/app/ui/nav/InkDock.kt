@@ -1,134 +1,84 @@
 package com.liuying.app.ui.nav
 
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.liuying.app.ui.theme.Gold
+import com.liuying.app.ui.common.EaseOutSoft
+import com.liuying.app.ui.common.Glyph
+import com.liuying.app.ui.common.GlyphKind
+import com.liuying.app.ui.common.motionMs
+import com.liuying.app.ui.common.pressScale
 import com.liuying.app.ui.theme.GoldHairline
 import com.liuying.app.ui.theme.InkSurface
-import com.liuying.app.ui.theme.Paper
 import com.liuying.app.ui.theme.PaperMuted
 import com.liuying.app.ui.theme.Vermilion
 
-/** Floating, rounded bottom bar. Built from plain Compose, no NavigationBar. */
-@Composable
-fun InkDock(
-    current: Tab?,
-    onSelect: (Tab) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val shape = RoundedCornerShape(28.dp)
-    // Fixed-height bar: cap text scaling so labels never clip at large system font sizes (the full label stays as the content description).
-    val density = androidx.compose.ui.platform.LocalDensity.current
-    androidx.compose.runtime.CompositionLocalProvider(
-        androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density, fontScale = density.fontScale.coerceAtMost(1.0f)),
-    ) { Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(68.dp)
-            .shadow(12.dp, shape, clip = false)
-            .background(InkSurface, shape)
-            .border(BorderStroke(0.5.dp, GoldHairline), shape)
-            .padding(horizontal = 4.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Tab.entries.forEach { tab ->
-            DockItem(tab, selected = tab == current, onClick = { onSelect(tab) }, modifier = Modifier.weight(1f))
-        }
-    } }
+private fun Tab.glyph() = when (this) {
+    Tab.Today -> GlyphKind.Home
+    Tab.Movies -> GlyphKind.Film
+    Tab.Series -> GlyphKind.Tv
+    Tab.Shelf -> GlyphKind.Books
+    Tab.You -> GlyphKind.Person
 }
 
+/**
+ * Bottom navigation: five equal items, the active one in a rounded pill tinted with the accent (24%).
+ * 64dp plus the gesture inset. [current] null (Calendar) leaves every item inactive.
+ */
 @Composable
-private fun DockItem(tab: Tab, selected: Boolean, onClick: () -> Unit, modifier: Modifier) {
-    val tint = if (selected) Paper else PaperMuted
-    Column(
-        modifier = modifier
-            .semantics { role = Role.Tab; this.selected = selected; contentDescription = tab.label }
-            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick)
-            .padding(vertical = 6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        TabGlyph(tab, selected, tint)
-        Text(tab.label, style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.sp), color = tint, maxLines = 1, softWrap = false)
-        // vermilion seal-dot under the active tab
-        Canvas(Modifier.padding(top = 3.dp).size(width = 14.dp, height = 2.dp)) {
-            if (selected) drawRect(Vermilion, size = Size(size.width, size.height))
+fun InkDock(current: Tab?, onSelect: (Tab) -> Unit, modifier: Modifier = Modifier) {
+    Column(modifier.fillMaxWidth().background(InkSurface.copy(alpha = 0.97f))) {
+        Box(Modifier.fillMaxWidth().height(0.5.dp).background(GoldHairline.copy(alpha = 0.5f)))
+        Row(
+            Modifier.fillMaxWidth().navigationBarsPadding().height(64.dp).padding(horizontal = 6.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Tab.entries.forEach { tab -> DockItem(tab, tab == current, { onSelect(tab) }, Modifier.weight(1f)) }
         }
     }
 }
 
-/** Tiny hand-drawn glyphs; each is a brush-like path. */
 @Composable
-private fun TabGlyph(tab: Tab, selected: Boolean, tint: Color) {
-    Canvas(Modifier.size(22.dp)) {
-        val w = size.width
-        val h = size.height
-        val stroke = Stroke(width = 1.8.dp.toPx(), cap = StrokeCap.Round)
-        val color = if (selected) Gold else tint
-        when (tab) {
-            Tab.Today -> {
-                drawCircle(color, radius = w * 0.18f, center = Offset(w / 2, h / 2), style = stroke)
-                val p = Path().apply {
-                    moveTo(w * 0.08f, h * 0.82f); cubicTo(w * 0.35f, h * 0.7f, w * 0.65f, h * 0.9f, w * 0.92f, h * 0.78f)
-                }
-                drawPath(p, color, style = stroke)
-            }
-            Tab.Search -> {
-                drawCircle(color, radius = w * 0.28f, center = Offset(w * 0.42f, h * 0.42f), style = stroke)
-                drawLine(color, Offset(w * 0.64f, h * 0.64f), Offset(w * 0.9f, h * 0.9f), stroke.width, StrokeCap.Round)
-            }
-            Tab.Shelf -> {
-                drawLine(color, Offset(w * 0.15f, h * 0.88f), Offset(w * 0.85f, h * 0.88f), stroke.width, StrokeCap.Round)
-                drawRect(color, Offset(w * 0.2f, h * 0.2f), Size(w * 0.14f, h * 0.62f), style = stroke)
-                drawRect(color, Offset(w * 0.44f, h * 0.12f), Size(w * 0.14f, h * 0.7f), style = stroke)
-                drawLine(color, Offset(w * 0.72f, h * 0.82f), Offset(w * 0.86f, h * 0.24f), stroke.width, StrokeCap.Round)
-            }
-            Tab.Calendar -> {
-                drawRoundRect(color, Offset(w * 0.12f, h * 0.2f), Size(w * 0.76f, h * 0.68f), androidx.compose.ui.geometry.CornerRadius(w * 0.08f), style = stroke)
-                drawLine(color, Offset(w * 0.12f, h * 0.44f), Offset(w * 0.88f, h * 0.44f), stroke.width, StrokeCap.Round)
-                drawLine(color, Offset(w * 0.34f, h * 0.08f), Offset(w * 0.34f, h * 0.3f), stroke.width, StrokeCap.Round)
-                drawLine(color, Offset(w * 0.66f, h * 0.08f), Offset(w * 0.66f, h * 0.3f), stroke.width, StrokeCap.Round)
-            }
-            Tab.You -> {
-                drawCircle(color, radius = w * 0.17f, center = Offset(w / 2, h * 0.32f), style = stroke)
-                val p = Path().apply {
-                    moveTo(w * 0.15f, h * 0.9f); cubicTo(w * 0.2f, h * 0.55f, w * 0.8f, h * 0.55f, w * 0.85f, h * 0.9f)
-                }
-                drawPath(p, color, style = stroke)
-            }
+private fun DockItem(tab: Tab, selected: Boolean, onClick: () -> Unit, modifier: Modifier) {
+    val source = remember { MutableInteractionSource() }
+    val tint by animateColorAsState(if (selected) Vermilion else PaperMuted, tween(motionMs(200)), label = "tint")
+    val pill by animateColorAsState(if (selected) Vermilion.copy(alpha = 0.24f) else androidx.compose.ui.graphics.Color.Transparent, tween(motionMs(280), easing = EaseOutSoft), label = "pill")
+    Box(modifier.height(64.dp), contentAlignment = Alignment.Center) {
+        Column(
+            Modifier.pressScale(source, 0.94f).clip(RoundedCornerShape(16.dp)).background(pill)
+                .semantics { role = Role.Tab; this.selected = selected; contentDescription = tab.label }
+                .clickable(interactionSource = source, indication = null, onClick = onClick)
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Glyph(tab.glyph(), tint = tint, size = 22.dp)
+            Text(tab.label, color = tint, maxLines = 1, softWrap = false, style = TextStyle(fontSize = 10.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium))
         }
     }
 }

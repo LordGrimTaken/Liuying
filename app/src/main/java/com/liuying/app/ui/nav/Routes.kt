@@ -8,8 +8,9 @@ object Routes {
     const val DETAILS = "details/{type}/{id}?play={play}"
     const val SOURCE = "source/{id}"
     fun source(id: Long) = "source/$id"
-    const val BROWSE = "browse/{key}"
-    fun browse(catalogKey: String): String = "browse/${Uri.encode(catalogKey)}"
+    const val BROWSE = "browse/{key}?genre={genre}"
+    fun browse(catalogKey: String, genre: String? = null): String =
+        "browse/${Uri.encode(catalogKey)}" + (genre?.let { "?genre=${Uri.encode(it)}" } ?: "")
     fun details(type: String, id: String, play: String? = null): String =
         "details/${Uri.encode(type)}/${Uri.encode(id)}" + (play?.let { "?play=${Uri.encode(it)}" } ?: "")
 }

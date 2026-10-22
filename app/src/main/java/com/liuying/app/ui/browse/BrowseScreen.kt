@@ -45,8 +45,8 @@ import com.liuying.app.ui.theme.Paper
 import com.liuying.app.ui.theme.PaperMuted
 
 @Composable
-fun BrowseScreen(catalogKey: String, navigator: Navigator) {
-    val vm = containerViewModel(key = "browse:$catalogKey") { BrowseViewModel(it, catalogKey) }
+fun BrowseScreen(catalogKey: String, initialGenre: String?, navigator: Navigator) {
+    val vm = containerViewModel(key = "browse:$catalogKey:$initialGenre") { BrowseViewModel(it, catalogKey, initialGenre) }
     val ui by vm.ui.collectAsStateWithLifecycle()
     val saved by vm.savedKeys.collectAsStateWithLifecycle()
     BackHandler { navigator.back() }

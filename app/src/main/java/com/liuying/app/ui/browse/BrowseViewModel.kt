@@ -7,6 +7,7 @@ import com.liuying.app.data.repo.CatalogPager
 import com.liuying.app.data.repo.PagerState
 import com.liuying.app.domain.model.CatalogEntry
 import com.liuying.app.domain.model.MetaPreview
+import com.liuying.app.domain.model.supportsGenre
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,7 +25,7 @@ data class BrowseUi(
 )
 
 /** "See all" for one catalog: the protocol's skip paging behind a grid, with genre and fixed-option extra filters. */
-class BrowseViewModel(private val c: AppContainer, private val key: String) : ViewModel() {
+class BrowseViewModel(private val c: AppContainer, private val key: String, private val initialGenre: String? = null) : ViewModel() {
     private val _ui = MutableStateFlow(BrowseUi())
     val ui: StateFlow<BrowseUi> = _ui.asStateFlow()
     private var pager: CatalogPager? = null
@@ -34,7 +35,7 @@ class BrowseViewModel(private val c: AppContainer, private val key: String) : Vi
     init {
         viewModelScope.launch {
             val entry = c.catalogs.entryByKey(key)
-            _ui.value = BrowseUi(resolved = true, entry = entry)
+            _ui.value = BrowseUi(resolved = true, entry = entry, genre = initialGenre?.takeIf { entry?.catalog?.supportsGenre == true })
             if (entry != null) restart()
         }
     }

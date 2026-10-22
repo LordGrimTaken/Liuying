@@ -58,7 +58,7 @@ fun CalendarScreen(navigator: Navigator) {
     val ui by vm.ui.collectAsStateWithLifecycle()
     val agenda = ui.agenda
 
-    LazyColumn(Modifier.fillMaxSize().statusBarsPadding(), contentPadding = PaddingValues(bottom = DockClearance)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = com.liuying.app.ui.nav.topBarInset(), bottom = DockClearance)) {
         item {
             Row(Modifier.fillMaxWidth().padding(end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Calendar", style = MaterialTheme.typography.headlineMedium, color = Paper, modifier = Modifier.weight(1f).padding(horizontal = 20.dp, vertical = 12.dp))
