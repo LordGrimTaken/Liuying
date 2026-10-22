@@ -46,8 +46,9 @@ android {
             applicationIdSuffix = ".debug"
         }
         release {
-            isMinifyEnabled = true
-            isShrinkResources = true
+            // R8 off on purpose: correctness over APK size (0.3.0 failed to add sources when minified).
+            isMinifyEnabled = false
+            isShrinkResources = false
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }

@@ -81,10 +81,8 @@ class AddonClient(
     internal fun parseManifest(manifestUrl: String, body: String): Result<FetchedManifest> {
         val manifest = try {
             json.decodeFromString(Manifest.serializer(), body)
-        } catch (e: SerializationException) {
-            return Result.failure(AddonFailure(AddonErrorKind.NotJson, "Manifest is not a valid JSON object", cause = e))
-        } catch (e: IllegalArgumentException) {
-            return Result.failure(AddonFailure(AddonErrorKind.NotJson, "Manifest is not a valid JSON object", cause = e))
+        } catch (e: Exception) {
+            return Result.failure(AddonFailure.fromUnexpected(e))
         }
         if (manifest.id.isBlank() || manifest.name.isBlank()) {
             return Result.failure(AddonFailure(AddonErrorKind.MissingIdentity, "Manifest has no id or name"))
@@ -208,7 +206,7 @@ class AddonClient(
         } catch (e: IOException) {
             Result.failure(mapIo(e))
         } catch (e: Exception) {
-            Result.failure(AddonFailure(AddonErrorKind.Unknown, e.message ?: "Unexpected error", cause = e))
+            Result.failure(AddonFailure.fromUnexpected(e))
         }
     }
 
