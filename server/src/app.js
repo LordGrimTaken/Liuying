@@ -246,7 +246,7 @@ export function createApp({
   app.use('/api', api);
 
   // ---- Static site ----
-  const pages = { '/login': 'login.html', '/signup': 'signup.html', '/account': 'account.html' };
+  const pages = { '/login': 'login.html', '/signup': 'signup.html', '/account': 'account.html', '/download': 'download.html' };
   for (const [route, file] of Object.entries(pages)) {
     app.get(route, (req, res, next) => {
       const full = path.join(siteDir, file);
@@ -264,6 +264,20 @@ export function createApp({
       next(e);
     });
   });
+  // Release downloads: the APK needs its Android MIME type and attachment disposition; the manifest must never be cached.
+  app.use('/downloads', express.static(path.join(siteDir, 'downloads'), {
+    index: false, dotfiles: 'ignore', redirect: false,
+    setHeaders(res, file) {
+      if (file.endsWith('.apk')) {
+        res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+        res.setHeader('Content-Disposition', `attachment; filename="${path.basename(file)}"`);
+        res.setHeader('Cache-Control', 'public, max-age=3600');
+      } else if (file.endsWith('latest.json')) {
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        res.setHeader('Cache-Control', 'no-cache');
+      }
+    },
+  }));
   app.use(express.static(siteDir, { index: 'index.html', dotfiles: 'ignore', redirect: false }));
 
   function notFound(req, res) {
