@@ -1,9 +1,9 @@
 {
-  "versionName": "0.3.1",
-  "versionCode": 4,
-  "apkUrl": "https://www.liuyingapp.com/downloads/Liuying-0.3.1.apk",
-  "sha256": "7226bbc92b2aa754bfad0dba7f88b07d0bcc513b01f215b2f6c3ba7b2136bd15",
-  "sizeBytes": 12514266,
-  "releasedAt": "2026-10-22T11:59:46Z",
-  "notes": "Fix adding sources in the release build; clearer errors"
+  "versionName": "0.4.0",
+  "versionCode": 5,
+  "apkUrl": "https://www.liuyingapp.com/downloads/Liuying-0.4.0.apk",
+  "sha256": "2513d1c6c15704ec6ab31b01e4ca35914954e5f91100078153030b6ea07e18a4",
+  "sizeBytes": 12613774,
+  "releasedAt": "2026-10-22T12:30:27Z",
+  "notes": "New look: translucent top bar, full-bleed hero, Movies and Series pages with genre tabs, nav pill, smoother motion. Also See all, source detail, pull to refresh, shelf undo, updater and player fixes, clearer add-on messages."
 }
