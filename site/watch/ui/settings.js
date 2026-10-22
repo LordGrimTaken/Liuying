@@ -71,6 +71,7 @@ export function settings({ query = {} } = {}) {
 
   function build() {
     sums.length = 0;
+    builtFor = !!sync.getStatus().user;
     stops.splice(0).forEach((f) => f());
     const rows = allHomeRows();
     const langOpts = COMMON_LANGS.map((c) => [c, languageName(c)]);
@@ -342,7 +343,8 @@ export function settings({ query = {} } = {}) {
     try { await navigator.clipboard.writeText(t); toast('Debug info copied'); } catch { toast('Copy failed'); }
   }
 
-  const unsub = sync.subscribeStatus(() => { refreshSums(); });
+  let builtFor = null; // whether the page was drawn signed in: the sign-in check can finish after the page first drew
+  const unsub = sync.subscribeStatus((st) => { refreshSums(); if (builtFor !== null && builtFor !== !!st.user) rerender(); });
   build();
   return { destroy() { unsub(); stops.forEach((f) => f()); } };
 }
