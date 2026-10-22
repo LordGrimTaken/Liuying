@@ -82,7 +82,12 @@ data class PlayerSettings(
     val subtitleBottomOffsetPercent: Int = 8,
     val defaultSpeed: Float = 1.0f,
     val aspectDefault: AspectMode = AspectMode.FIT,
+    /** Master switch; the four below are individually toggleable and only apply when this is true. */
     val gesturesEnabled: Boolean = true,
+    val doubleTapSeekEnabled: Boolean = true,
+    val swipeBrightnessVolumeEnabled: Boolean = true,
+    val swipeScrubEnabled: Boolean = true,
+    val longPressSpeedEnabled: Boolean = true,
     val seekStepSeconds: Int = 10,
     val autoPlayNext: Boolean = true,
     val pipOnHome: Boolean = true,

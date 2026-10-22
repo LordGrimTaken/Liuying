@@ -111,7 +111,7 @@
     }).catch(function () { loading.textContent = NET; });
     out.addEventListener('click', function () {
       clearError(); busy(out, true);
-      api('POST', '/api/auth/logout').then(function (r) {
+      api('POST', '/api/auth/logout', {}).then(function (r) {
         if (r.res.status === 204 || r.res.status === 200 || r.res.status === 401) location.assign('/login');
         else { busy(out, false); showError(friendly(r.res, r.data)); }
       }).catch(function () { busy(out, false); showError(NET); });
