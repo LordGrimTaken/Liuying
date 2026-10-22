@@ -9,6 +9,8 @@ import {
   needsRehash, newToken, parseCookies, validatePassword, validateUsername, verifyPassword,
 } from './auth.js';
 import { createLimiter } from './rateLimit.js';
+import { ApiError } from './errors.js';
+import { createSyncRouter } from './sync.js';
 
 const DEFAULT_SITE = fileURLToPath(new URL('../../site', import.meta.url));
 const MIN = 60 * 1000;
@@ -17,13 +19,6 @@ const jsonLogger = {
   info: (o) => console.log(JSON.stringify({ level: 'info', ...o })),
   error: (o) => console.error(JSON.stringify({ level: 'error', ...o })),
 };
-
-class ApiError extends Error {
-  constructor(status, code, message, headers) {
-    super(message);
-    this.status = status; this.code = code; this.headers = headers;
-  }
-}
 
 export function createApp({
   db,
@@ -42,6 +37,8 @@ export function createApp({
   const loginIp = createLimiter({ limit: 30, windowMs: 15 * MIN, now, ...limits.loginIp });
   const signupIp = createLimiter({ limit: 5, windowMs: 60 * MIN, now, ...limits.signupIp });
 
+  const syncLimiter = createLimiter({ limit: 60, windowMs: MIN, now, ...limits.sync });
+
   const cookieOpts = cookieOptions(production);
   const setSessionCookie = (res, token) =>
     res.cookie(SESSION_COOKIE, token, { ...cookieOpts, maxAge: SESSION_TTL_MS });
@@ -50,25 +47,35 @@ export function createApp({
   // Dummy hash so unknown-user logins cost the same as real ones.
   const dummyHash = hashPassword('dummy-password-for-timing', hashParams);
 
-  app.use(helmet({
-    contentSecurityPolicy: {
-      useDefaults: false,
-      directives: {
-        'default-src': ["'self'"],
-        'script-src': ["'self'"],
-        'style-src': ["'self'"],
-        'img-src': ["'self'", 'data:'],
-        'font-src': ["'self'"],
-        'connect-src': ["'self'"],
-        'object-src': ["'none'"],
-        'base-uri': ["'self'"],
-        'form-action': ["'self'"],
-        'frame-ancestors': ["'none'"],
-        ...(production ? { 'upgrade-insecure-requests': [] } : {}),
-      },
-    },
+  // Strict CSP everywhere except the web player under /watch, which must fetch manifests and
+  // streams from arbitrary https addon hosts (see README, "Content-Security-Policy").
+  const cspDirectives = (extra) => ({
+    'default-src': ["'self'"],
+    'script-src': ["'self'"],
+    'style-src': ["'self'"],
+    'img-src': ["'self'", 'data:'],
+    'font-src': ["'self'"],
+    'connect-src': ["'self'"],
+    'object-src': ["'none'"],
+    'base-uri': ["'self'"],
+    'form-action': ["'self'"],
+    'frame-ancestors': ["'none'"],
+    ...extra,
+    ...(production ? { 'upgrade-insecure-requests': [] } : {}),
+  });
+  const helmetWith = (directives) => helmet({
+    contentSecurityPolicy: { useDefaults: false, directives },
     strictTransportSecurity: production,
+  });
+  const strictSecurity = helmetWith(cspDirectives());
+  const watchSecurity = helmetWith(cspDirectives({
+    'connect-src': ["'self'", 'https:'],
+    'img-src': ["'self'", 'data:', 'blob:', 'https:'],
+    'media-src': ["'self'", 'blob:', 'https:'],
+    'worker-src': ["'self'", 'blob:'],
   }));
+  const isWatchPath = (p) => { const l = p.toLowerCase(); return l === '/watch' || l.startsWith('/watch/'); };
+  app.use((req, res, next) => (isWatchPath(req.path) ? watchSecurity : strictSecurity)(req, res, next));
 
   app.get('/health', async (req, res) => {
     try {
@@ -86,19 +93,22 @@ export function createApp({
 
   // CSRF: Origin (when present) must match Host; JSON content type required on POST.
   api.use((req, res, next) => {
-    if (req.method !== 'POST') return next();
+    if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return next();
     const origin = req.get('origin');
     if (origin !== undefined) {
       let ok = false;
       try { ok = new URL(origin).host === req.get('host'); } catch { /* invalid */ }
       if (!ok) return next(new ApiError(403, 'forbidden', 'Cross-origin request rejected.'));
     }
-    if (!/^application\/json\s*(;|$)/i.test(req.get('content-type') || '')) {
+    // Bodiless DELETE (e.g. DELETE /api/sync/all) needs only the Origin check.
+    if (req.method !== 'DELETE' && !/^application\/json\s*(;|$)/i.test(req.get('content-type') || '')) {
       return next(new ApiError(415, 'unsupported_media_type', 'Content-Type must be application/json.'));
     }
     next();
   });
 
+  // Sync routes authenticate first and size their own body parsers (256kb / 16kb).
+  api.use('/sync', createSyncRouter({ db, now, limiter: syncLimiter }));
   api.use(express.json({ limit: '2kb' }));
 
   const bodyObject = (req) => {
@@ -222,13 +232,17 @@ export function createApp({
   });
 
   // Express 4 does not catch async rejections: wrap handlers.
-  for (const layer of api.stack) {
-    if (!layer.route) continue;
-    for (const l of layer.route.stack) {
-      const fn = l.handle;
-      l.handle = (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+  const wrapAsync = (router) => {
+    for (const layer of router.stack) {
+      if (layer.route) {
+        for (const l of layer.route.stack) {
+          const fn = l.handle;
+          l.handle = (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+        }
+      } else if (layer.handle?.stack) wrapAsync(layer.handle);
     }
-  }
+  };
+  wrapAsync(api);
   app.use('/api', api);
 
   // ---- Static site ----
@@ -239,6 +253,17 @@ export function createApp({
       fs.access(full, (err) => (err ? notFound(req, res) : res.sendFile(full, (e) => e && next(e))));
     });
   }
+  // Web player: /watch and /watch/* serve the SPA shell; real files under site/watch are served as-is.
+  const watchDir = path.join(siteDir, 'watch');
+  app.use('/watch', express.static(watchDir, { index: false, dotfiles: 'ignore', redirect: false }));
+  app.get(['/watch', '/watch/*'], (req, res, next) => {
+    if (path.extname(req.path)) return notFound(req, res); // missing asset, not an app route
+    res.sendFile('index.html', { root: watchDir, dotfiles: 'allow' }, (e) => {
+      if (!e) return;
+      if (e.code === 'ENOENT' || e.status === 404) return notFound(req, res);
+      next(e);
+    });
+  });
   app.use(express.static(siteDir, { index: 'index.html', dotfiles: 'ignore', redirect: false }));
 
   function notFound(req, res) {
@@ -257,7 +282,8 @@ export function createApp({
     } else if (err.type === 'entity.parse.failed') {
       status = 400; code = 'bad_request'; message = 'Request body is not valid JSON.';
     } else if (err.type === 'entity.too.large') {
-      status = 400; code = 'bad_request'; message = 'Request body is too large.';
+      if (req.path.startsWith('/api/sync/')) { status = 413; code = 'payload_too_large'; message = 'Request body is too large.'; }
+      else { status = 400; code = 'bad_request'; message = 'Request body is too large.'; }
     } else if (status >= 400 && status < 500) {
       code = 'bad_request'; message = 'Bad request.';
     } else {

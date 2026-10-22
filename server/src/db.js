@@ -6,6 +6,24 @@ import pg from 'pg';
 
 const MIGRATIONS = fileURLToPath(new URL('./migrations.sql', import.meta.url));
 
+
+function withTransaction(pool) {
+  return async (fn) => {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const out = await fn({ query: (text, params) => client.query(text, params) });
+      await client.query('COMMIT');
+      return out;
+    } catch (err) {
+      try { await client.query('ROLLBACK'); } catch { /* ignore */ }
+      throw err;
+    } finally {
+      client.release();
+    }
+  };
+}
+
 export function createPgDb(connectionString, { ssl = false } = {}) {
   const pool = new pg.Pool({
     connectionString,
@@ -18,6 +36,7 @@ export function createPgDb(connectionString, { ssl = false } = {}) {
   return {
     persistent: true,
     query: (text, params) => pool.query(text, params),
+    transaction: withTransaction(pool),
     close: () => pool.end(),
   };
 }
@@ -30,6 +49,7 @@ export async function createMemoryDb() {
   return {
     persistent: false,
     query: (text, params) => pool.query(text, params),
+    transaction: withTransaction(pool),
     close: () => pool.end(),
   };
 }
