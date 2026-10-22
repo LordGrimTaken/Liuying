@@ -10,7 +10,14 @@ import { href, enc, restoreScroll } from '../router.js';
 import { pickFeatured, orderRows } from '../ux.js';
 
 const cache = new Map(); // key -> {items, at}
-const TTL = 5 * 60e3;
+const TTL = 15 * 60e3;          // served without asking the source (L089)
+const STALE_MAX = 24 * 3600e3;  // older than this is not shown at all
+const sameIds = (a, b) => a.length === b.length && a.every((x, i) => x.id === b[i].id);
+/** Last saved copy of a catalog (this tab, or the previous visit), or null. */
+const saved = (ck) => { const m = cache.get(ck); if (m) return m; const d = store.cachedCatalog(ck); return d && Date.now() - d.at < STALE_MAX ? d : null; };
+const remember = (ck, items) => { cache.set(ck, { items, at: Date.now() }); store.cacheCatalog(ck, items); };
+/** Hide-watched setting applied to a catalog (L004). */
+export const visibleItems = (items) => (store.settings().hideWatched ? items.filter((it) => !store.getProgress(it.id, null)?.watched) : items);
 
 export const defaultExtra = (cat) => {
   const c = catalogCapabilities(cat);
@@ -42,13 +49,18 @@ export const cachedTitles = () => [...cache.values()].flatMap((c) => c.items.map
 /** Cached catalog fetch shared by Today, Movies and Series rows. */
 export async function fetchRow(src, cat, extra, { bypass = false, signal } = {}) {
   const ck = catalogKey(src.url, cat) + JSON.stringify(extra || {});
-  const cached = cache.get(ck);
+  const cached = saved(ck);
   if (cached && !bypass && Date.now() - cached.at < TTL) return cached.items;
-  const items = await loadCatalog(src, cat, extra, { signal });
-  cache.set(ck, { items, at: Date.now() });
-  return items;
+  try {
+    const items = await loadCatalog(src, cat, extra, { signal });
+    remember(ck, items);
+    return items;
+  } catch (e) {
+    if (cached && !signal?.aborted) return cached.items; // offline or the source is down: show the last copy
+    throw e;
+  }
 }
-export const isCached = (src, cat, extra) => { const c = cache.get(catalogKey(src.url, cat) + JSON.stringify(extra || {})); return !!c && Date.now() - c.at < TTL; };
+export const isCached = (src, cat, extra) => { const c = saved(catalogKey(src.url, cat) + JSON.stringify(extra || {})); return !!c && Date.now() - c.at < TTL; };
 
 export function today() {
   const view = document.getElementById('view');
@@ -95,12 +107,23 @@ export function today() {
   async function loadRow(r, sec, bypass, isHero) {
     const extra = defaultExtra(r.cat);
     const ck = r.key + JSON.stringify(extra || {});
-    const cached = cache.get(ck);
-    if (cached && !bypass && Date.now() - cached.at < TTL) { fill(cached.items); return; }
+    const cached = saved(ck);
+    if (cached && !bypass) {
+      // stale-while-revalidate: draw the saved copy now, refresh behind it only if it is old (L088)
+      status[r.key] = 'ok';
+      fill(cached.items);
+      if (Date.now() - cached.at < TTL) return;
+      try {
+        const items = await loadCatalog(r.src, r.cat, extra, { signal: ctl.signal });
+        remember(ck, items);
+        if (!ctl.signal.aborted && !sameIds(items, cached.items)) fill(items);
+      } catch { /* keep showing the saved copy */ }
+      return;
+    }
     showSkeletons(sec.scroller);
     try {
       const items = await loadCatalog(r.src, r.cat, extra, { signal: ctl.signal });
-      cache.set(ck, { items, at: Date.now() });
+      remember(ck, items);
       status[r.key] = 'ok';
       fill(items);
     } catch (e) {
@@ -112,11 +135,13 @@ export function today() {
       sec.scroller.replaceChildren(errorCard(`Couldn't load ${r.cat.name || r.cat.id}`, `${r.src.manifest.name}: ${describeError(e)}`, () => { sec.scroller.className = 'scroller'; loadRow(r, sec, true, isHero); }));
       checkAllFailed();
     }
-    function fill(items) {
+    function fill(all) {
       if (ctl.signal.aborted) return;
+      const items = visibleItems(all);
       clear(sec.scroller);
       sec.scroller.className = 'scroller';
-      if (!items.length) { sec.el.hidden = true; return; }
+      sec.el.hidden = !items.length;
+      if (!items.length) return;
       sec.scroller.hidden = false;
       for (const it of items.slice(0, 30)) {
         const c = posterCard(it, { srcId: store.sourceId(r.src) });

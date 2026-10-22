@@ -2,9 +2,10 @@ import { h, icon, clear, toast, confirmDialog, modal } from './dom.js';
 import * as store from '../store.js';
 import * as sync from '../sync.js';
 import { allHomeRows } from './today.js';
-import { moveKey, parsePluginUrl } from '../ux.js';
+import { moveKey, parsePluginUrl, relTime, syncFace, toCsv, LIBRARY_COLUMNS, libraryCsvRows, HISTORY_COLUMNS, historyCsvRows, historyJson, buildHistory } from '../ux.js';
+import { parseEpisodeId } from '../progress.js';
 import { catalogTitle } from '../addon/protocol.js';
-import { COMMON_LANGS, languageName } from '../player/subtitles.js';
+import { COMMON_LANGS, languageName, SUB_PRESETS, presetOf } from '../player/subtitles.js';
 import { VERSION } from '../util.js';
 import { applyTimeoutSetting } from '../addon/service.js';
 
@@ -46,6 +47,7 @@ export function settings({ query = {} } = {}) {
   const deep = SECTION_IDS.includes(query.open) ? query.open : '';
   if (deep) { open.add(deep); saveOpen(open); }
   const sums = [];
+  const stops = [];
   const refreshSums = () => sums.forEach((f) => f());
   const rerender = () => { const y = scrollY; build(); scrollTo(0, y); };
 
@@ -69,13 +71,14 @@ export function settings({ query = {} } = {}) {
 
   function build() {
     sums.length = 0;
+    stops.splice(0).forEach((f) => f());
     const rows = allHomeRows();
     const langOpts = COMMON_LANGS.map((c) => [c, languageName(c)]);
     const subLangs = S().subLangs || ['en'];
     const status = sync.getStatus();
     const storageNote = h('span', { text: 'Calculating…' });
     const opt = (key, list) => (list.find(([v]) => String(v) === String(S()[key])) || [0, String(S()[key])])[1];
-    const THEMES = [['dark', 'Ink'], ['black', 'Pure black'], ['paper', 'Paper']];
+    const THEMES = [['system', 'System'], ['dark', 'Ink'], ['black', 'Pure black'], ['paper', 'Paper']];
     const ACC = [['vermilion', 'Vermilion'], ['gold', 'Gold'], ['jade', 'Jade'], ['indigo', 'Indigo']];
     const SIZES = [['s', 'Small'], ['m', 'Medium'], ['l', 'Large']];
     const RESUME = [['auto', 'Resume automatically'], ['ask', 'Ask me'], ['never', 'Always start over']];
@@ -84,15 +87,16 @@ export function settings({ query = {} } = {}) {
     const root = h('div', { class: 'acc-list' },
       acc('account', 'Account', () => { const st = sync.getStatus(); return st.user ? `${st.user.username} · ${syncLabel(st)}` : 'Signed out · saved in this browser only'; },
         status.user
-          ? h('div', {}, h('p', { text: `Signed in as ${status.user.username}. Sources, shelf, progress and settings sync.` }), h('p', { class: 'mute', text: `Status: ${syncLabel(status)}` }),
-            h('div', { class: 'actions', style: { 'margin-top': '12px' } }, h('button', { class: 'btn sm', type: 'button', text: 'Sync now', onClick: async () => { await sync.pull(); sync.schedulePush.flush?.(); sync.push(); toast('Syncing…'); } }),
+          ? h('div', {}, h('p', { text: `Signed in as ${status.user.username}. Sources, shelf, progress and settings sync.` }), syncPanel(),
+            h('div', { class: 'actions', style: { 'margin-top': '12px' } },
               h('a', { class: 'btn sm', href: '/account', text: 'Account' }), h('button', { class: 'btn sm', type: 'button', text: 'Delete synced data', onClick: delRemote })))
           : h('div', {}, h('p', { class: 'mute', text: 'You are using Liuying signed out. Everything is saved in this browser only.' }), h('a', { class: 'btn pri', href: '/login', text: 'Sign in to sync', style: { 'margin-top': '12px' } }))),
       acc('security', 'Security and privacy', () => (sync.getStatus().user ? 'Password and sessions on your account page' : 'No tracking · sign in for account security'),
         row('Password and sessions', 'Change your password or sign out other devices.', sync.getStatus().user ? h('a', { class: 'btn sm', href: '/account', text: 'Open account' }) : h('a', { class: 'btn sm', href: '/login', text: 'Sign in' })),
         h('p', { class: 'mute', text: 'There is no analytics or tracking in this player. Requests go only to your own sources and, if you sign in, to the Liuying account service. Everything else stays in this browser.' })),
       acc('appearance', 'Appearance', () => `${opt('theme', THEMES)} · ${opt('accent', ACC)} accent · ${opt('fontScale', SIZES).toLowerCase()} text`,
-        select('Theme', 'Ink is the default.', 'theme', [['dark', 'Ink'], ['black', 'Pure black'], ['paper', 'Paper (light)']], { after: refreshSums }),
+        select('Theme', 'System follows your device: Ink in dark mode, Paper in light mode.', 'theme', [['system', 'System'], ['dark', 'Ink'], ['black', 'Pure black'], ['paper', 'Paper (light)']], { after: refreshSums }),
+        toggle('Spoiler protection', 'Blurs the picture and description of episodes you have not watched yet.', 'spoilers'),
         toggle('Reduce motion', 'Stops the rotating banner, shimmer and other movement.', 'reduceMotion'),
         select('Accent colour', 'Used for buttons, selected chips and the seal.', 'accent', ACC, { after: refreshSums }),
         select('Text size', 'Scales the page content.', 'fontScale', SIZES, { after: refreshSums }),
@@ -111,15 +115,18 @@ export function settings({ query = {} } = {}) {
         range('Mark watched at', 'Share of the runtime after which a title counts as watched.', 'threshold', 0.8, 0.98, 0.01, (v) => `${Math.round(v * 100)}%`),
         toggle('Auto-play next episode', null, 'autoNext', refreshSums),
         select('Next episode countdown', null, 'countdown', [[5, '5 seconds'], [10, '10 seconds'], [15, '15 seconds']], { num: true }),
+        select('Rewind on resume', 'Back up a little when resuming so you catch what you missed.', 'resumeRewind', [[0, 'Off'], [3, '3 seconds'], [5, '5 seconds'], [10, '10 seconds'], [15, '15 seconds']], { num: true }),
+        select('Long skip', 'The forward button next to play and the S key.', 'longSkip', [[60, '60 seconds'], [85, '85 seconds'], [90, '90 seconds'], [120, '2 minutes']], { num: true }),
         select('Seek step', 'For the skip buttons and arrow keys.', 'seekStep', [[5, '5 seconds'], [10, '10 seconds'], [15, '15 seconds'], [30, '30 seconds']], { num: true, after: refreshSums }),
         select('Default speed', null, 'speed', [[0.75, '0.75×'], [1, '1×'], [1.25, '1.25×'], [1.5, '1.5×'], [2, '2×']], { num: true }),
         toggle('Auto-select a stream', 'Start the best playable stream after a short wait, with a cancel button.', 'autoSelect'),
         select('Stream list', null, 'streamGroup', [['source', 'Grouped by source'], ['flat', 'One list, best quality first']]),
-        select('Sort inside groups', null, 'streamSort', [['default', 'As the source ordered them'], ['resolution', 'Resolution'], ['size', 'Size'], ['name', 'Name']]),
+        select('Sort inside groups', null, 'streamSort', [['default', 'As the source ordered them'], ['resolution', 'Resolution'], ['resolution-size', 'Resolution, then size'], ['size', 'Size'], ['name', 'Name']]),
         toggle('Hide streams that cannot play here', 'Torrent and blocked streams are shown disabled by default.', 'hideUnplayable')),
       acc('subtitles', 'Audio and subtitles', () => `${languageName((S().subLangs || ['en'])[0] || 'en')} · ${S().subMode === 'off' ? 'off until chosen' : 'on'} · ${opt('subBg', SUBBG).toLowerCase()}`,
         row('Preferred subtitle language', 'Used to pick subtitles automatically.', h('select', { class: 'inp', id: 'set-_l1', 'aria-label': 'Preferred subtitle language', onChange: (e) => { store.setSettings({ subLangs: [e.target.value, ...(S().subLangs || []).filter((x) => x !== e.target.value)].slice(0, 3) }); refreshSums(); } }, langOpts.map(([v, l]) => h('option', { value: v, selected: v === (subLangs[0] || 'en'), text: l })))),
         select('Subtitles', null, 'subMode', [['on', 'Show preferred language when available'], ['off', 'Off until I choose']], { after: refreshSums }),
+        row('Style preset', 'High contrast and large print are easier to read. Change any detail below and it becomes Custom.', h('select', { class: 'inp', id: 'set-_preset', 'aria-label': 'Subtitle style preset', onChange: (e) => { const p = SUB_PRESETS.find((x) => x.id === e.target.value); if (p) { store.setSettings(p.values); rerender(); } } }, [...SUB_PRESETS.map((p) => h('option', { value: p.id, selected: presetOf(S()) === p.id, text: p.label })), presetOf(S()) === 'custom' ? h('option', { value: 'custom', selected: true, text: 'Custom' }) : null])),
         range('Text size', null, 'subSize', 50, 200, 5, (v) => `${v}%`),
         select('Text colour', null, 'subColor', [['#ffffff', 'White'], ['#ffe27a', 'Yellow'], ['#8de0ff', 'Cyan'], ['#9be58f', 'Green'], ['#ffb3a8', 'Rose']]),
         select('Background', null, 'subBg', SUBBG, { after: refreshSums }),
@@ -128,6 +135,10 @@ export function settings({ query = {} } = {}) {
       acc('shelf', 'Shelf and history', () => `${store.library().length} on shelf · history ${onOff(S().saveHistory)}`,
         toggle('Save watch history', 'Turn off to stop recording new progress.', 'saveHistory', refreshSums),
         toggle('Remember recent searches', null, 'recentSearches'),
+        row('Watch history', 'Everything you watched or started, by day. Remove entries you do not want.', h('a', { class: 'btn sm', href: '#/history', text: 'Open history' })),
+        row('Export', 'Spreadsheet (CSV) or data (JSON) copies of your shelf and history.', h('div', { class: 'actions wrap', role: 'group', 'aria-label': 'Export' },
+          h('button', { class: 'btn sm', type: 'button', text: 'Shelf CSV', onClick: () => exportData('shelf', 'csv') }), h('button', { class: 'btn sm', type: 'button', text: 'Shelf JSON', onClick: () => exportData('shelf', 'json') }),
+          h('button', { class: 'btn sm', type: 'button', text: 'History CSV', onClick: () => exportData('history', 'csv') }), h('button', { class: 'btn sm', type: 'button', text: 'History JSON', onClick: () => exportData('history', 'json') }))),
         row('Clear all progress', 'Resume points, watched marks and Continue Watching.', h('button', { class: 'btn sm', type: 'button', text: 'Clear progress', onClick: clearProg })),
         row('Backup', 'Sources, shelf, progress and settings in one file.', h('div', { class: 'actions' }, h('button', { class: 'btn sm', type: 'button', text: 'Export', onClick: exportBackup }), h('button', { class: 'btn sm', type: 'button', text: 'Import', onClick: importBackup })))),
       acc('sources', 'Sources', () => `${store.sources().length} added · ${store.enabledSources().length} enabled`,
@@ -240,6 +251,53 @@ export function settings({ query = {} } = {}) {
     return h('div', {}, h('input', { class: 'inp', type: 'search', placeholder: 'Search saved links', 'aria-label': 'Search saved plugin links', onInput: (e) => draw(e.target.value.trim().toLowerCase()) }), count, h('div', { class: 'plist-box' }, ul));
   }
 
+  /** Last synced time, pending count and a Sync now button, with a glyph so the state is not colour alone (L032, L104). */
+  function syncPanel() {
+    const glyph = h('span', { class: 'sp-glyph', 'aria-hidden': 'true' });
+    const word = h('b', {});
+    const meta = h('span', { class: 'mute', role: 'status' });
+    const btn = h('button', { class: 'btn sm pri', type: 'button', text: 'Sync now', onClick: async () => { btn.disabled = true; try { await sync.pull(); await sync.push(); } finally { btn.disabled = false; } } });
+    const box = h('div', { class: 'syncpanel', role: 'group', 'aria-label': 'Sync status' }, glyph, h('div', { class: 'grow' }, word, meta), btn);
+    const upd = (st = sync.getStatus()) => {
+      const f = syncFace(st.state, st.waking);
+      box.dataset.state = st.waking ? 'waking' : st.state;
+      glyph.textContent = f.glyph || '·'; word.textContent = f.word;
+      const parts = [`Last synced ${relTime(st.lastSync)}`, st.pending ? `${st.pending} change${st.pending === 1 ? '' : 's'} waiting to upload` : 'nothing waiting to upload'];
+      if (st.waking) parts.unshift('Waking the server, this can take up to a minute');
+      else if (st.state === 'error' && st.error) parts.push(`problem: ${st.error}`);
+      else if (st.state === 'offline') parts.push('offline, will retry');
+      meta.textContent = parts.join(' · ');
+      btn.textContent = st.state === 'syncing' ? 'Syncing…' : 'Sync now';
+    };
+    stops.push(sync.subscribeStatus((st) => upd(st)));
+    const t = setInterval(() => upd(), 30000);
+    stops.push(() => clearInterval(t));
+    upd();
+    return box;
+  }
+
+  function download(name, text, type) {
+    const a = h('a', { href: URL.createObjectURL(new Blob([text], { type })), download: name });
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  }
+  function exportData(what, fmt) {
+    const day = new Date().toISOString().slice(0, 10);
+    const hint = (id) => { const m = store.cachedMeta(id); const l = store.library().find((i) => i.id === id); return { name: m?.name || l?.name, type: m?.type || l?.type }; };
+    if (what === 'shelf') {
+      const lib = store.library();
+      if (fmt === 'csv') download(`liuying-shelf-${day}.csv`, toCsv(LIBRARY_COLUMNS, libraryCsvRows(lib)), 'text/csv');
+      else download(`liuying-shelf-${day}.json`, JSON.stringify(lib.map((i) => ({ id: i.id, type: i.type, title: i.name, year: i.year || null, added: i.addedAt ? new Date(i.addedAt).toISOString() : null })), null, 1), 'application/json');
+      toast(`Exported ${lib.length} shelf title${lib.length === 1 ? '' : 's'}`);
+    } else {
+      const days = buildHistory(store.allProgress(), hint, new Date(), parseEpisodeId);
+      const n = days.reduce((a, d) => a + d.items.length, 0);
+      if (fmt === 'csv') download(`liuying-history-${day}.csv`, toCsv(HISTORY_COLUMNS, historyCsvRows(days)), 'text/csv');
+      else download(`liuying-history-${day}.json`, JSON.stringify(historyJson(days), null, 1), 'application/json');
+      toast(`Exported ${n} history entr${n === 1 ? 'y' : 'ies'}`);
+    }
+  }
+
   const syncLabel = (st) => ({ idle: 'up to date', syncing: 'syncing', offline: 'offline, will retry', error: `problem (${st.error || 'will retry'})`, checking: 'checking', signedout: 'signed out' }[st.state] || st.state);
 
   async function clearProg() {
@@ -285,5 +343,5 @@ export function settings({ query = {} } = {}) {
 
   const unsub = sync.subscribeStatus(() => { refreshSums(); });
   build();
-  return { destroy() { unsub(); } };
+  return { destroy() { unsub(); stops.forEach((f) => f()); } };
 }

@@ -14,10 +14,10 @@ export const DEFAULT_SETTINGS = {
 };
 
 const DB = 'liuying-web';
-const KEYS = ['sources', 'library', 'progress', 'settings', 'meta', 'recent', 'sync', 'prefs'];
+const KEYS = ['sources', 'library', 'progress', 'settings', 'meta', 'recent', 'sync', 'prefs', 'cat'];
 
 const state = {
-  sources: [], library: [], progress: {}, settings: { ...DEFAULT_SETTINGS }, meta: {}, recent: [],
+  sources: [], library: [], progress: {}, settings: { ...DEFAULT_SETTINGS }, meta: {}, cat: {}, recent: [],
   sync: { sources: false, settings: false, libAdd: {}, libRemove: [], progress: {}, pulledAt: 0, libSynced: [] },
   prefs: { lastStream: {}, subLang: {}, dismissedBanner: false },
 };
@@ -197,8 +197,26 @@ export function cacheMeta(id, meta) {
   }
   dirtyKeys.add('meta'); flushSoon();
 }
-export function clearMetaCache() { state.meta = {}; touch('meta'); }
+export function clearMetaCache() { state.meta = {}; state.cat = {}; touch('meta'); touch('cat'); }
 export const metaCacheSize = () => JSON.stringify(state.meta).length;
+
+// ---------- catalog cache (device-local; lets Today render instantly and Browse reload quickly) ----------
+const CAT_FIELDS = ['id', 'type', 'name', 'poster', 'background', 'logo', 'year', 'releaseInfo', 'imdbRating', 'runtime', 'genres', 'released'];
+const CAT_MAX = 40;
+export const cachedCatalog = (key) => state.cat[key] || null;
+export function cacheCatalog(key, items, max = 40) {
+  const slim = items.slice(0, max).map((it) => {
+    const o = {};
+    for (const f of CAT_FIELDS) if (it[f] !== undefined && it[f] !== null) o[f] = it[f];
+    if (typeof it.description === 'string') o.description = it.description.slice(0, 280);
+    return o;
+  });
+  state.cat[key] = { items: slim, at: Date.now() };
+  const keys = Object.keys(state.cat);
+  if (keys.length > CAT_MAX) keys.sort((a, b) => state.cat[a].at - state.cat[b].at).slice(0, keys.length - CAT_MAX).forEach((k) => delete state.cat[k]);
+  dirtyKeys.add('cat'); flushSoon();
+}
+export function clearCatalogCache() { state.cat = {}; touch('cat'); }
 
 // ---------- recent searches ----------
 export const recentSearches = () => state.recent;

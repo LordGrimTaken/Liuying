@@ -6,6 +6,7 @@ import { describeError } from '../addon/client.js';
 import { posterCard, errorCard, posterSkeleton, emptyState } from './components.js';
 import { uniqBy } from '../util.js';
 import { goBack } from '../router.js';
+import { catalogKey } from '../addon/protocol.js';
 
 export function browse({ params, query }) {
   const view = document.getElementById('view');
@@ -29,6 +30,8 @@ export function browse({ params, query }) {
     h('a', { class: 'ibtn ring', href: '#/', 'aria-label': 'Back', onClick: (e) => { e.preventDefault(); goBack('#/'); } }, icon('back')),
     h('h1', { text: cat.name || cat.id }), h('span', { class: 'badge', text: src.manifest.name })),
     h('p', { class: 'mute', text: catalogTitle(cat) }));
+  const hideBtn = h('button', { class: 'chip', type: 'button', 'aria-pressed': String(!!store.settings().hideWatched), title: 'Leave out titles you have finished', onClick: () => { const on = !store.settings().hideWatched; store.setSettings({ hideWatched: on }); hideBtn.setAttribute('aria-pressed', String(on)); redraw(); } }, 'Hide watched');
+  page.append(h('div', { class: 'chips browse-tools', role: 'group', 'aria-label': 'Display' }, hideBtn));
   if (caps.genre && caps.genreOptions.length) page.append(chips);
   page.append(grid, foot);
 
@@ -39,6 +42,7 @@ export function browse({ params, query }) {
     for (const g of caps.genreOptions) chips.append(h('button', { class: 'chip', type: 'button', 'aria-pressed': String(g === genre), onClick: () => setGenre(g) }, g));
   }
   function setGenre(g) { genre = g; reset(); drawChips(); pump(); }
+  function redraw() { rendered = 0; clear(grid); clear(foot); pump(); }
   function reset() { generation++; items = []; rendered = 0; end = false; loading = false; clear(grid); clear(foot); }
 
   // Cards are built a screenful at a time as the viewer scrolls (catalogs can hold thousands of titles),
@@ -49,12 +53,14 @@ export function browse({ params, query }) {
   const nearFoot = () => foot.getBoundingClientRect().top < innerHeight + 700;
   function drawChunk() {
     const sid = store.sourceId(src);
-    for (const it of items.slice(rendered, rendered + CHUNK)) { const c = posterCard(it, { srcId: sid }); c.setAttribute('role', 'listitem'); grid.append(c); }
+    const hide = store.settings().hideWatched;
+    for (const it of items.slice(rendered, rendered + CHUNK)) { if (hide && store.getProgress(it.id, null)?.watched) continue; const c = posterCard(it, { srcId: sid }); c.setAttribute('role', 'listitem'); grid.append(c); }
     rendered = Math.min(items.length, rendered + CHUNK);
   }
   function endNote() {
     clear(foot);
-    if (!items.length) foot.append(emptyState('No titles for this filter', 'Nothing came back for this selection.', genre && !caps.genreRequired ? h('button', { class: 'btn', type: 'button', text: 'Clear filter', onClick: () => setGenre('') }) : null));
+    if (!grid.children.length && items.length) foot.append(emptyState('Everything here is watched', 'Turn off Hide watched to see these titles again.', h('button', { class: 'btn', type: 'button', text: 'Show watched titles', onClick: () => { store.setSettings({ hideWatched: false }); hideBtn.setAttribute('aria-pressed', 'false'); redraw(); } })));
+    else if (!items.length) foot.append(emptyState('No titles for this filter', 'Nothing came back for this selection.', genre && !caps.genreRequired ? h('button', { class: 'btn', type: 'button', text: 'Clear filter', onClick: () => setGenre('') }) : null));
     else foot.append(h('p', { class: 'mute end-note', text: `— End of list · ${items.length} titles —` }));
   }
   async function pump() {
@@ -81,7 +87,15 @@ export function browse({ params, query }) {
       const extra = {};
       if (genre) extra.genre = genre;
       if (items.length && caps.skip) extra.skip = items.rawCount || items.length;
-      const batch = await loadCatalog(src, cat, extra, { signal: ctl.signal });
+      const first = !items.length && !extra.skip;
+      const ck = 'browse:' + catalogKey(src.url, cat) + JSON.stringify(extra);
+      const hit = first ? store.cachedCatalog(ck) : null;
+      let batch;
+      if (hit && Date.now() - hit.at < 15 * 60e3) batch = hit.items; // page one again within 15 minutes comes from the cache (L089)
+      else {
+        batch = await loadCatalog(src, cat, extra, { signal: ctl.signal });
+        if (first && batch.length <= 200) store.cacheCatalog(ck, batch, 200);
+      }
       if (gen !== generation) return;
       if (!items.length) clear(grid);
       items.rawCount = (items.rawCount || 0) + batch.length;

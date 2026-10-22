@@ -329,3 +329,39 @@ test('subtitle presets: high contrast is bold white on solid black, yellow on bl
   assert.equal(presetOf({ ...byId.contrast.values, subSize: 130 }), 'custom');
   assert.equal(presetOf({ ...byId.standard.values, subBgOpacity: 0.3 }), 'standard'); // opacity is irrelevant without a box
 });
+
+// ---------- per-source test (L081) ----------
+import { testSource, declaredResources, summarize } from '../addon/sourcetest.js';
+const mkManifest = (over = {}) => ({ id: 'x', name: 'X', version: '1', types: ['movie'], resources: ['catalog', 'meta', 'stream', 'subtitles'], catalogs: [{ type: 'movie', id: 'top', name: 'Top' }], ...over });
+const okFns = (over = {}) => ({
+  manifest: async () => ({ manifest: mkManifest() }),
+  catalog: async () => [{ id: 'mock:1', type: 'movie', name: 'A' }],
+  meta: async () => ({ name: 'A' }), stream: async () => [{ url: 'u' }], subtitles: async () => [],
+  describe: (e) => e.message, ...over,
+});
+test('source test: every declared resource is tried and reported', async () => {
+  const r = await testSource({ url: 'https://x/manifest.json', manifest: mkManifest() }, okFns());
+  assert.deepEqual(r.map((x) => [x.resource, x.status]), [['manifest', 'pass'], ['catalog', 'pass'], ['meta', 'pass'], ['stream', 'pass'], ['subtitles', 'pass']]);
+  assert.match(r.find((x) => x.resource === 'stream').detail, /1 stream/);
+  assert.equal(summarize(r), 'All 5 checks passed');
+});
+test('source test: a failing resource is marked failed with its reason, others continue', async () => {
+  const r = await testSource({ url: 'u', manifest: mkManifest() }, okFns({ stream: async () => { throw new Error('HTTP 500'); } }));
+  const s = r.find((x) => x.resource === 'stream');
+  assert.equal(s.status, 'fail'); assert.equal(s.detail, 'HTTP 500');
+  assert.equal(r.find((x) => x.resource === 'subtitles').status, 'pass');
+  assert.match(summarize(r), /1 of 5 checks failed/);
+});
+test('source test: unreachable manifest stops early; sources without catalogs probe a known title', async () => {
+  const bad = await testSource({ url: 'u' }, okFns({ manifest: async () => { throw new Error('offline'); } }));
+  assert.deepEqual(bad.map((x) => x.status), ['fail']);
+  const noCat = mkManifest({ resources: ['stream'], catalogs: [] });
+  const r = await testSource({ url: 'u', manifest: noCat }, okFns({ manifest: async () => ({ manifest: noCat }) }));
+  assert.deepEqual(r.map((x) => [x.resource, x.status]), [['manifest', 'pass'], ['stream', 'pass']]);
+  assert.deepEqual(declaredResources(noCat), ['stream']);
+});
+test('source test: sources that only take other id prefixes skip instead of failing', async () => {
+  const m = mkManifest({ resources: [{ name: 'stream', types: ['movie'], idPrefixes: ['kitsu:'] }], catalogs: [] });
+  const r = await testSource({ url: 'u', manifest: m }, okFns({ manifest: async () => ({ manifest: m }) }));
+  assert.equal(r.find((x) => x.resource === 'stream').status, 'skip');
+});

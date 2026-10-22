@@ -5,7 +5,7 @@ import { catalogCapabilities, isHomeEligible, catalogTitle, isAdult } from '../a
 import { describeError } from '../addon/client.js';
 import { posterCard, rowSection, showSkeletons, errorCard, emptyPage } from './components.js';
 import { renderHero } from './hero.js';
-import { fetchRow, rowSubtitle } from './today.js';
+import { fetchRow, rowSubtitle, visibleItems } from './today.js';
 import { href, enc, restoreScroll } from '../router.js';
 import { pickFeatured } from '../ux.js';
 
@@ -109,7 +109,7 @@ function catalogPage(type, { query = {} } = {}) {
         pending++;
         showSkeletons(sec.scroller);
         try {
-          const items = await fetchRow(src, cat, extra, { bypass, signal: ctl.signal });
+          const items = visibleItems(await fetchRow(src, cat, extra, { bypass, signal: ctl.signal }));
           if (ctl.signal.aborted || mine !== gen) return;
           clear(sec.scroller);
           sec.scroller.className = 'scroller';
