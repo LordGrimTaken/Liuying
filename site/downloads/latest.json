@@ -1,9 +1,9 @@
 {
-  "versionName": "0.4.0",
-  "versionCode": 5,
-  "apkUrl": "https://www.liuyingapp.com/downloads/Liuying-0.4.0.apk",
-  "sha256": "2513d1c6c15704ec6ab31b01e4ca35914954e5f91100078153030b6ea07e18a4",
-  "sizeBytes": 12613774,
-  "releasedAt": "2026-10-22T12:30:27Z",
-  "notes": "New look: translucent top bar, full-bleed hero, Movies and Series pages with genre tabs, nav pill, smoother motion. Also See all, source detail, pull to refresh, shelf undo, updater and player fixes, clearer add-on messages."
+  "versionName": "0.5.0",
+  "versionCode": 6,
+  "apkUrl": "https://www.liuyingapp.com/downloads/Liuying-0.5.0.apk",
+  "sha256": "0a8b9ce711b3b5b0466670e466dc087b908d1e58a0588d771749413f66b041ae",
+  "sizeBytes": 12832918,
+  "releasedAt": "2026-10-22T13:46:03Z",
+  "notes": "New shadow-puppet logo, collapsible settings sections, player upgrades, shelf and history, export, QA fixes"
 }
