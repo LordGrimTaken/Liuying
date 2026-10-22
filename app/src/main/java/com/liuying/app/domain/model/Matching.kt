@@ -75,9 +75,10 @@ fun ManifestCatalog.optionsFor(extraName: String): List<String> = extraDef(extra
  * option), or null if it cannot be browsed without user input (search-required, or a required extra
  * without a fixed option list). `skip` is never included here.
  */
-fun ManifestCatalog.requiredExtraDefaults(): Map<String, String>? {
+fun ManifestCatalog.requiredExtraDefaults(provided: Set<String> = emptySet()): Map<String, String>? {
     val out = LinkedHashMap<String, String>()
     for (name in requiredExtras) {
+        if (name in provided) continue
         when (name) {
             Extras.SKIP -> Unit
             Extras.SEARCH -> return null

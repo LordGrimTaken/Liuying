@@ -552,11 +552,13 @@ class PlayerController(private val activity: PlayerActivity, val request: Playba
     fun poke() { interactionTick++ }
 
     // ---- settings ----
-    fun updateSettings(transform: (PlayerSettings) -> PlayerSettings) = saveSettings(transform(settings))
-    private fun saveSettings(s: PlayerSettings) {
-        settings = s
-        runCatching { provider.save(s) }
+    /** Live-applies a settings change; pass persist=false while a slider drags and call [persistSettings] at the end. */
+    fun updateSettings(persist: Boolean = true, transform: (PlayerSettings) -> PlayerSettings) {
+        settings = transform(settings)
+        if (persist) persistSettings()
     }
+    fun persistSettings() { runCatching { provider.save(settings) } }
+    private fun saveSettings(s: PlayerSettings) { settings = s; persistSettings() }
 
     fun showHud(text: String) {
         hud = text
