@@ -84,6 +84,12 @@ fun YouScreen(navigator: Navigator) {
     var consenting by remember { mutableStateOf<Pair<PluginRepo, String?>?>(null) }
     var confirmReset by remember { mutableStateOf(false) }
 
+    val container = com.liuying.app.ui.common.LocalContainer.current
+    val pendingLink by container.pendingLink.collectAsStateWithLifecycle()
+    LaunchedEffect(pendingLink) {
+        pendingLink?.let { vm.setAddInput(it); vm.previewSource(); container.pendingLink.value = null }
+    }
+
     LaunchedEffect(message) {
         message?.let { Toast.makeText(context, it, Toast.LENGTH_SHORT).show(); vm.clearMessage() }
     }
@@ -129,7 +135,14 @@ fun YouScreen(navigator: Navigator) {
                 OutlinedTextField(add.input, vm::setAddInput, label = { Text("Manifest URL") }, singleLine = true, colors = fieldColors(), modifier = Modifier.fillMaxWidth(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
                 add.error?.let { Text(it, color = Vermilion, style = MaterialTheme.typography.bodyMedium) }
-                InkButton(if (add.busy && add.preview == null) "Checking" else "Check link", vm::previewSource, enabled = !add.busy && add.input.isNotBlank())
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    InkButton(if (add.busy && add.preview == null) "Checking" else "Check link", vm::previewSource, enabled = !add.busy && add.input.isNotBlank())
+                    InkButton("Paste", {
+                        val clip = (context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager)
+                            ?.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()?.trim()
+                        if (!clip.isNullOrEmpty()) vm.setAddInput(clip) else Toast.makeText(context, "Nothing to paste.", Toast.LENGTH_SHORT).show()
+                    }, filled = false)
+                }
                 add.preview?.let { p ->
                     Column(Modifier.fillMaxWidth().border(BorderStroke(0.5.dp, GoldHairline), RoundedCornerShape(10.dp)).padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(p.manifest.name, color = Paper, style = MaterialTheme.typography.titleMedium)

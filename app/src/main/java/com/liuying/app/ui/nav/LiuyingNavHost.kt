@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -67,6 +68,8 @@ fun LiuyingApp() {
     val nav = rememberNavController()
     val container = LocalContainer.current
     val navigator = androidx.compose.runtime.remember(nav) { Navigator(nav, container) }
+    val link by container.pendingLink.collectAsState()
+    androidx.compose.runtime.LaunchedEffect(link) { if (link != null) navigator.goTab(Tab.You) }
     val entry by nav.currentBackStackEntryAsState()
     val current = Tab.entries.firstOrNull { it.route == entry?.destination?.route }
 

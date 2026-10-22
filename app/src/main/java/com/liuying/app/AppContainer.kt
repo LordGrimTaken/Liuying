@@ -92,6 +92,9 @@ class AppContainer(private val app: Application) {
     fun putHint(type: String, preview: MetaPreview, sourceId: Long?) { synchronized(hints) { hints["$type|${preview.id}"] = preview to sourceId } }
     fun hint(type: String, id: String): Pair<MetaPreview, Long?>? = synchronized(hints) { hints["$type|$id"] }
 
+    /** A manifest link opened from outside (stremio://, or an https .../manifest.json link); consumed by the You tab's add-source flow. */
+    val pendingLink = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+
     private val _playerExits = MutableSharedFlow<PlayerExit>(extraBufferCapacity = 8)
     val playerExits: SharedFlow<PlayerExit> = _playerExits.asSharedFlow()
 
@@ -103,7 +106,7 @@ class AppContainer(private val app: Application) {
         PlayerDependencies.onPlaybackStarting = { r ->
             val ref = if (r.episodeId == null) PlaybackRef.movie(r.type, r.mediaId)
             else SyncLogic.parseEpisodeId(r.mediaId, r.episodeId)?.let { (s, e) -> PlaybackRef.episode(r.type, r.mediaId, r.episodeId, s, e) }
-            if (ref != null) progress.registerPlayback(ref)
+            if (ref != null) progress.ensureRegistered(ref)
         }
         PlayerDependencies.settingsProvider = object : PlayerSettingsProvider {
             override fun current(): PlayerSettings = playerSettings

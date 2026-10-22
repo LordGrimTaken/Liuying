@@ -33,16 +33,27 @@ class ProgressRepository(
         dao.observeDismissed().map { l -> l.associate { (it.type to it.titleId) to it.dismissedAt } }
     suspend fun snapshot(): List<ProgressEntry> = dao.getAll().map { it.toEntry() }
 
-    fun registerPlayback(ref: PlaybackRef) {
-        active[key(ref.titleId, if (ref.season == ProgressEntry.NO_EPISODE) null else ref.videoId)] = ref
+    private val hints = ConcurrentHashMap<String, String>()
+
+    /** [streamHint] is remembered with the progress row (e.g. "binge:<group>") so the next episode can pick the same kind of stream. */
+    fun registerPlayback(ref: PlaybackRef, streamHint: String? = null) {
+        val k = key(ref.titleId, if (ref.season == ProgressEntry.NO_EPISODE) null else ref.videoId)
+        active[k] = ref
+        if (streamHint != null) hints[k] = streamHint else hints.remove(k)
+    }
+
+    /** Used when the player starts: keeps the registration (and hint) made at launch, but restores it after the process was recreated. */
+    fun ensureRegistered(ref: PlaybackRef) {
+        active.putIfAbsent(key(ref.titleId, if (ref.season == ProgressEntry.NO_EPISODE) null else ref.videoId), ref)
     }
 
     override suspend fun report(mediaId: String, episodeId: String?, positionMs: Long, durationMs: Long) {
-        val ref = active[key(mediaId, episodeId)] ?: return
+        val k = key(mediaId, episodeId)
+        val ref = active[k] ?: return
         val s = settings.current()
         if (!s.saveWatchHistory) return
         val existing = dao.get(ref.type, ref.titleId, ref.season, ref.episode)?.toEntry()
-        val updated = ProgressRules.applyUpdate(existing, ref, positionMs, durationMs, clock.nowMs(), s.completionThreshold)
+        val updated = ProgressRules.applyUpdate(existing, ref, positionMs, durationMs, clock.nowMs(), s.completionThreshold, hints[k] ?: existing?.streamHint)
         dao.upsert(updated.toEntity())
         onLocalChange?.invoke()
     }

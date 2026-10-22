@@ -190,9 +190,16 @@ class DetailsViewModel(
         val autoMode = auto && s0.streamSelection == StreamSelectionMode.AutoSelect
         _sheet.value = StreamsSheet(target, null, autoPending = autoMode)
         streamsJob = viewModelScope.launch {
+            // Binge continuity: starting the next episode prefers a stream from the same binge group as the previous one,
+            // even when the user normally picks from a list. No match: the list simply stays.
+            val binge = if (auto && !autoMode && target.season != null) previousBingeGroup(target) else null
             c.streams.streams(type, target.videoId, force).collect { r ->
                 _sheet.update { cur -> if (cur?.target == target) cur.copy(result = r) else cur }
                 if (autoMode && r.done) tryAuto(target, r)
+                else if (binge != null && !launched && _sheet.value?.target == target) {
+                    r.items.firstOrNull { it.enabled && it.kind == StreamKind.Direct && !it.url.isNullOrBlank() && it.stream.behaviorHints.bingeGroup == binge }
+                        ?.let { onStreamClick(it) }
+                }
             }
         }
         if (autoMode) autoJob = viewModelScope.launch {
@@ -200,6 +207,16 @@ class DetailsViewModel(
             val r = _sheet.value?.result
             if (r != null) tryAuto(target, r) else _sheet.update { it?.copy(autoPending = false) }
         }
+    }
+
+    private suspend fun previousBingeGroup(target: StreamTarget): String? {
+        val season = target.season ?: return null
+        val episode = target.episode ?: return null
+        val seq = EpisodeLogic.sequence(ui.value.states)
+        val idx = seq.indexOfFirst { it.videoId == target.videoId }
+        val prev = seq.getOrNull(idx - 1)?.takeIf { idx > 0 && (it.season < season || (it.season == season && it.episode < episode)) } ?: return null
+        val hint = c.progress.get(PlaybackRef.episode(type, id, prev.videoId, prev.season, prev.episode))?.streamHint ?: return null
+        return hint.removePrefix("binge:").takeIf { hint.startsWith("binge:") && it.isNotBlank() }
     }
 
     private fun tryAuto(target: StreamTarget, r: StreamsResult) {
@@ -281,7 +298,7 @@ class DetailsViewModel(
                 }
             } else null
 
-            c.progress.registerPlayback(ref)
+            c.progress.registerPlayback(ref, item.stream.behaviorHints.bingeGroup?.takeIf { it.isNotBlank() }?.let { "binge:$it" })
             events.send(
                 DetailsEvent.Launch(
                     PlaybackRequest(

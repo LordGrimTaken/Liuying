@@ -16,6 +16,19 @@ import com.liuying.app.ui.nav.LiuyingApp
 import com.liuying.app.ui.theme.LiuyingTheme
 
 class MainActivity : ComponentActivity() {
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleLink(intent)
+    }
+
+    private fun handleLink(intent: android.content.Intent?) {
+        if (intent?.action != android.content.Intent.ACTION_VIEW) return
+        val link = intent.data?.toString()?.takeIf { it.isNotBlank() } ?: return
+        (application as LiuyingApplication).container.pendingLink.value = link
+        intent.data = null // a recreated activity must not replay the same link
+    }
+
     override fun onResume() {
         super.onResume()
         // Back from the "install unknown apps" screen: continue the pending update install.
@@ -30,6 +43,7 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
         )
         val container = (application as LiuyingApplication).container
+        handleLink(intent)
         setContent {
             val settings by container.settings.settings.collectAsStateWithLifecycle(AppSettings())
             LiuyingTheme(settings.accent, settings.fontScale) {

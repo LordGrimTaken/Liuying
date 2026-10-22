@@ -114,8 +114,8 @@ private fun Filters(ui: BrowseUi, vm: BrowseViewModel) {
         val required = cat.genreRequired
         val selected = ui.genre ?: if (required) cat.genreOptions.first() else null
         LazyRow(contentPadding = PaddingValues(horizontal = 20.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (!required) item(key = "all") { InkChip("All", selected == null) { vm.selectGenre(null) } }
-            items(cat.genreOptions, key = { it }) { g -> InkChip(g, selected == g) { vm.selectGenre(g) } }
+            if (!required) item(key = "all") { InkChip("All", selected == null, onClick = { vm.selectGenre(null) }) }
+            items(cat.genreOptions, key = { it }) { g -> InkChip(g, selected == g, onClick = { vm.selectGenre(g) }) }
         }
     }
     // other extras with a fixed list of options (e.g. "sort": top, new)
@@ -124,7 +124,7 @@ private fun Filters(ui: BrowseUi, vm: BrowseViewModel) {
         val required = ex.name in cat.requiredExtras
         val selected = ui.more[ex.name] ?: if (required) ex.options.first() else null
         LazyRow(contentPadding = PaddingValues(horizontal = 20.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(cat.optionsFor(ex.name), key = { it }) { o -> InkChip(o, selected == o) { vm.selectExtra(ex.name, o) } }
+            items(cat.optionsFor(ex.name), key = { it }) { o -> InkChip(o, selected == o, onClick = { vm.selectExtra(ex.name, o) }) }
         }
     }
 }
