@@ -144,3 +144,51 @@ export function fmtBytes(b) {
 export function shareUrl(origin, type, id, base = '/watch') {
   return `${String(origin).replace(/\/$/, '')}${base}#/title/${encodeURIComponent(type || 'movie')}/${encodeURIComponent(id)}`;
 }
+
+// ---------- home layout ----------
+/** Sort rows [{key}] by a saved order of keys; unknown keys keep their relative order after the known ones. */
+export function orderRows(rows, order) {
+  const pos = new Map((Array.isArray(order) ? order : []).map((k, i) => [k, i]));
+  return rows.map((r, i) => ({ r, i })).sort((a, b) => {
+    const pa = pos.has(a.r.key) ? pos.get(a.r.key) : Infinity, pb = pos.has(b.r.key) ? pos.get(b.r.key) : Infinity;
+    return pa === pb ? a.i - b.i : pa - pb;
+  }).map((x) => x.r);
+}
+/** New saved order after moving `key` by delta within the currently displayed keys. */
+export function moveKey(displayKeys, key, delta) {
+  const a = [...displayKeys];
+  const i = a.indexOf(key), j = i + delta;
+  if (i < 0 || j < 0 || j >= a.length) return a;
+  [a[i], a[j]] = [a[j], a[i]];
+  return a;
+}
+
+// ---------- search suggestions ----------
+/** Quick suggestions for a partial query: prefix matches first, then word-start, then substring. Case-insensitive, deduped. */
+export function suggest(q, pools, limit = 6) {
+  const needle = String(q || '').trim().toLowerCase();
+  if (!needle) return [];
+  const seen = new Set();
+  const hits = [];
+  let order = 0;
+  for (const pool of pools) for (const raw of pool || []) {
+    const s = String(raw || '').trim();
+    const l = s.toLowerCase();
+    if (!s || l === needle || seen.has(l)) continue;
+    const idx = l.indexOf(needle);
+    if (idx < 0) continue;
+    seen.add(l);
+    const rank = idx === 0 ? 0 : /[\s\-:]/.test(l[idx - 1]) ? 1 : 2;
+    hits.push({ s, rank, order: order++ });
+  }
+  return hits.sort((a, b) => a.rank - b.rank || a.order - b.order).slice(0, limit).map((x) => x.s);
+}
+
+/** Plugin/repository manifest link check for the list-only stub: absolute https URL only. */
+export function parsePluginUrl(text) {
+  try {
+    const u = new URL(String(text || '').trim());
+    if (u.protocol !== 'https:' || !u.hostname.includes('.')) return null;
+    return u.href;
+  } catch { return null; }
+}

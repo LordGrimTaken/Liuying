@@ -79,3 +79,27 @@ test('fmtBytes and shareUrl', () => {
   assert.equal(fmtBytes(0), ''); assert.equal(fmtBytes(850e6), '850 MB'); assert.equal(fmtBytes(2.45e9), '2.5 GB'); assert.equal(fmtBytes(15e9), '15 GB');
   assert.equal(shareUrl('https://x.example/', 'series', 'tt1:a b'), 'https://x.example/watch#/title/series/tt1%3Aa%20b');
 });
+
+import { orderRows, moveKey, suggest, parsePluginUrl } from '../ux.js';
+test('orderRows and moveKey', () => {
+  const rows = [{ key: 'a' }, { key: 'b' }, { key: 'c' }, { key: 'd' }];
+  assert.deepEqual(orderRows(rows, ['c', 'a']).map((r) => r.key), ['c', 'a', 'b', 'd']);
+  assert.deepEqual(orderRows(rows, undefined).map((r) => r.key), ['a', 'b', 'c', 'd']);
+  assert.deepEqual(moveKey(['a', 'b', 'c'], 'b', -1), ['b', 'a', 'c']);
+  assert.deepEqual(moveKey(['a', 'b', 'c'], 'a', -1), ['a', 'b', 'c']);
+  assert.deepEqual(moveKey(['a', 'b', 'c'], 'c', 1), ['a', 'b', 'c']);
+});
+test('suggest ranks prefix before word-start before substring', () => {
+  const out = suggest('mo', [['The Moon Gate', 'Mock Movie', 'Mo Money', 'Almost'], ['mock movie', 'Moana']], 10);
+  assert.deepEqual(out, ['Mock Movie', 'Mo Money', 'Moana', 'The Moon Gate', 'Almost']);
+  assert.deepEqual(suggest('', [['a']]), []);
+  assert.deepEqual(suggest('mock movie', [['Mock Movie']]), []);
+  assert.equal(suggest('a', [['a1', 'a2', 'a3']], 2).length, 2);
+});
+test('parsePluginUrl', () => {
+  assert.equal(parsePluginUrl(' https://x.example/manifest.json '), 'https://x.example/manifest.json');
+  assert.equal(parsePluginUrl('http://x.example/m.json'), null);
+  assert.equal(parsePluginUrl('javascript:alert(1)'), null);
+  assert.equal(parsePluginUrl('https://localhost/x'), null);
+  assert.equal(parsePluginUrl(''), null);
+});
