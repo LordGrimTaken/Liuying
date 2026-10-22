@@ -107,7 +107,7 @@ h2.sec{font:400 20px/1.2 var(--serif);margin:0}
 .scroller>*{scroll-snap-align:start}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--pw),1fr));gap:18px 12px}
 .pcard{position:relative;display:block;width:var(--pw);flex:none;text-decoration:none;color:var(--fg)}
-.grid .pcard{width:auto}
+.grid .pcard{width:auto;content-visibility:auto;contain-intrinsic-size:auto 280px}
 .pcard .art{position:relative;aspect-ratio:2/3;border-radius:var(--radius);overflow:hidden;background:var(--surface);border:1px solid var(--line2);transition:border-color .2s,transform .25s,box-shadow .25s}
 .pcard:hover .art,.pcard:focus-visible .art{border-color:var(--gold);transform:translateY(-3px);box-shadow:0 12px 28px var(--shadow)}
 .pcard:focus-visible{outline-offset:4px}

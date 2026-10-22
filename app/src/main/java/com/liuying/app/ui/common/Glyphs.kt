@@ -11,7 +11,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -93,14 +95,15 @@ fun Glyph(kind: GlyphKind, modifier: Modifier = Modifier, tint: Color = Paper, s
 @Composable
 fun IconCircleButton(
     kind: GlyphKind, description: String, onClick: () -> Unit, modifier: Modifier = Modifier,
-    filled: Boolean = false, tint: Color = Paper, diameter: Dp = 48.dp, onDark: Boolean = false,
+    filled: Boolean = false, tint: Color = Paper, diameter: Dp = 48.dp, onDark: Boolean = false, enabled: Boolean = true,
 ) {
     val bg = if (filled) Vermilion else if (onDark) Ink.copy(alpha = 0.6f) else InkSurface.copy(alpha = 0f)
     Box(
         modifier.size(diameter).clip(CircleShape).background(bg, CircleShape)
             .border(BorderStroke(if (filled) 0.dp else 1.dp, GoldHairline), CircleShape)
-            .semantics { contentDescription = description; role = Role.Button }
-            .clickable(onClick = onClick),
+            .semantics { contentDescription = description; role = Role.Button; if (!enabled) disabled() }
+            .alpha(if (enabled) 1f else 0.35f)
+            .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) { Glyph(kind, tint = if (filled) OnAccent else tint, size = diameter * 0.46f) }
 }

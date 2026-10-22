@@ -76,6 +76,7 @@ fun YouScreen(navigator: Navigator) {
     val form by vm.form.collectAsStateWithLifecycle()
     val repoAdd by vm.repoAdd.collectAsStateWithLifecycle()
     val updateState by vm.updateState.collectAsStateWithLifecycle()
+    val layoutRows by vm.layoutRows.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var removing by remember { mutableStateOf<Source?>(null) }
@@ -179,6 +180,12 @@ fun YouScreen(navigator: Navigator) {
             }
         }
 
+        // ---------------------------------------------------------------- appearance and Today layout
+        item { SectionHeader("Appearance") }
+        item { AppearanceSettings(settings, vm) }
+        item { SectionHeader("Today layout") }
+        item { TodayLayoutSettings(settings, layoutRows, vm) }
+
         // ---------------------------------------------------------------- playback
         item { SectionHeader("Playback") }
         item { PlaybackSettings(settings, vm) }
@@ -194,6 +201,12 @@ fun YouScreen(navigator: Navigator) {
                     "Add a plugin repository to see which plugins it lists. This version only lists and stores them: plugin scripts are not downloaded or run, " +
                         "so turning a plugin on has no effect yet.",
                     color = PaperMuted, style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    "Risk notice: plugins are third-party code written by other people, not by Liuying. Liuying does not review, host or endorse them or the " +
+                        "content they point to. Anything a plugin does is decided by its author, and using plugins is entirely at your own risk. " +
+                        "Only add repositories from people you trust, and make sure you are allowed to access what they link to.",
+                    color = Vermilion, style = MaterialTheme.typography.bodyMedium,
                 )
             }
         }

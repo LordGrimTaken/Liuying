@@ -16,6 +16,7 @@ export function describeError(e) {
   if (!e) return 'Unknown error';
   switch (e.kind) {
     case 'cors': case 'network':
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return "You're offline. Reconnect and try again.";
       return 'This source did not answer. It may be offline, or it does not allow web access (browsers require the source to permit it).';
     case 'timeout': return 'This source took too long to respond.';
     case 'http': return `This source answered with an error (HTTP ${e.status}).`;

@@ -59,7 +59,13 @@ export function browse({ params, query }) {
       const before = items.length;
       items = uniqBy([...items, ...batch], (m) => m.id);
       items.rawCount = raw;
-      for (const it of items.slice(before)) { const c = posterCard(it, { srcId: store.sourceId(src) }); c.setAttribute('role', 'listitem'); grid.append(c); }
+      // Huge catalogs: build cards in small chunks so the page never freezes.
+      const fresh = items.slice(before);
+      const CHUNK = 100;
+      for (let i = 0; i < fresh.length; i += CHUNK) {
+        if (i) { await new Promise((r) => requestAnimationFrame(r)); if (gen !== generation) return; }
+        for (const it of fresh.slice(i, i + CHUNK)) { const c = posterCard(it, { srcId: store.sourceId(src) }); c.setAttribute('role', 'listitem'); grid.append(c); }
+      }
       clear(foot);
       if (!batch.length || !caps.skip || items.length === before) {
         end = true;

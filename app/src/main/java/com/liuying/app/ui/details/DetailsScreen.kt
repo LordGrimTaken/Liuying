@@ -18,6 +18,19 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import com.liuying.app.domain.Ux
+import com.liuying.app.ui.common.Glyph
+import com.liuying.app.ui.common.GlyphKind
+import com.liuying.app.ui.common.IconCircleButton
+import com.liuying.app.ui.theme.OnAccent
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -145,7 +158,7 @@ private fun BackBar(navigator: Navigator, trailing: (@Composable () -> Unit)? = 
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
 private fun DetailsBody(vm: DetailsViewModel, ui: DetailsUi, navigator: Navigator) {
     val meta = ui.meta!!
@@ -171,13 +184,39 @@ private fun DetailsBody(vm: DetailsViewModel, ui: DetailsUi, navigator: Navigato
             Column(Modifier.padding(horizontal = 20.dp, vertical = 14.dp)) {
                 if (load.loading) Text("Checking sources…", color = PaperMuted, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(bottom = 8.dp))
                 if (load.allFailed) ErrorNote("Your sources could not be reached. Showing saved details.", Modifier.padding(bottom = 8.dp).then(Modifier), onRetry = vm::reload)
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                val context = LocalContext.current
+                val releasedEps = ui.states.filter { it.released && !it.isSpecial }
+                val allWatched = if (ui.isSeries) releasedEps.isNotEmpty() && releasedEps.all { it.watched } else watchedMovie
+                var confirmAll by remember { mutableStateOf(false) }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     InkButton(primaryLabel(ui), vm::playPrimary)
                     InkButton(if (ui.inLibrary) "Saved" else "Save", vm::toggleLibrary, filled = false)
-                    if (!ui.isSeries) {
-                        InkTextButton(if (watchedMovie) "Mark unwatched" else "Mark watched", { vm.setMovieWatched(!watchedMovie) }, color = PaperMuted)
+                    if (!ui.isSeries || releasedEps.isNotEmpty()) {
+                        InkButton(
+                            if (allWatched) "Watched" else "Mark watched",
+                            {
+                                if (!ui.isSeries) vm.setMovieWatched(!allWatched)
+                                else if (!allWatched && releasedEps.size > 3) confirmAll = true
+                                else vm.setEpisodesWatched(releasedEps, !allWatched)
+                            },
+                            filled = false,
+                            modifier = Modifier.semantics { stateDescription = if (allWatched) "Watched, tap to mark unwatched" else "Not watched" },
+                        )
                     }
+                    IconCircleButton(GlyphKind.Share, "Share link to ${meta.title}", {
+                        val url = Ux.shareUrl(SHARE_ORIGIN, meta.type.ifBlank { vm.type }, vm.id)
+                        val send = Intent(Intent.ACTION_SEND).setType("text/plain")
+                            .putExtra(Intent.EXTRA_SUBJECT, meta.title).putExtra(Intent.EXTRA_TEXT, "${meta.title}\n$url")
+                        runCatching { context.startActivity(Intent.createChooser(send, "Share ${meta.title}").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                            .onFailure { Toast.makeText(context, "Nothing to share with.", Toast.LENGTH_SHORT).show() }
+                    })
                 }
+                if (confirmAll) AlertDialog(
+                    onDismissRequest = { confirmAll = false }, containerColor = InkSurface, titleContentColor = Paper, textContentColor = PaperMuted,
+                    title = { Text("Mark as watched?") }, text = { Text("Mark all ${releasedEps.size} released episodes as watched?") },
+                    confirmButton = { InkTextButton("Mark watched", { confirmAll = false; vm.setEpisodesWatched(releasedEps, true) }) },
+                    dismissButton = { InkTextButton("Cancel", { confirmAll = false }, color = PaperMuted) },
+                )
                 val mp = ui.movieProgress
                 if (!ui.isSeries && mp != null && mp.fraction > 0 && !mp.watched) {
                     ProgressBar(mp.fraction.toFloat(), Modifier.padding(top = 10.dp).fillMaxWidth())
@@ -203,16 +242,39 @@ private fun DetailsBody(vm: DetailsViewModel, ui: DetailsUi, navigator: Navigato
         }
         if (ui.isSeries) {
             item { SectionHeader("Episodes") }
-            if (ui.seasons.size > 1) item {
-                LazyRow(contentPadding = PaddingValues(horizontal = 20.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(ui.seasons) { s ->
-                        val seasonStates = ui.states.filter { it.season == s }
-                        val label = (if (s == 0) "Specials" else "Season $s") + "  ${seasonStates.count { it.watched }}/${seasonStates.size}"
-                        InkChip(label, s == ui.season, { vm.selectSeason(s) })
+            item {
+                val seasonStates = ui.states.filter { it.season == ui.season }
+                val releasedSeason = seasonStates.filter { it.released }
+                val seasonAllWatched = releasedSeason.isNotEmpty() && releasedSeason.all { it.watched }
+                var menu by remember { mutableStateOf(false) }
+                Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box {
+                        val shape = RoundedCornerShape(10.dp)
+                        Row(
+                            Modifier.heightIn(min = 48.dp).clip(shape).border(BorderStroke(1.dp, GoldHairline), shape)
+                                .semantics { contentDescription = "Season, ${seasonLabel(ui.season)}. Tap to choose another season."; role = Role.DropdownList }
+                                .clickable(enabled = ui.seasons.size > 1) { menu = true }.padding(horizontal = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(seasonLabel(ui.season), color = Paper, style = MaterialTheme.typography.labelLarge)
+                            if (ui.seasons.size > 1) { Spacer(Modifier.width(6.dp)); Glyph(GlyphKind.ChevronDown, tint = Gold, size = 18.dp) }
+                        }
+                        DropdownMenu(menu, { menu = false }) {
+                            ui.seasons.forEach { sn ->
+                                val st = ui.states.filter { it.season == sn }
+                                DropdownMenuItem(
+                                    text = { Text("${seasonLabel(sn)}   ${st.count { it.watched }}/${st.size}") },
+                                    onClick = { menu = false; vm.selectSeason(sn) },
+                                )
+                            }
+                        }
                     }
+                    Text("${seasonStates.count { it.watched }}/${seasonStates.size} watched", color = PaperMuted, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(start = 12.dp).weight(1f))
+                    if (releasedSeason.isNotEmpty()) InkTextButton(if (seasonAllWatched) "Unmark season" else "Mark season", { vm.setEpisodesWatched(releasedSeason, !seasonAllWatched) })
                 }
             }
-            items(ui.episodes, key = { it.videoId }) { e -> EpisodeRow(e, onPlay = { vm.playEpisode(e) }, onToggleWatched = { vm.setEpisodeWatched(e, !e.watched) }) }
+            val nextId = ui.playTarget?.episode?.takeIf { !it.watched }?.videoId
+            items(ui.episodes, key = { it.videoId }) { e -> EpisodeRow(e, isNext = e.videoId == nextId, onPlay = { vm.playEpisode(e) }, onToggleWatched = { vm.setEpisodeWatched(e, !e.watched) }) }
         }
     }
 }
@@ -225,6 +287,10 @@ private fun PeopleLine(label: String, names: List<String>) {
         Text(names.joinToString(", "), color = PaperMuted, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
     }
 }
+
+private const val SHARE_ORIGIN = "https://www.liuyingapp.com"
+
+private fun seasonLabel(s: Int?): String = when (s) { null -> "Season"; 0 -> "Specials"; else -> "Season $s" }
 
 private fun primaryLabel(ui: DetailsUi): String {
     val t = ui.playTarget
@@ -246,7 +312,7 @@ private fun primaryLabel(ui: DetailsUi): String {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun EpisodeRow(e: EpisodeState, onPlay: () -> Unit, onToggleWatched: () -> Unit) {
+private fun EpisodeRow(e: EpisodeState, isNext: Boolean, onPlay: () -> Unit, onToggleWatched: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
     Box {
         Row(
@@ -258,6 +324,7 @@ private fun EpisodeRow(e: EpisodeState, onPlay: () -> Unit, onToggleWatched: () 
                 if (e.fraction > 0 && !e.watched) ProgressBar(e.fraction.toFloat(), Modifier.align(Alignment.BottomCenter).fillMaxWidth())
             }
             Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                if (isNext) Text("Up next", style = MaterialTheme.typography.labelMedium, color = OnAccent, modifier = Modifier.padding(bottom = 3.dp).background(Vermilion, RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 1.dp))
                 Text("${e.episode}. ${e.video.displayTitle ?: "Episode ${e.episode}"}", color = Paper, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 val sub = when {
                     !e.released -> "Not released yet"
@@ -277,10 +344,26 @@ private fun EpisodeRow(e: EpisodeState, onPlay: () -> Unit, onToggleWatched: () 
 
 // ---------------------------------------------------------------------------------------- streams
 
+private const val TOP_STREAMS = 5
+
+private fun usability(i: StreamItem): Int = when {
+    !i.enabled -> 2
+    i.kind == com.liuying.app.domain.StreamKind.Direct -> 0
+    else -> 1
+}
+
 @Composable
 private fun StreamsSheetContent(sh: StreamsSheet, ui: DetailsUi, vm: DetailsViewModel) {
     val s = ui.settings
     val r = sh.result
+    var sort by remember { mutableStateOf<Ux.Sort?>(null) }
+    // which lists are expanded past the first five: "all" for the flat list, "g<sourceId>" for a source group
+    var expanded by remember { mutableStateOf(setOf<String>()) }
+    fun toggle(k: String) { expanded = if (k in expanded) expanded - k else expanded + k }
+    fun sorted(l: List<StreamItem>): List<StreamItem> = sort?.let { so ->
+        Ux.sortStreams(l, so, ::usability, { it.quality.resolution?.height ?: 0 }, { it.quality.sizeBytes ?: 0L }, { it.source.displayName })
+    } ?: StreamRepository.sort(l, s.streamSort)
+
     LazyColumn(Modifier.fillMaxWidth().navigationBarsPadding(), contentPadding = PaddingValues(bottom = 24.dp)) {
         item {
             Column(Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
@@ -304,9 +387,29 @@ private fun StreamsSheetContent(sh: StreamsSheet, ui: DetailsUi, vm: DetailsView
                 )
             }
         }
-        if (s.streamGrouping == StreamGrouping.FlatSorted) {
-            val flat = StreamRepository.sort(r.items.filter { !s.hideNonPlayableStreams || it.enabled }, s.streamSort)
-            items(flat, key = { it.key }) { StreamRow(it, s.showRawStreamDescription, showSource = true) { vm.onStreamClick(it) } }
+        if (r.items.size > 1) {
+            item {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("SORT BY", style = MaterialTheme.typography.labelMedium, color = PaperMuted)
+                    Ux.SortKey.entries.forEach { k ->
+                        val on = sort?.key == k
+                        val arrow = if (on) (if (sort!!.desc) " ↓" else " ↑") else ""
+                        Box(Modifier.semantics {
+                            contentDescription = "Sort by ${k.label.lowercase()}" + if (on) (if (sort!!.desc) ", descending" else ", ascending") else ""
+                        }) { InkChip(k.label + arrow, on, { sort = Ux.nextSort(sort, k); expanded = emptySet() }) }
+                    }
+                    if (sort != null) InkTextButton("Reset", { sort = null; expanded = emptySet() })
+                }
+            }
+        }
+        val flat = s.streamGrouping == StreamGrouping.FlatSorted || sort != null
+        if (flat) {
+            val all = sorted(r.items.filter { !s.hideNonPlayableStreams || it.enabled })
+            val split = Ux.splitTop(all, TOP_STREAMS)
+            val open = "all" in expanded
+            val shown = if (open) all else split.top
+            items(shown, key = { it.key }) { StreamRow(it, s.showRawStreamDescription, showSource = true) { vm.onStreamClick(it) } }
+            if (split.rest.isNotEmpty()) item(key = "more-all") { ShowMoreRow(open, split.rest.size) { toggle("all") } }
             for (g in r.groups) {
                 val st = g.state
                 if (st is SourceStreamsState.Loading) item(key = "l${g.source.id}") { SourceLoadingRow(g.source.displayName) }
@@ -319,14 +422,29 @@ private fun StreamsSheetContent(sh: StreamsSheet, ui: DetailsUi, vm: DetailsView
                     SourceStreamsState.Loading -> item(key = "l${g.source.id}") { SourceLoadingRow(g.source.displayName) }
                     is SourceStreamsState.Failed -> item(key = "f${g.source.id}") { SourceFailedRow(g.source.displayName, st.message, vm::retryStreams) }
                     is SourceStreamsState.Loaded -> {
-                        val list = StreamRepository.sort(st.items.filter { !s.hideNonPlayableStreams || it.enabled }, s.streamSort)
+                        val list = sorted(st.items.filter { !s.hideNonPlayableStreams || it.enabled })
                         if (list.isEmpty()) item(key = "e${g.source.id}") { Text("Nothing from this source.", color = PaperMuted, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) }
-                        items(list, key = { it.key }) { StreamRow(it, s.showRawStreamDescription, showSource = false) { vm.onStreamClick(it) } }
+                        val split = Ux.splitTop(list, TOP_STREAMS)
+                        val k = "g${g.source.id}"
+                        val open = k in expanded
+                        items(if (open) list else split.top, key = { it.key }) { StreamRow(it, s.showRawStreamDescription, showSource = false) { vm.onStreamClick(it) } }
+                        if (split.rest.isNotEmpty()) item(key = "more$k") { ShowMoreRow(open, split.rest.size) { toggle(k) } }
                     }
                 }
             }
         }
         if (r.done && !r.isEmpty) item { Row(Modifier.padding(horizontal = 12.dp)) { InkTextButton("Refresh streams", vm::refreshStreams, color = PaperMuted) } }
+    }
+}
+
+@Composable
+private fun ShowMoreRow(open: Boolean, hidden: Int, onToggle: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(onClick = onToggle).padding(horizontal = 20.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Glyph(if (open) GlyphKind.ChevronUp else GlyphKind.ChevronDown, tint = Gold, size = 18.dp)
+        Text(if (open) "Show fewer streams" else "Show $hidden more stream${if (hidden > 1) "s" else ""}", color = Gold, style = MaterialTheme.typography.labelLarge)
     }
 }
 

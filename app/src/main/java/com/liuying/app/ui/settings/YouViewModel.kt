@@ -9,7 +9,10 @@ import com.liuying.app.data.remote.toUserMessage
 import com.liuying.app.data.settings.AppSettings
 import com.liuying.app.data.sync.AccountState
 import com.liuying.app.domain.model.Source
+import com.liuying.app.domain.Ux
+import com.liuying.app.domain.sync.SettingsSyncLogic
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -23,6 +26,8 @@ data class AddSourceUi(
     val preview: InstallPreview? = null,
     val confirmRisky: Boolean = false,
 )
+
+data class LayoutRow(val key: String, val title: String, val source: String, val hidden: Boolean)
 
 data class AccountFormUi(val username: String = "", val password: String = "", val busy: Boolean = false, val error: String? = null)
 
@@ -42,7 +47,43 @@ class YouViewModel(private val c: AppContainer) : ViewModel() {
     val message = MutableStateFlow<String?>(null)
 
     fun update(f: (AppSettings) -> AppSettings) { viewModelScope.launch { c.settings.update(f) } }
-    fun resetSettings() { viewModelScope.launch { c.settings.resetToDefaults(); message.value = "Settings reset to defaults." } }
+    fun resetSettings() {
+        viewModelScope.launch {
+            c.settings.resetToDefaults()
+            // the defaults must reach the account too, otherwise the next pull would restore the old values
+            c.settings.updateSynced(*SettingsSyncLogic.KEYS.toTypedArray()) { it }
+            c.sync.settingsChanged()
+            message.value = "Settings reset to defaults."
+        }
+    }
+
+    // ------------------------------------------------------------------------------------ appearance and Today layout (synced)
+
+    /** Today's catalogs in the saved order with their hidden flag, for the layout editor. */
+    val layoutRows: StateFlow<List<LayoutRow>> = combine(c.catalogs.allHomeEntries(), settings) { entries, s ->
+        entries.map { LayoutRow(it.webKey, it.title, it.source.displayName, s.hiddenCatalogs[it.webKey] == true) }
+    }.stateIn(viewModelScope, eager, emptyList())
+
+    private fun synced(vararg keys: String, f: (AppSettings) -> AppSettings) {
+        viewModelScope.launch { c.settings.updateSynced(*keys, transform = f); c.sync.settingsChanged() }
+    }
+
+    fun setAccent(key: String) = synced(SettingsSyncLogic.ACCENT) { it.copy(accent = key) }
+    fun setFontScale(key: String) = synced(SettingsSyncLogic.FONT_SCALE) { it.copy(fontScale = key) }
+    fun setHero(on: Boolean) = synced(SettingsSyncLogic.HERO) { it.copy(heroEnabled = on) }
+
+    fun moveCatalog(key: String, delta: Int) {
+        val keys = layoutRows.value.map { it.key }
+        synced(SettingsSyncLogic.HOME_ORDER) { it.copy(homeOrder = Ux.moveKey(keys, key, delta)) }
+    }
+
+    fun setCatalogHidden(key: String, hidden: Boolean) =
+        synced(SettingsSyncLogic.HIDDEN) { it.copy(hiddenCatalogs = it.hiddenCatalogs + (key to hidden)) }
+
+    /** Show every catalog again in the sources' own order. Flags are set to false (not removed) so the reset reaches other devices. */
+    fun resetLayout() = synced(SettingsSyncLogic.HOME_ORDER, SettingsSyncLogic.HIDDEN, SettingsSyncLogic.HERO) {
+        it.copy(homeOrder = emptyList(), hiddenCatalogs = it.hiddenCatalogs.mapValues { false }, heroEnabled = true)
+    }
 
     // ------------------------------------------------------------------------------------ sources
 

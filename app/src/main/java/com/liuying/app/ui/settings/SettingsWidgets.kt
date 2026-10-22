@@ -35,7 +35,7 @@ fun ToggleRow(title: String, subtitle: String? = null, checked: Boolean, enabled
             Text(title, color = if (enabled) Paper else PaperMuted, style = MaterialTheme.typography.bodyLarge)
             if (subtitle != null) Text(subtitle, color = PaperMuted, style = MaterialTheme.typography.bodyMedium)
         }
-        Switch(checked, onChange, enabled = enabled, colors = SwitchDefaults.colors(checkedTrackColor = Vermilion, checkedThumbColor = Paper, uncheckedTrackColor = Ink, uncheckedThumbColor = PaperMuted, uncheckedBorderColor = GoldHairline))
+        Switch(checked, onChange, enabled = enabled, colors = SwitchDefaults.colors(checkedTrackColor = Vermilion, checkedThumbColor = com.liuying.app.ui.theme.OnAccent, uncheckedTrackColor = Ink, uncheckedThumbColor = PaperMuted, uncheckedBorderColor = GoldHairline))
     }
 }
 
