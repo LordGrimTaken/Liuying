@@ -53,7 +53,7 @@ import com.liuying.app.ui.theme.Paper
 import com.liuying.app.ui.theme.Vermilion
 
 /**
- * Translucent top bar: seal and wordmark on the left, round icon buttons (Search, Calendar, Settings) and the account avatar
+ * Translucent top bar: logo and wordmark on the left, round icon buttons (Search, Calendar, Settings) and the account avatar
  * on the right. Over artwork it is only a dark top-down scrim; [solid] (after scrolling, or on pages without artwork) fades it
  * to a solid bar over 200 ms.
  */
@@ -70,7 +70,7 @@ fun LiuyingTopBar(
         Box(Modifier.matchParentSize().alpha(1f - solidAlpha).background(Brush.verticalGradient(listOf(Ink.copy(alpha = 0.72f), Color.Transparent))))
         Box(Modifier.matchParentSize().alpha(solidAlpha).background(Ink.copy(alpha = 0.94f)))
         Row(Modifier.statusBarsPadding().height(TopBarHeight).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Seal()
+            LogoMark()
             Text("Liuying", color = Paper, style = TextStyle(fontFamily = FontFamily.Serif, fontWeight = FontWeight.Bold, fontSize = 21.sp), modifier = Modifier.padding(start = 10.dp))
             Spacer(Modifier.weight(1f))
             BarIcon(GlyphKind.Search, "Search", onSearch)
@@ -82,11 +82,11 @@ fun LiuyingTopBar(
     }
 }
 
-/** The seal: the Liuying chop (vermilion leaf-cornered square carved with 流 over 影), a vector drawable. */
+/** The Liuying mark: a shadow-puppet on a lit screen (small optical size), a fixed-colour vector drawable. */
 @Composable
-fun Seal(modifier: Modifier = Modifier) {
+fun LogoMark(modifier: Modifier = Modifier) {
     androidx.compose.foundation.Image(
-        painter = androidx.compose.ui.res.painterResource(com.liuying.app.R.drawable.ic_seal),
+        painter = androidx.compose.ui.res.painterResource(com.liuying.app.R.drawable.ic_logo),
         contentDescription = null,
         modifier = modifier.size(32.dp),
     )

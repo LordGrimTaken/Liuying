@@ -44,7 +44,7 @@ function buildRail() {
   clear(rail);
   const searchClick = (e) => { if (e.ctrlKey || e.metaKey || e.shiftKey) return; e.preventDefault(); openSearch(); };
   rail.append(
-    h('a', { class: 'brand', href: '#/', 'aria-label': 'Liuying home' }, h('img', { class: 'seal', src: '/watch/icons/seal.svg', alt: '', width: 40, height: 40 })),
+    h('a', { class: 'brand', href: '#/', 'aria-label': 'Liuying home' }, h('img', { class: 'seal', src: '/watch/icons/logo.svg', alt: '', width: 40, height: 40 })),
     h('div', { class: 'nav' }, NAV.map(([k, hr, label, ic]) => h('a', { class: 'navlink', href: hr, 'data-nav': k, title: k === 'settings' ? 'Settings and account' : undefined, onClick: k === 'search' ? searchClick : undefined }, icon(ic, 22), h('span', { class: 'lab', text: label })))));
 }
 
@@ -53,7 +53,7 @@ function buildTopbar() {
   clear(bar);
   const tb = (name, label, hr, key) => h('a', { class: 'tbtn', href: hr, 'aria-label': label, title: label, 'data-tb': key }, icon(name, 22));
   bar.append(
-    h('a', { class: 'tb-brand', href: '#/', 'aria-label': 'Liuying home' }, h('img', { class: 'seal sm', src: '/watch/icons/seal.svg', alt: '', width: 30, height: 30 }), h('span', { class: 'wordmark', text: 'Liuying' })),
+    h('a', { class: 'tb-brand', href: '#/', 'aria-label': 'Liuying home' }, h('img', { class: 'seal sm', src: '/watch/icons/logo.svg', alt: '', width: 30, height: 30 }), h('span', { class: 'wordmark', text: 'Liuying' })),
     h('div', { class: 'tb-actions' },
       h('button', { class: 'tbtn', type: 'button', 'aria-label': 'Search', title: 'Search ( / )', onClick: () => openSearch() }, icon('search', 22)),
       tb('calendar', 'Calendar', '#/calendar', 'calendar'),

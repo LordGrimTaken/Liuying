@@ -9,7 +9,7 @@ export const NOT_FOUND_HTML = `<!doctype html>
 <link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/auth.css"></head>
 <body class="auth-page" data-page="notfound">
 <a class="skip" href="#main">Skip to content</a>
-<header class="top"><div class="nav"><a class="brand" href="/"><span class="seal" aria-hidden="true">流<br>影</span><span>Liuying</span></a>
+<header class="top"><div class="nav"><a class="brand" href="/"><img class="seal" src="/assets/logo.svg" alt="" width="32" height="32"><span>Liuying</span></a>
 <nav class="links always" aria-label="Primary"><a class="link" href="/">Home</a><a class="link" href="/watch/">Web player</a></nav></div></header>
 <main id="main" class="auth"><div class="mist" aria-hidden="true"></div>
 <div class="auth-wrap"><section class="scroll" aria-labelledby="h"><div class="scroll-body">

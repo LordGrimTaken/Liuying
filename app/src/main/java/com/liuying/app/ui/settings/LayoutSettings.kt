@@ -55,7 +55,7 @@ private val TextSizes = listOf("s" to "Small", "m" to "Medium", "l" to "Large")
 fun AppearanceSettings(s: AppSettings, vm: YouViewModel) {
     Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text("Accent colour", color = Paper, style = MaterialTheme.typography.bodyLarge)
-        Text("Used for buttons, selected chips and the seal.", color = PaperMuted, style = MaterialTheme.typography.bodyMedium)
+        Text("Used for buttons and selected chips.", color = PaperMuted, style = MaterialTheme.typography.bodyMedium)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             AccentChoice.entries.forEach { a ->
                 val on = s.accent == a.key

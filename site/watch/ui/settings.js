@@ -99,7 +99,7 @@ export function settings({ query = {} } = {}) {
         select('Theme', 'System follows your device: Ink in dark mode, Paper in light mode.', 'theme', [['system', 'System'], ['dark', 'Ink'], ['black', 'Pure black'], ['paper', 'Paper (light)']], { after: refreshSums }),
         toggle('Spoiler protection', 'Blurs the picture and description of episodes you have not watched yet.', 'spoilers'),
         toggle('Reduce motion', 'Stops the rotating banner, shimmer and other movement.', 'reduceMotion'),
-        select('Accent colour', 'Used for buttons, selected chips and the seal.', 'accent', ACC, { after: refreshSums }),
+        select('Accent colour', 'Used for buttons and selected chips.', 'accent', ACC, { after: refreshSums }),
         select('Text size', 'Scales the page content.', 'fontScale', SIZES, { after: refreshSums }),
         select('Poster size', null, 'posterSize', SIZES),
         toggle('Titles under posters', null, 'titlesUnder'),

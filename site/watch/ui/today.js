@@ -93,12 +93,13 @@ export function today() {
   function build(bypass = false) {
     heroCtl?.destroy(); heroCtl = null;
     clear(heroBox); clear(rowsBox); clear(failBanner);
+    surpriseBtn.hidden = false; refreshBtn.hidden = false;
     status = {};
     const rows = homeRows();
     renderContinueRow(contBox, ctl.signal, { onChange: () => renderContinueRow(contBox, ctl.signal) });
     if (!store.sources().length) {
       clear(contBox);
-      surpriseBtn.hidden = true;
+      surpriseBtn.hidden = true; refreshBtn.hidden = true;
       if (store.prefs().dismissedGuide) rowsBox.append(emptyPage('sources', 'Your scroll is blank', 'Add a source with its manifest link and your catalogs will appear here.', h('a', { class: 'btn pri', href: '#/sources?add=1', text: 'Add a source' }), h('button', { class: 'btn', type: 'button', text: 'Show the guide', onClick: () => { store.setPref('dismissedGuide', false); build(); } })));
       else rowsBox.append(firstRun());
       return;
