@@ -255,7 +255,14 @@ export function createApp({
   }
   // Web player: /watch and /watch/* serve the SPA shell; real files under site/watch are served as-is.
   const watchDir = path.join(siteDir, 'watch');
-  app.use('/watch', express.static(watchDir, { index: false, dotfiles: 'ignore', redirect: false }));
+  app.use('/watch', express.static(watchDir, {
+    index: false, dotfiles: 'ignore', redirect: false,
+    setHeaders(res, file) {
+      // The worker file must always be revalidated so shell updates roll out; scope stays /watch/.
+      if (file.endsWith(`${path.sep}sw.js`)) { res.setHeader('Cache-Control', 'no-cache'); res.setHeader('Service-Worker-Allowed', '/watch/'); }
+      else if (file.endsWith('.webmanifest')) res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
+    },
+  }));
   app.get(['/watch', '/watch/*'], (req, res, next) => {
     if (path.extname(req.path)) return notFound(req, res); // missing asset, not an app route
     res.sendFile('index.html', { root: watchDir, dotfiles: 'allow' }, (e) => {

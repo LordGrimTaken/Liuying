@@ -381,6 +381,8 @@ function siteWith({ watch = true } = {}) {
     fs.mkdirSync(path.join(dir, 'watch'));
     fs.writeFileSync(path.join(dir, 'watch', 'index.html'), '<title>player</title>');
     fs.writeFileSync(path.join(dir, 'watch', 'player.js'), 'window.p=1');
+    fs.writeFileSync(path.join(dir, 'watch', 'sw.js'), 'self.v=1');
+    fs.writeFileSync(path.join(dir, 'watch', 'manifest.webmanifest'), '{"name":"x"}');
   }
   return dir;
 }
@@ -402,6 +404,17 @@ test('/watch routing serves the SPA shell and static files', async () => {
   assert.equal((await t.head('/watch/x')).status, 200);
   assert.equal((await t.get('/')).text, '<h1>home</h1>');
   assert.equal((await t.get('/watchfoo')).status, 404);
+});
+
+test('/watch serves the service worker and manifest with the right headers', async () => {
+  const ctx = await setup({ siteDir: siteWith() });
+  const sw = await ctx.request().get('/watch/sw.js');
+  assert.equal(sw.status, 200);
+  assert.match(sw.headers['content-type'], /javascript/);
+  assert.equal(sw.headers['service-worker-allowed'], '/watch/');
+  assert.equal(sw.headers['cache-control'], 'no-cache');
+  const mf = await ctx.request().get('/watch/manifest.webmanifest');
+  assert.match(mf.headers['content-type'], /application\/manifest\+json/);
 });
 
 test('/watch returns a graceful 404 when the player is not built', async () => {

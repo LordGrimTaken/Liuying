@@ -1,0 +1,24 @@
+{
+  "id": "/watch/",
+  "name": "Liuying",
+  "short_name": "Liuying",
+  "description": "Watch from your own Stremio-protocol sources. Local-first, syncs with your Liuying account.",
+  "lang": "en",
+  "start_url": "/watch/",
+  "scope": "/watch/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#14110f",
+  "theme_color": "#14110f",
+  "categories": ["entertainment", "video"],
+  "icons": [
+    { "src": "/watch/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/watch/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/watch/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "/watch/icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ],
+  "shortcuts": [
+    { "name": "Shelf", "url": "/watch/#/shelf", "icons": [{ "src": "/watch/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }] },
+    { "name": "Calendar", "url": "/watch/#/calendar", "icons": [{ "src": "/watch/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }] }
+  ]
+}

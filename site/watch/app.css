@@ -607,3 +607,6 @@ input[type=search]::-webkit-search-cancel-button,input[type=search]::-webkit-sea
 .cal-status{margin:6px 0 14px}
 @media(max-width:480px){.cal-item{row-gap:4px}}
 @media(max-width:560px){.ep .info .t{flex-wrap:wrap;gap:0 8px}.ep .badge.nx{margin-left:0}.ep .badge.wk{display:none}.ep .info .t span:not(.badge){white-space:normal}}
+
+/* offline fallback page (offline.html) */
+.offline-page { max-width: 32rem; margin: 4rem auto; padding: 0 16px; text-align: center; }

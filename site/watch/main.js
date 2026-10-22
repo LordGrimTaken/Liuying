@@ -1,7 +1,7 @@
 import * as store from './store.js';
 import * as sync from './sync.js';
 import { route, start as startRouter, render, currentRoute, onRoute } from './router.js';
-import { h, icon, clear } from './ui/dom.js';
+import { h, icon, clear, toast } from './ui/dom.js';
 import { today } from './ui/today.js';
 import { search } from './ui/search.js';
 import { shelf } from './ui/shelf.js';
@@ -64,6 +64,22 @@ function drawBanner(st) {
     h('button', { class: 'btn sm', type: 'button', text: 'Dismiss', 'aria-label': 'Dismiss sign-in banner', onClick: () => { store.setPref('dismissedBanner', true); drawBanner(sync.getStatus()); } }));
 }
 
+/** Offline support. The worker only controls /watch/ (not bare /watch), so normalise the address first. */
+function registerWorker() {
+  if (location.pathname === '/watch') history.replaceState(null, '', '/watch/' + location.search + location.hash);
+  if (!('serviceWorker' in navigator)) return;
+  const hadController = !!navigator.serviceWorker.controller;
+  let notified = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    // a new version took over; don't reload under the viewer (they may be mid-playback)
+    if (!hadController || notified) return;
+    notified = true;
+    toast('Liuying was updated.', { action: 'Reload', onAction: () => location.reload(), ms: 12000 });
+  });
+  const reg = () => navigator.serviceWorker.register('/watch/sw.js', { scope: '/watch/' }).catch((e) => console.warn('Service worker unavailable', e));
+  if (document.readyState === 'complete') reg(); else addEventListener('load', reg, { once: true });
+}
+
 async function main() {
   await store.init();
   applySettings();
@@ -91,6 +107,7 @@ async function main() {
   sync.subscribeStatus((st) => { drawSyncChip(st); drawBanner(st); });
   sync.setHooks({ onRemoteChange: () => { const r = currentRoute(); if (r && r.name !== 'play') render(); } });
   sync.start();
+  registerWorker();
   sync.init().then(() => refreshManifests().then((n) => { const r = currentRoute(); if (n && r && ['today', 'sources'].includes(r.name)) render(); }));
 }
 

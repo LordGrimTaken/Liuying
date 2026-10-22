@@ -2,7 +2,7 @@ import { h, icon, clear, toast, confirmDialog, modal } from './dom.js';
 import * as store from '../store.js';
 import { loadMeta } from '../addon/service.js';
 import { describeError } from '../addon/client.js';
-import { normalizeVideos, playTarget, isReleased, setWatched, ratioOf, remainingMinutes, isInProgress } from '../progress.js';
+import { titleHint, normalizeVideos, playTarget, isReleased, setWatched, ratioOf, remainingMinutes, isInProgress } from '../progress.js';
 import { artImg, errorCard, toggleLibrary } from './components.js';
 import { streamsHref } from './continue.js';
 import { imgUrl, yearOf, fmtDuration } from '../util.js';
@@ -20,18 +20,19 @@ export function details({ params, query }) {
   const page = h('div', { class: 'page det' });
   clear(view).append(page);
   const origin = query.src ? store.sourceById(query.src) : null;
-  const snap = store.library().find((i) => i.id === id);
-  const prog = store.getProgress(id, null);
   let meta = store.cachedMeta(id) || null;
   let state = 'loading'; // loading | ok | error | missing
   let errors = [];
   let expanded = false;
   let sortDesc = false;
 
-  const hint = { id, type, name: meta?.name || snap?.name || prog?.name || '', poster: meta?.poster || snap?.poster || prog?.poster || '' };
+  // offline / uncached: fall back to the shelf or any progress record's title and poster before the raw id
   const unsub = store.subscribe((k) => { if (k === 'progress' || k === 'library') draw(); });
 
-  function current() { return { ...hint, ...(meta || {}), id, type: meta?.type || type }; }
+  function current() {
+    const hint = titleHint(id, { meta, library: store.library(), progress: store.allProgress() });
+    return { ...hint, ...(meta || {}), id, type: meta?.type || hint.type || type };
+  }
 
   async function fetchIt() {
     state = meta ? 'ok' : 'loading'; draw();
@@ -55,7 +56,7 @@ export function details({ params, query }) {
     if (ctl.signal.aborted) return;
     const m = current();
     const bgUrl = imgUrl(m.background);
-    const name = m.name || id;
+    const name = m.name || (state === 'loading' ? 'Loading…' : id);
     const isSeries = m.type === 'series' || (meta && normalizeVideos(meta.videos).length > 1 && type === 'series');
     const videos = meta ? normalizeVideos(meta.videos) : [];
     const getRec = (epId) => store.getProgress(id, epId || null);

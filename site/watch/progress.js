@@ -213,3 +213,11 @@ export function setWatched(prev, { mediaId, episodeId = null, watched, now, meta
 }
 
 export const remainingMinutes = (r) => (r && r.durationMs > 0 ? Math.max(1, Math.round((r.durationMs - r.positionMs) / 60000)) : 0);
+
+/** Best-known title/poster for a media id when its details are not cached: cached meta, then the shelf, then the newest progress record (movie or any episode) that carries a name. */
+export function titleHint(id, { meta, library = [], progress = [] } = {}) {
+  const lib = library.find((i) => i.id === id);
+  const recs = progress.filter((r) => r && r.mediaId === id).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  const pick = (k) => meta?.[k] || lib?.[k] || recs.find((r) => r[k])?.[k] || '';
+  return { name: pick('name'), poster: pick('poster'), type: meta?.type || lib?.type || recs.find((r) => r.type)?.type || '' };
+}
