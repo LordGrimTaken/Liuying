@@ -104,6 +104,7 @@
     me().then(function (u) {
       if (!u) { location.replace('/login'); return; }
       document.getElementById('who').textContent = u.username;
+      document.getElementById('initial').textContent = u.username.charAt(0).toUpperCase();
       loading.hidden = true; card.hidden = false;
       document.title = u.username + ' | Liuying';
       document.getElementById('h').focus && document.getElementById('h').setAttribute('tabindex', '-1');

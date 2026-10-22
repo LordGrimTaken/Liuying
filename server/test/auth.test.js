@@ -22,7 +22,7 @@ test('signup/me/logout/login flow', async () => {
   const lo = await post(a, '/api/auth/logout', {});
   assert.equal(lo.status, 204);
   assert.equal((await a.get('/api/auth/me')).status, 401);
-  assert.equal((await db.query('SELECT count(*) AS c FROM sessions')).rows[0].c, '0');
+  assert.equal((await db.query('SELECT count(*) AS c FROM sessions')).rows[0].c, 0);
 
   // login with different case, display form preserved
   const li = await post(a, '/api/auth/login', { username: 'alice_01', password: GOOD.password });
@@ -56,7 +56,7 @@ test('usernames are case-insensitively unique', async () => {
 });
 
 test('invalid inputs', async () => {
-  const { agent } = await setup();
+  const { agent } = await setup({ limits: { signupIp: { limit: 1000 } } });
   const cases = [
     [{ username: 'ab', password: 'long enough pw' }, 'invalid_username'],
     [{ username: 'a'.repeat(25), password: 'long enough pw' }, 'invalid_username'],
@@ -113,8 +113,6 @@ test('cookie flags (dev and production)', async () => {
   assert.doesNotMatch(c, /Secure/i);
 
   const prod = await setup({ production: true });
-  const p = await post(prod.request().post('/api/auth/signup').set('X-Forwarded-Proto', 'https'), '/x', {}).catch(() => null);
-  void p;
   const r2 = await prod.request().post('/api/auth/signup').set('X-Forwarded-Proto', 'https')
     .set('Content-Type', 'application/json').send(JSON.stringify(GOOD));
   assert.equal(r2.status, 201);
@@ -193,7 +191,7 @@ test('sessions expire and are purged', async () => {
   clock.t += 2 * 24 * 3600 * 1000;
   assert.equal((await a.get('/api/auth/me')).status, 401);
   await new Promise((r) => setTimeout(r, 50));
-  assert.equal((await db.query('SELECT count(*) AS c FROM sessions')).rows[0].c, '0');
+  assert.equal((await db.query('SELECT count(*) AS c FROM sessions')).rows[0].c, 0);
 });
 
 test('static pages, 404s, health, headers', async () => {
