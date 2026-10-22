@@ -2,6 +2,7 @@
 build/
 local.properties
 *.apk
+!site/downloads/*.apk
 *.aab
 *.keystore
 .idea/
@@ -10,3 +11,7 @@ node_modules/
 .env
 *.log
 .kotlin/
+
+# Signing material: never commit
+*.jks
+keystore.properties

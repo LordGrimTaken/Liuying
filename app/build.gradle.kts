@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -5,6 +7,16 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
 }
+
+// Release signing: keystore.properties (default /home/claude/liuying-keys) or LIUYING_* env vars.
+// Absent both, release falls back to the debug key (installable, but not upgradable from a real release).
+val signingProps = Properties().apply {
+    val f = file(System.getenv("LIUYING_KEYSTORE_PROPERTIES") ?: "/home/claude/liuying-keys/keystore.properties")
+    if (f.isFile) f.inputStream().use { load(it) }
+}
+fun signingValue(env: String, prop: String): String? =
+    System.getenv(env)?.takeIf { it.isNotBlank() } ?: signingProps.getProperty(prop)?.takeIf { it.isNotBlank() }
+val releaseStore = signingValue("LIUYING_KEYSTORE", "storeFile")?.let { file(it) }?.takeIf { it.isFile }
 
 android {
     namespace = "com.liuying.app"
@@ -18,12 +30,25 @@ android {
         versionName = project.property("liuying.versionName") as String
     }
 
+    signingConfigs {
+        if (releaseStore != null) {
+            create("release") {
+                storeFile = releaseStore
+                storePassword = signingValue("LIUYING_KEYSTORE_PASSWORD", "storePassword")
+                keyAlias = signingValue("LIUYING_KEY_ALIAS", "keyAlias") ?: "liuying"
+                keyPassword = signingValue("LIUYING_KEY_PASSWORD", "keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
         }
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
