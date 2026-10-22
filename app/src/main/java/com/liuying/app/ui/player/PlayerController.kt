@@ -223,7 +223,9 @@ class PlayerController(private val activity: PlayerActivity, initialRequest: Pla
             .build()
         speed = s.defaultSpeed
         player.playbackParameters = PlaybackParameters(s.defaultSpeed)
-        session = MediaSession.Builder(activity, player).setId("liuying-player-${System.nanoTime()}").build()
+        session = MediaSession.Builder(activity, player).setId("liuying-player-${System.nanoTime()}")
+            .also { b -> PlayerService.sessionActivity(ctx)?.let { b.setSessionActivity(it) } }.build()
+        PlayerSessionHub.publish(ctx, session) // QA #41: background audio + media notification
     }
 
     // ---- lifecycle ----
@@ -274,6 +276,7 @@ class PlayerController(private val activity: PlayerActivity, initialRequest: Pla
         switchJob?.cancel()
         reportFinal()
         activity.window.attributes = activity.window.attributes.also { it.screenBrightness = originalBrightness }
+        PlayerSessionHub.clear(activity.applicationContext, session)
         session.release()
         player.release()
     }
@@ -342,13 +345,14 @@ class PlayerController(private val activity: PlayerActivity, initialRequest: Pla
                     if (phase == UiPhase.LOADING || phase == UiPhase.RECONNECTING) phase = UiPhase.READY
                     hasPlayed = true
                 }
-                Player.STATE_ENDED -> onEnded()
+                Player.STATE_ENDED -> { PlayerSessionHub.stop(activity.applicationContext); onEnded() }
             }
             sync()
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             this@PlayerController.isPlaying = isPlaying
+            if (isPlaying) onFirstPlayback?.let { onFirstPlayback = null; it() }
             if (!isPlaying && hasPlayed) maybeReport(force = true)
         }
 
@@ -980,6 +984,16 @@ class PlayerController(private val activity: PlayerActivity, initialRequest: Pla
         val reporter = PlayerDependencies.progressReporter
         val r = request
         PlayerDependencies.enqueueReport { reporter.report(r.mediaId, r.episodeId, pos, dur) }
+    }
+
+    /** Called once when audio first plays; the activity uses it to ask for notification permission. */
+    var onFirstPlayback: (() -> Unit)? = null
+
+    /** Background audio: drop the video track while the window is not visible so only audio decodes. */
+    fun setVideoSuspended(suspended: Boolean) {
+        if (released) return
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, suspended).build()
     }
 
     fun onBackgrounded() { maybeReport(force = true) }

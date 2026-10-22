@@ -25,7 +25,7 @@ import java.io.IOException
  * Settings on DataStore. Every value is saved instantly; missing keys fall back to the spec-07 defaults, which is
  * also what makes upgrades from older schema versions lossless (new keys simply read their defaults).
  */
-class SettingsRepository(private val store: DataStore<Preferences>) {
+class SettingsRepository(private val store: DataStore<Preferences>, private val secrets: SecretCodec? = null) {
 
     val settings: Flow<AppSettings> = store.data
         .catch { if (it is IOException) emit(androidx.datastore.preferences.core.emptyPreferences()) else throw it }
@@ -46,6 +46,21 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
     suspend fun updateSynced(vararg keys: String, transform: (AppSettings) -> AppSettings) =
         update { transform(it).let { n -> n.copy(syncDirtyKeys = n.syncDirtyKeys + keys) } }
 
+    /** QA #40: move a pre-encryption plain API key into the Keystore-sealed key and delete the plain copy. Safe to repeat. */
+    suspend fun migrateSecrets() {
+        val codec = secrets ?: return
+        runCatching {
+            store.edit { p ->
+                val plain = p[K.apiKey] ?: return@edit
+                if (p[K.apiKeyEnc] == null && plain.isNotBlank()) {
+                    val sealed = ApiKeyStorage.sealForWrite(plain, codec) ?: return@edit // keep plain until sealing works
+                    p[K.apiKeyEnc] = sealed
+                }
+                p.remove(K.apiKey)
+            }
+        }
+    }
+
     /** Back to defaults (does not touch sources, library or progress). */
     suspend fun resetToDefaults() {
         store.edit { it.clear() }
@@ -54,6 +69,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
     // ------------------------------------------------------------------------------ mapping
 
     private object K {
+        val apiKeyEnc = stringPreferencesKey("metadata_api_key_enc")
         val theme = stringPreferencesKey("theme")
         val accent = stringPreferencesKey("accent")
         val fontScale = stringPreferencesKey("font_scale")
@@ -224,7 +240,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             trailerEnabled = p[K.trailer] ?: d.trailerEnabled,
             trailerAutoplayHero = p[K.trailerAuto] ?: d.trailerAutoplayHero,
             spoilerProtection = p[K.spoiler] ?: d.spoilerProtection,
-            metadataApiKey = p[K.apiKey] ?: d.metadataApiKey,
+            metadataApiKey = if (p[K.apiKeyEnc] == null && p[K.apiKey] == null) d.metadataApiKey else ApiKeyStorage.read(p[K.apiKeyEnc], p[K.apiKey], secrets),
             saveWatchHistory = p[K.history] ?: d.saveWatchHistory,
             librarySort = p.enum(K.libSort, d.librarySort),
             libraryView = p.enum(K.libView, d.libraryView),
@@ -238,6 +254,14 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
 
     private fun <T> androidx.datastore.preferences.core.MutablePreferences.putOrRemove(key: Preferences.Key<T>, v: T?) {
         if (v == null) remove(key) else this[key] = v
+    }
+
+    private fun writeApiKey(p: androidx.datastore.preferences.core.MutablePreferences, value: String) {
+        val codec = secrets
+        if (codec == null) { p[K.apiKey] = value; return } // no Keystore (unit tests)
+        p.remove(K.apiKey)
+        val sealed = ApiKeyStorage.sealForWrite(value, codec)
+        if (sealed != null) p[K.apiKeyEnc] = sealed else p.remove(K.apiKeyEnc)
     }
 
     internal fun write(p: androidx.datastore.preferences.core.MutablePreferences, s: AppSettings) {
@@ -315,7 +339,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         p[K.trailer] = s.trailerEnabled
         p[K.trailerAuto] = s.trailerAutoplayHero
         p[K.spoiler] = s.spoilerProtection
-        p[K.apiKey] = s.metadataApiKey
+        writeApiKey(p, s.metadataApiKey)
         p[K.history] = s.saveWatchHistory
         p[K.libSort] = s.librarySort.name
         p[K.libView] = s.libraryView.name

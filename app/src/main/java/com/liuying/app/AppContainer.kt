@@ -48,7 +48,7 @@ class AppContainer(private val app: Application) {
         corruptionHandler = androidx.datastore.core.handlers.ReplaceFileCorruptionHandler { androidx.datastore.preferences.core.emptyPreferences() },
         scope = scope,
     ) { app.preferencesDataStoreFile("settings") }
-    val settings = SettingsRepository(settingsStore)
+    val settings = SettingsRepository(settingsStore, com.liuying.app.data.settings.SecretCodec(com.liuying.app.data.settings.KeystoreBox()))
 
     @Volatile private var timeoutScale = 1.0
     val http = AddonClient.createHttpClient(app.cacheDir.resolve("addon-http"))
@@ -106,6 +106,7 @@ class AppContainer(private val app: Application) {
     @Volatile private var playerSettings = PlayerSettings()
 
     fun start() {
+        scope.launch { settings.migrateSecrets() }
         PlayerDependencies.progressReporter = progress
         PlayerDependencies.httpClient = playerHttp
         PlayerDependencies.gateway = com.liuying.app.ui.details.AppPlaybackGateway(this)

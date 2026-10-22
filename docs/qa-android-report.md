@@ -47,8 +47,8 @@ Severity: H wrong/lost data or crash in a normal flow, M edge-case crash/wrong b
 | 37 | M | manifest | `allowBackup` with the Room DB: meta cache is backed up (size). | Exclude `liuying.db` meta or whole DB if sources contain tokens. | yes (Room DB excluded from both backup rules) |
 | 38 | L | manifest | Cleartext allowed globally (by design, warned at add time). | Per-host config impossible for LAN; keep. | accepted |
 | 39 | L | build | R8 off: APK larger, no obfuscation of embedded strings. | By choice (0.3.0 regression). | accepted |
-| 40 | M | Settings | `metadataApiKey` in plain DataStore (excluded from backup). | Keystore wrapper. | open (earlier audit) |
-| 41 | M | Player | No foreground service/notification for background audio; no `POST_NOTIFICATIONS`. | Media3 session service. | open (earlier audit) |
+| 40 | M | Settings | `metadataApiKey` in plain DataStore (excluded from backup). | Keystore wrapper. | fixed: key stored as AES-GCM (Android Keystore, `KeystoreBox`/`SecretCodec`); plain copy migrated at startup and deleted; undecryptable = unset. Device-unverified. |
+| 41 | M | Player | No foreground service/notification for background audio; no `POST_NOTIFICATIONS`. | Media3 session service. | fixed: `PlayerService` (MediaSessionService, mediaPlayback) keeps audio playing when the player is backgrounded, with media notification; POST_NOTIFICATIONS asked once at first playback (Android 13+), denial degrades to no drawer notification; service stops on end/close/task removal. Device-unverified. |
 | 42 | L | Details | Episode rows and stream rows have no combined content description. | Merge semantics. | yes |
 | 43 | L | Today | "Continue watching" section header has no list key. | Key it. | yes |
 | 44 | L | Calendar | Section header for "Hide watched" chip (other agent) lacks accessible state. | Add `selected`. | yes (InkChip already exposes selected) |
@@ -62,7 +62,7 @@ Severity: H wrong/lost data or crash in a normal flow, M edge-case crash/wrong b
 | 52 | L | Main-thread IO | No `runBlocking`, no `allowMainThreadQueries`; all DAOs suspend/Flow; SharedPreferences reads only for session/update. | none | ok |
 | 53 | L | Crash risks | Remaining `!!` are guarded (`ui.meta!!` behind a null check, `item.url!!` behind a kind check, `dao.getById(..)!!` inside a catching transaction). | none | ok |
 
-Counts: 53 findings. Open after the second pass: #40 (Keystore wrapper for metadataApiKey) and #41 (foreground media service); #34 is partly fixed (server accepts ASCII usernames only). All other rows 21-44 fixed.
+Counts: 53 findings. Open after the second pass: none except #34 (#40 and #41 now fixed); #34 is partly fixed (server accepts ASCII usernames only). All other rows 21-44 fixed.
 
 ## Critique (visual design, against docs/design-reference.md)
 

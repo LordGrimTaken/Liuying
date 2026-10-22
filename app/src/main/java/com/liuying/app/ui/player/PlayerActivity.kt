@@ -48,6 +48,7 @@ class PlayerActivity : ComponentActivity() {
 
         val c = PlayerController(this, request)
         controller = c
+        c.onFirstPlayback = { maybeRequestNotificationPermission() }
         c.start()
         val container = (application as com.liuying.app.LiuyingApplication).container
         setContent {
@@ -56,6 +57,18 @@ class PlayerActivity : ComponentActivity() {
             LiuyingTheme(com.liuying.app.ui.theme.Accent.choice.key, appSettings.fontScale) { PlayerScreen(c, onClose = { onPlayerFinished(PlayerExit.Closed) }) }
         }
         if (Build.VERSION.SDK_INT >= 26) registerPipReceiver()
+    }
+
+    private val notificationPermission = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { /* denied: audio still plays, just no drawer notification */ }
+
+    private fun maybeRequestNotificationPermission() {
+        val prefs = getSharedPreferences("liuying_player_prefs", MODE_PRIVATE)
+        val granted = Build.VERSION.SDK_INT < 33 ||
+            androidx.core.content.ContextCompat.checkSelfPermission(this, "android.permission.POST_NOTIFICATIONS") == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (com.liuying.app.ui.player.logic.BackgroundAudio.shouldRequestNotificationPermission(Build.VERSION.SDK_INT, granted, prefs.getBoolean("asked_notifications", false))) {
+            prefs.edit().putBoolean("asked_notifications", true).apply()
+            runCatching { notificationPermission.launch("android.permission.POST_NOTIFICATIONS") }
+        }
     }
 
     private fun hideSystemBars() {
@@ -71,15 +84,22 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        controller?.setVideoSuspended(false)
         if (resumeOnStart) { controller?.play(); resumeOnStart = false }
     }
 
     override fun onStop() {
         super.onStop()
         val c = controller ?: return
-        resumeOnStart = c.isPlaying && !finishing
         c.onBackgrounded()
-        c.pause()
+        // QA #41: keep audio going (PlayerService shows the notification); only pause what was not playing anyway
+        if (com.liuying.app.ui.player.logic.BackgroundAudio.keepPlayingOnStop(c.isPlaying, finishing || isFinishing)) {
+            resumeOnStart = false
+            c.setVideoSuspended(true)
+        } else {
+            resumeOnStart = c.isPlaying && !finishing
+            c.pause()
+        }
     }
 
     override fun onUserLeaveHint() {
