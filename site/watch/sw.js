@@ -1,13 +1,16 @@
 /* Liuying web player service worker. Served at /watch/sw.js, scope /watch/.
  *
- * UPDATING: the app shell is precached under a versioned cache name. Whenever ANY file listed in
- * SHELL below changes (or a file is added/removed), bump VERSION. A new VERSION makes the browser
- * see a changed sw.js, install it (re-downloading every shell file into a fresh cache), and delete
- * the old caches on activate. `npm test` in site/watch (test/sw.test.mjs) fails if SHELL and the
- * files on disk disagree, so a forgotten entry is caught. Between bumps, shell assets are served
- * stale-while-revalidate, so edits that forgot the bump still arrive on the next load.
+ * UPDATING: the app shell is precached in a versioned cache. Whenever ANY shell file changes (or one
+ * is added/removed), bump VERSION below and refresh the hash line. A changed sw.js makes the browser
+ * install the new worker, which re-downloads every SHELL file into a fresh cache and deletes the old
+ * caches on activate; open pages are told to reload via a toast. test/sw.test.mjs
+ * (`node --test test/*.test.mjs`) fails if SHELL disagrees with the files on disk, or if shell
+ * content changed without the hash being updated (the failure prints the new hash).
+ * Between bumps, shell assets are served stale-while-revalidate, so an edit that forgot the bump
+ * still arrives on the next load.
+ * shell-hash: a3b72ef5e27f
  *
- * NEVER cached: /api/*, addon manifests/catalogs/streams, subtitles, posters and media (all cross-origin
+ * NEVER cached: /api/*, addon manifests/catalogs/streams, subtitles, posters and media (cross-origin
  * or non-shell). Only same-origin GETs under /watch/ and the hls vendor file are handled here.
  */
 const VERSION = 'v1';

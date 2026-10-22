@@ -31,7 +31,7 @@ export function details({ params, query }) {
 
   function current() {
     const hint = titleHint(id, { meta, library: store.library(), progress: store.allProgress() });
-    return { ...hint, ...(meta || {}), id, type: meta?.type || hint.type || type };
+    return { ...(meta || {}), id, type: meta?.type || type, name: hint.name, poster: hint.poster };
   }
 
   async function fetchIt() {
