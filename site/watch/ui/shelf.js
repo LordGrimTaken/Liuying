@@ -1,6 +1,6 @@
 import { h, icon, clear } from './dom.js';
 import * as store from '../store.js';
-import { posterCard, emptyState, artImg, titleHref, itemMenu } from './components.js';
+import { posterCard, emptyState, emptyPage, artImg, titleHref, itemMenu } from './components.js';
 import { renderContinueRow } from './continue.js';
 import { isInProgress, ratioOf } from '../progress.js';
 import { debounce, yearOf } from '../util.js';
@@ -56,7 +56,8 @@ export function shelf() {
     }[sort];
     items.sort(cmp);
     clear(out);
-    if (!lib.length) { out.append(emptyState('Your shelf is empty', 'Use the bookmark button on any title to keep it here, even if a source goes away.', h('a', { class: 'btn pri', href: '#/', text: 'Go to Today' }))); return; }
+    tb.hidden = typeChips.hidden = !lib.length;
+    if (!lib.length) { out.append(emptyPage('list', 'Your shelf is empty', 'Add movies and series to your shelf with the + button. They stay here even if a source goes away.', h('a', { class: 'btn pri', href: '#/', text: 'Browse titles' }))); return; }
     if (!items.length) { out.append(emptyState('Nothing matches', 'Try clearing the filters.', h('button', { class: 'btn', type: 'button', text: 'Clear filters', onClick: () => { text = ''; search.value = ''; type = 'all'; filter = 'all'; draw(); } }))); return; }
     if (mode === 'grid') out.append(h('div', { class: 'grid', role: 'list' }, items.map(({ i }) => { const c = posterCard(i); c.setAttribute('role', 'listitem'); return c; })));
     else out.append(h('div', { class: 'list', role: 'list' }, items.map(({ i, st }) => h('a', { class: 'lrow', href: titleHref(i), role: 'listitem' },

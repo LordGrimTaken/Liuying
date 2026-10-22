@@ -90,6 +90,7 @@ export function settings() {
         toggle('Bold', null, 'subBold'),
         range('Height from bottom', null, 'subOffset', 0, 40, 1, (v) => `${v}%`)),
       group('Sources and content',
+        row('Manage sources', 'Add, enable, reorder or remove your sources.', h('a', { class: 'btn sm', href: '#/sources', text: 'Open sources' })),
         toggle('Patient mode', 'Waits longer for slow sources before giving up.', 'patient', applyTimeoutSetting),
         row('Insecure HTTP sources', 'Not available on the web player. Browsers block them on a secure page.', h('span', { class: 'badge', text: 'Blocked' })),
         row('Manage sources', null, h('a', { class: 'btn sm', href: '#/sources', text: 'Open sources' }))),

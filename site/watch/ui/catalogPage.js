@@ -88,11 +88,13 @@ function catalogPage(type, { query = {} } = {}) {
     tabsBox.querySelector('[aria-selected="true"]')?.focus();
   });
 
-  let gen = 0, heroDone = false;
+  let gen = 0, heroDone = false, pending = 0;
+  const settle = () => { if (--pending <= 0 && !heroDone && !heroBox.querySelector('.hero')) clear(heroBox); };
   function buildRows() {
     gen++;
     const mine = gen;
     clear(rowsBox);
+    pending = 0;
     const list = (genre ? cats.filter((c) => c.caps.genre && c.caps.genreOptions.includes(genre)) : cats).slice(0, MAX_ROWS);
     if (!list.length) { rowsBox.append(emptyPage(info.icon, 'Nothing here yet', `No catalog offers ${genre}.`)); return; }
     for (const { src, cat, caps } of list) {
@@ -102,13 +104,14 @@ function catalogPage(type, { query = {} } = {}) {
       rowsBox.append(sec.el);
       load();
       async function load(bypass = false) {
+        pending++;
         showSkeletons(sec.scroller);
         try {
           const items = await fetchRow(src, cat, extra, { bypass, signal: ctl.signal });
           if (ctl.signal.aborted || mine !== gen) return;
           clear(sec.scroller);
           sec.scroller.className = 'scroller';
-          if (!items.length) { sec.el.hidden = true; return; }
+          if (!items.length) { sec.el.hidden = true; settle(); return; }
           for (const it of items.slice(0, 30)) { const c = posterCard(it, { srcId: store.sourceId(src) }); c.setAttribute('role', 'listitem'); sec.scroller.append(c); }
           if (!heroDone) {
             heroDone = true;
@@ -116,11 +119,12 @@ function catalogPage(type, { query = {} } = {}) {
             if (feat.length) heroCtl = renderHero(heroBox, feat, { srcId: store.sourceId(src) }); else clear(heroBox);
           }
           restoreScroll();
+          settle();
         } catch (e) {
           if (ctl.signal.aborted || mine !== gen) return;
           sec.scroller.classList.remove('scroller');
           sec.scroller.replaceChildren(errorCard(`Couldn't load ${cat.name || cat.id}`, `${src.manifest.name}: ${describeError(e)}`, () => { sec.scroller.className = 'scroller'; load(true); }));
-          if (!heroDone && !heroBox.querySelector('.hero')) clear(heroBox);
+          settle();
         }
       }
     }
