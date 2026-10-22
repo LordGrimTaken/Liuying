@@ -17,7 +17,7 @@ const KEYS = ['sources', 'library', 'progress', 'settings', 'meta', 'recent', 's
 
 const state = {
   sources: [], library: [], progress: {}, settings: { ...DEFAULT_SETTINGS }, meta: {}, recent: [],
-  sync: { sources: false, settings: false, libAdd: {}, libRemove: [], progress: {}, pulledAt: 0 },
+  sync: { sources: false, settings: false, libAdd: {}, libRemove: [], progress: {}, pulledAt: 0, libSynced: [] },
   prefs: { lastStream: {}, subLang: {}, dismissedBanner: false },
 };
 let db = null;
@@ -224,7 +224,7 @@ export function patchSync(fn) { fn(state.sync); touch('sync'); }
 export async function resetAll() {
   for (const k of KEYS) {
     if (k === 'settings') state.settings = { ...DEFAULT_SETTINGS };
-    else if (k === 'sync') state.sync = { sources: false, settings: false, libAdd: {}, libRemove: [], progress: {}, pulledAt: 0 };
+    else if (k === 'sync') state.sync = { sources: false, settings: false, libAdd: {}, libRemove: [], progress: {}, pulledAt: 0, libSynced: [] };
     else if (k === 'prefs') state.prefs = { lastStream: {}, subLang: {}, dismissedBanner: false };
     else state[k] = Array.isArray(state[k]) ? [] : {};
     dirtyKeys.add(k);

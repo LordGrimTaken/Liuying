@@ -58,14 +58,21 @@ export async function pull() {
   try {
     const st = await api('GET', '/api/sync/state');
     const sync = store.syncState();
+    const fingerprint = () => JSON.stringify([store.sources(), store.library().map((i) => i.id), store.allProgress().map((r) => [r.mediaId, r.episodeId, r.updatedAt]), store.settings()]);
+    const before = fingerprint();
     // sources
     const remoteSources = Array.isArray(st.sources) ? st.sources : [];
     store.setSources(mergeSources(store.sources(), remoteSources, sync.sources), { fromSync: true });
     // library
     const remoteLib = (Array.isArray(st.library) ? st.library : []).map((i) => ({ ...i, addedAt: toMs(i.addedAt) }));
-    const lib = mergeLibrary(store.library(), remoteLib, new Set(sync.libRemove));
+    // Items this device already synced that the server no longer has were removed elsewhere: drop them here
+    // (unless re-added locally and not yet pushed). First sync has no history, so it is a plain union.
+    const known = new Set(sync.libSynced || []);
+    const remoteIds = new Set(remoteLib.map((i) => i.id));
+    const localLib = store.library().filter((i) => !(known.has(i.id) && !remoteIds.has(i.id) && !(i.id in sync.libAdd)));
+    const lib = mergeLibrary(localLib, remoteLib, new Set(sync.libRemove));
     store.setLibrary(lib.merged);
-    store.patchSync((s) => { for (const it of lib.toAdd) s.libAdd[it.id] = it; });
+    store.patchSync((s) => { for (const it of lib.toAdd) s.libAdd[it.id] = it; s.libSynced = [...remoteIds]; });
     // progress
     const remoteProg = (Array.isArray(st.progress) ? st.progress : []).map((r) => ({ ...r, episodeId: r.episodeId || null, updatedAt: toMs(r.updatedAt) }));
     const pr = mergeProgress(store.allProgress(), remoteProg);
@@ -77,7 +84,7 @@ export async function pull() {
     }
     store.patchSync((s) => { s.pulledAt = Date.now(); });
     status.state = 'idle'; status.lastSync = Date.now(); status.error = ''; failures = 0; emit();
-    hooks.onRemoteChange();
+    if (fingerprint() !== before) hooks.onRemoteChange();
     schedulePush.flush();
   } catch (e) { handleFailure(e); }
 }
@@ -122,6 +129,12 @@ export async function push() {
         add: adds.map((i) => ({ id: i.id, type: i.type, name: i.name, poster: i.poster || null })),
         remove: rest.libRemove,
       });
+      store.patchSync((x) => {
+        const set = new Set(x.libSynced || []);
+        for (const i of adds) set.add(i.id);
+        for (const id of rest.libRemove) set.delete(id);
+        x.libSynced = [...set];
+      });
       rest.libAdd = {}; rest.libRemove = [];
     }
     const keys = Object.keys(rest.progress);
@@ -154,6 +167,17 @@ export async function deleteRemoteAll() {
 export function start() {
   store.subscribe((key) => { if (key === 'sync' && status.user) schedulePush(); });
   addEventListener('online', () => { if (status.user) { failures = 0; hasPending() ? push() : pull(); } });
+  // Pick up changes made on other devices: when the tab becomes visible again and every few minutes.
+  let lastPull = Date.now();
+  const refresh = () => {
+    if (!status.user || pushing || hasPending() || document.visibilityState === 'hidden') return;
+    if (document.body.classList.contains('playing')) return; // a re-render would interrupt playback
+    if (Date.now() - lastPull < 30000) return;
+    lastPull = Date.now();
+    pull();
+  };
+  document.addEventListener('visibilitychange', refresh);
+  setInterval(refresh, 120000);
   addEventListener('pagehide', () => { if (status.user && hasPending()) pushBeacon(); });
 }
 
