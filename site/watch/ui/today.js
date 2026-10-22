@@ -123,7 +123,7 @@ export function today() {
         c.setAttribute('role', 'listitem');
         sec.scroller.append(c);
       }
-      if (isHero) { const feat = store.settings().hero ? pickFeatured(items, 5) : []; if (feat.length) heroCtl = renderHero(heroBox, feat, { srcId: store.sourceId(r.src) }); else clear(heroBox); }
+      if (isHero) { const feat = store.settings().hero ? pickFeatured(items, 5) : []; heroCtl?.destroy(); heroCtl = null; if (feat.length) heroCtl = renderHero(heroBox, feat, { srcId: store.sourceId(r.src) }); else clear(heroBox); }
       restoreScroll();
     }
   }
