@@ -71,6 +71,10 @@ class AppContainer(private val app: Application) {
         })
     }
 
+    val updates by lazy {
+        com.liuying.app.data.update.UpdateController(app, com.liuying.app.data.update.Updater(http), scope, autoEnabled = { settings.current().autoUpdateCheck })
+    }
+
     private val session = PrefsSessionStore(app.getSharedPreferences("liuying_account", 0))
     val accountApi = AccountApi(http, session)
     val sync by lazy { SyncManager(accountApi, session, library, progress, sources, settings, scope) }
@@ -107,5 +111,6 @@ class AppContainer(private val app: Application) {
         }
         scope.launch { runCatching { sources.refreshStale() } }
         sync.start()
+        updates.checkOnStart()
     }
 }

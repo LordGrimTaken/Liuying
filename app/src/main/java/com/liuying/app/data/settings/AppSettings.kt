@@ -96,6 +96,8 @@ data class AppSettings(
     val recentSearchesEnabled: Boolean = true,
     // Scraper plugins: global off switch (default off)
     val pluginsEnabled: Boolean = false,
+    // Updates
+    val autoUpdateCheck: Boolean = true,
     // Storage
     val imageCacheLimitMb: Int = 512,
     val schemaVersion: Int = CURRENT_SCHEMA,

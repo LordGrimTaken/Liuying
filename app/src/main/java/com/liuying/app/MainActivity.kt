@@ -23,7 +23,9 @@ class MainActivity : ComponentActivity() {
         val container = (application as LiuyingApplication).container
         setContent {
             LiuyingTheme {
-                CompositionLocalProvider(LocalContainer provides container) { LiuyingApp() }
+                CompositionLocalProvider(LocalContainer provides container) { LiuyingApp()
+                    com.liuying.app.ui.update.UpdateDialog(container.updates)
+                }
             }
         }
     }

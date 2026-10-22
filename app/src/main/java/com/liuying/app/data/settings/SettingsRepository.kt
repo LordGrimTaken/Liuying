@@ -108,6 +108,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         val libView = stringPreferencesKey("library_view")
         val recent = booleanPreferencesKey("recent_searches_enabled")
         val plugins = booleanPreferencesKey("plugins_enabled")
+        val autoUpdate = booleanPreferencesKey("auto_update_check")
         val imgCache = intPreferencesKey("image_cache_limit_mb")
         val schema = intPreferencesKey("schema_version")
     }
@@ -186,6 +187,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             libraryView = p.enum(K.libView, d.libraryView),
             recentSearchesEnabled = p[K.recent] ?: d.recentSearchesEnabled,
             pluginsEnabled = p[K.plugins] ?: d.pluginsEnabled,
+            autoUpdateCheck = p[K.autoUpdate] ?: d.autoUpdateCheck,
             imageCacheLimitMb = p[K.imgCache] ?: d.imageCacheLimitMb,
             schemaVersion = p[K.schema] ?: AppSettings.CURRENT_SCHEMA,
         )
@@ -261,6 +263,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         p[K.libView] = s.libraryView.name
         p[K.recent] = s.recentSearchesEnabled
         p[K.plugins] = s.pluginsEnabled
+        p[K.autoUpdate] = s.autoUpdateCheck
         p[K.imgCache] = s.imageCacheLimitMb
         p[K.schema] = AppSettings.CURRENT_SCHEMA
     }

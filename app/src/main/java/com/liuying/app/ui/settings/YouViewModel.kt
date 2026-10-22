@@ -140,5 +140,8 @@ class YouViewModel(private val c: AppContainer) : ViewModel() {
         }
     }
     fun setPluginEnabled(repoId: Long, pluginId: String, on: Boolean) { viewModelScope.launch { c.plugins.setEnabled(repoId, pluginId, on) } }
+    val updates = c.updates
+    val updateState: StateFlow<com.liuying.app.data.update.UpdateState> = c.updates.state
+    fun checkForUpdates() = c.updates.checkNow()
     fun clearMessage() { message.value = null }
 }

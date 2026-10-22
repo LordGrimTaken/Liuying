@@ -61,6 +61,7 @@ import com.liuying.app.ui.theme.InkSurface
 import com.liuying.app.ui.theme.Paper
 import com.liuying.app.ui.theme.PaperMuted
 import com.liuying.app.ui.theme.Vermilion
+import com.liuying.app.data.update.UpdateState
 import java.text.DateFormat
 import java.util.Date
 
@@ -74,6 +75,7 @@ fun YouScreen(navigator: Navigator) {
     val add by vm.add.collectAsStateWithLifecycle()
     val form by vm.form.collectAsStateWithLifecycle()
     val repoAdd by vm.repoAdd.collectAsStateWithLifecycle()
+    val updateState by vm.updateState.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var removing by remember { mutableStateOf<Source?>(null) }
@@ -235,10 +237,14 @@ fun YouScreen(navigator: Navigator) {
         }
 
         item { SectionHeader("About") }
+        item { ToggleRow("Check for updates automatically", "Looks at liuyingapp.com at most every 6 hours", settings.autoUpdateCheck) { v -> vm.update { it.copy(autoUpdateCheck = v) } } }
         item {
             Column(Modifier.padding(horizontal = 20.dp)) {
                 Text("Liuying", color = Paper, style = MaterialTheme.typography.bodyLarge)
                 Text("An independent player for sources you add yourself. It hosts no content.", color = PaperMuted, style = MaterialTheme.typography.bodyMedium)
+                Text("Version ${vm.updates.installedVersionName} (${vm.updates.installedVersionCode})", color = PaperMuted, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 6.dp))
+                Text(updateLine(updateState), color = if (updateState is UpdateState.Failed) Vermilion else PaperMuted, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 2.dp))
+                InkTextButton("Check for updates", vm::checkForUpdates, color = if (updateState is UpdateState.Checking || updateState is UpdateState.Downloading) PaperMuted else Gold)
                 InkTextButton("Reset all settings", { confirmReset = true }, color = Vermilion)
             }
         }
@@ -280,6 +286,16 @@ private fun ConfirmDialog(title: String, text: String, action: String, onDismiss
         confirmButton = { InkTextButton(action, onConfirm, color = Vermilion) },
         dismissButton = { InkTextButton("Cancel", onDismiss, color = PaperMuted) },
     )
+}
+
+private fun updateLine(s: UpdateState): String = when (s) {
+    UpdateState.Idle -> "Updates come from liuyingapp.com."
+    UpdateState.Checking -> "Checking…"
+    UpdateState.UpToDate -> "You have the latest version."
+    is UpdateState.Available -> "Version ${s.manifest.versionName} is available."
+    is UpdateState.Downloading -> "Downloading ${s.manifest.versionName}…"
+    is UpdateState.Ready -> "Version ${s.manifest.versionName} is downloaded."
+    is UpdateState.Failed -> s.message
 }
 
 private fun syncLine(s: SyncStatus): String = when (s) {
