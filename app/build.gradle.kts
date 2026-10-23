@@ -106,6 +106,7 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
     implementation(libs.androidx.datastore.preferences)
+    implementation(libs.quickjs)
 
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
@@ -117,6 +118,7 @@ dependencies {
     implementation(libs.androidx.media3.datasource.okhttp)
 
     testImplementation(libs.junit)
+    testImplementation(libs.quickjs.jvm) // desktop build of the same engine, so fixture plugins run in unit tests
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.mockwebserver)
     testImplementation(libs.robolectric)

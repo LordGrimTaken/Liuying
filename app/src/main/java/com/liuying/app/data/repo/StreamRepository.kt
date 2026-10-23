@@ -66,6 +66,7 @@ data class StreamsResult(val groups: List<SourceStreams>, val pending: Int) {
 class StreamRepository(
     private val sources: SourceProvider,
     private val client: AddonClient,
+    private val pluginHost: PluginStreamHost? = null,
 ) {
     private val sessionStamp = HashMap<String, Long>()
 
@@ -83,7 +84,8 @@ class StreamRepository(
      * sources); [force] re-queries all. Grouping order = user source order; unhealthy sources are queried last.
      */
     fun streams(type: String, videoId: String, force: Boolean = false): Flow<StreamsResult> = channelFlow {
-        val cands = candidates(sources.sources.first(), type, videoId)
+        // a plugin lookup can never break the addon list
+        val cands = candidates(sources.sources.first(), type, videoId) + (runCatching { pluginHost?.sources(type, videoId) }.getOrNull().orEmpty())
         val cacheKey = "$type|$videoId"
         val cache = synchronized(session) {
             val nowMs = System.currentTimeMillis()
@@ -103,10 +105,11 @@ class StreamRepository(
         )
         mutex.withLock { publish() }
         val toQuery = cands.filter { states[it.id] is SourceStreamsState.Loading }
-            .sortedBy { if (client.health.isUnhealthy(it.baseUrl)) 1 else 0 }
+            .sortedBy { if (!it.isPlugin && client.health.isUnhealthy(it.baseUrl)) 1 else 0 }
         coroutineScope {
             for (s in toQuery) launch {
-                val r = client.streams(s.baseUrl, type, videoId, force)
+                val r = if (s.isPlugin) pluginHost!!.run(s, type, videoId).map { list -> com.liuying.app.domain.model.StreamResponse(list) }
+                else client.streams(s.baseUrl, type, videoId, force)
                 val st: SourceStreamsState = r.fold(
                     onSuccess = { resp ->
                         val items = resp.streams.mapIndexed { i, st -> toItem(s, st, i) }

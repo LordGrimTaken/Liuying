@@ -21,7 +21,11 @@ import com.liuying.app.data.settings.SettingsRepository
 import com.liuying.app.data.settings.TimeoutProfile
 import com.liuying.app.data.sync.SyncManager
 import com.liuying.app.domain.model.MetaPreview
-import com.liuying.app.domain.plugins.NoopPluginRunner
+import com.liuying.app.data.plugins.PluginHttp
+import com.liuying.app.data.plugins.PluginScripts
+import com.liuying.app.data.plugins.QuickJsPluginRunner
+import com.liuying.app.data.plugins.TmdbResolver
+import com.liuying.app.data.repo.PluginStreams
 import com.liuying.app.domain.plugins.PluginRunner
 import com.liuying.app.ui.player.PlayerDependencies
 import com.liuying.app.domain.model.PlaybackRef
@@ -63,12 +67,21 @@ class AppContainer(private val app: Application) {
     val sources by lazy { SourceRepository(db, db.sourceDao(), addonClient) }
     val catalogs by lazy { CatalogRepository(sources, addonClient, settings.settings, RowSnapshots(app.cacheDir.resolve("rows"))) }
     val metas by lazy { MetaRepository(sources, addonClient, RoomMetaStore(db.metaCacheDao())) }
-    val streams by lazy { StreamRepository(sources, addonClient) }
+    val streams by lazy { StreamRepository(sources, addonClient, pluginStreams) }
     val library by lazy { LibraryRepository(db.libraryDao()) }
     val progress by lazy { ProgressRepository(db.progressDao(), settings) }
     val recentSearches get() = db.recentSearchDao()
 
-    val pluginRunner: PluginRunner = NoopPluginRunner
+    /** Sandboxed plugin runner: its own HTTP client (no cookies, no cache, private addresses refused) and a fresh JS engine per run. */
+    private val pluginHttp by lazy { PluginHttp("Liuying/${app.packageManager.getPackageInfo(app.packageName, 0).versionName.orEmpty().ifBlank { "0" }} (Android)") }
+    val pluginRunner: PluginRunner by lazy {
+        val scripts = PluginScripts(pluginHttp)
+        QuickJsPluginRunner(pluginHttp, loadScript = { scripts.load(it) })
+    }
+    val pluginStreams by lazy {
+        PluginStreams(plugins, pluginRunner, masterSwitch = { settings.current().pluginsEnabled },
+            tmdb = TmdbResolver(http, apiKey = { settings.current().metadataApiKey }))
+    }
     val plugins by lazy {
         PluginRepository(db.pluginDao(), fetch = { url ->
             kotlinx.coroutines.withContext(Dispatchers.IO) {

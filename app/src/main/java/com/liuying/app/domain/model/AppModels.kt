@@ -14,6 +14,8 @@ data class Source(
     val lastError: String? = null,
     val lastErrorAt: Long? = null,
     val nameOverride: String? = null,
+    /** A synthetic source for a sandboxed plugin (never stored; negative id). */
+    val isPlugin: Boolean = false,
 ) {
     val displayName: String get() = nameOverride?.takeIf { it.isNotBlank() } ?: manifest.name.ifBlank { host }
     val baseUrl: String get() = AddonUrls.baseUrl(manifestUrl)

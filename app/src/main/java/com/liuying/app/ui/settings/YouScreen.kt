@@ -184,10 +184,11 @@ fun YouScreen(navigator: Navigator) {
         item(key = "repos") {
             SettingsSection(
                 "Repositories", YouLogic.reposSummary(repos.size, pluginCount, enabledPlugins), sections.isOpen("repos"), { sections.toggle("repos") },
-                badge = { Badge("Not yet runnable") },
+                badge = { Badge(if (settings.pluginsEnabled) "Running on" else "Off") },
             ) {
+                val pluginTests by vm.pluginTests.collectAsStateWithLifecycle()
                 RepositoriesContent(
-                    repos, settings, repoAdd, vm,
+                    repos, settings, repoAdd, vm, pluginTests,
                     onRemove = { removingRepo = it },
                     onEnable = { r, id -> if (r.consented) vm.setPluginEnabled(r.id, id, true) else consenting = r to id },
                     onEnableAll = { r, ids -> if (r.consented) vm.setPluginsEnabled(r.id, ids, true) else { enableAllAfterConsent = ids; consenting = r to null } },
@@ -234,12 +235,12 @@ fun YouScreen(navigator: Navigator) {
             title = { Text("Allow plugins from ${r.name}?") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Plugins are small scripts written by ${r.author ?: "the repository owner"}. If plugins could run, a plugin you enable could:")
+                    Text("Plugins are small scripts written by ${r.author ?: "the repository owner"}. A plugin you enable runs in a sandbox on this device when you open a title, and could:")
                     val perms = plugin?.info?.permissions.orEmpty()
                     if (perms.isEmpty()) Text("• Ask for nothing beyond the limits below") else perms.forEach { Text("• " + PluginPermissions.describe(it), color = Gold) }
                     Text("Always:")
                     PluginPermissions.always.forEach { Text("• $it") }
-                    Text("Nothing runs in this version. You can turn plugins off at any time, here or with the global switch.")
+                    Text("Plugins only run while Run plugins is on. You can turn them off at any time, here or per plugin.")
                 }
             },
             confirmButton = {
@@ -322,7 +323,7 @@ private fun SourcesContent(
 
 @Composable
 private fun RepositoriesContent(
-    repos: List<PluginRepo>, settings: AppSettings, repoAdd: RepoAddUi, vm: YouViewModel,
+    repos: List<PluginRepo>, settings: AppSettings, repoAdd: RepoAddUi, vm: YouViewModel, pluginTests: Map<String, com.liuying.app.data.repo.PluginTestResult?>,
     onRemove: (PluginRepo) -> Unit, onEnable: (PluginRepo, String) -> Unit, onEnableAll: (PluginRepo, List<String>) -> Unit,
 ) {
     Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -334,12 +335,13 @@ private fun RepositoriesContent(
             color = Vermilion, style = MaterialTheme.typography.bodyMedium,
         )
         Text(
-            "Add a plugin repository to see which plugins it lists. This version only lists and stores them: plugin scripts are not downloaded or run, " +
-                "so turning a plugin on has no effect yet.",
+            "Add a plugin repository to see which plugins it lists. With Run plugins on, each enabled plugin is downloaded and run in a sandbox when you " +
+                "open a title, and the streams it finds are listed with a plugin badge. A plugin can only reach public web addresses: no settings, accounts, " +
+                "files or other plugins. It has 20 seconds and 30 web requests per title. Android only.",
             color = PaperMuted, style = MaterialTheme.typography.bodyMedium,
         )
     }
-    ToggleRow("Allow scraper plugins", "Global off switch. Off by default.", settings.pluginsEnabled) { v -> vm.update { it.copy(pluginsEnabled = v) } }
+    ToggleRow("Run plugins", "Master switch. Off by default; nothing is downloaded or run while it is off.", settings.pluginsEnabled) { v -> vm.update { it.copy(pluginsEnabled = v) } }
     Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedTextField(repoAdd.input, vm::setRepoInput, label = { Text("Repository manifest URL") }, singleLine = true, colors = fieldColors(), modifier = Modifier.fillMaxWidth(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
@@ -384,6 +386,17 @@ private fun RepositoriesContent(
                     if (isOpen) Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp)) {
                         if (p.info.description.isNotBlank()) Text(p.info.description, color = PaperMuted, style = MaterialTheme.typography.bodyMedium)
                         Text(if (p.info.permissions.isEmpty()) "No permissions" else p.info.permissions.joinToString("; ") { PluginPermissions.describe(it) }, color = Gold, style = MaterialTheme.typography.labelMedium)
+                        val tkey = "${r.id}/${p.info.id}"
+                        val canTest = settings.pluginsEnabled && r.consented
+                        val running = pluginTests.containsKey(tkey) && pluginTests[tkey] == null
+                        InkTextButton(if (running) "Testing" else "Test plugin", { if (canTest && !running) vm.testPlugin(r.id, p.info) }, color = if (canTest) Gold else PaperMuted)
+                        if (!canTest) Text("Turn on Run plugins and allow this repository to test.", color = PaperMuted, style = MaterialTheme.typography.labelMedium)
+                        pluginTests[tkey]?.let { t ->
+                            Text(
+                                if (t.ok) "Pass: ${t.streamCount} stream${if (t.streamCount == 1) "" else "s"} in ${t.elapsedMs / 1000.0}s" else "Failed: ${t.error}",
+                                color = if (t.ok) Paper else Vermilion, style = MaterialTheme.typography.labelMedium,
+                            )
+                        }
                     }
                 }
             }

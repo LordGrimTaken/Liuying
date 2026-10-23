@@ -13,7 +13,7 @@ data class PluginInfo(
     val name: String,
     val version: String,
     val description: String,
-    /** Absolute http(s) URL of the script. It is stored, never fetched or run by this version. */
+    /** Absolute http(s) URL of the script. Fetched and run in the sandbox only when the user has enabled it. */
     val scriptUrl: String,
     /** Addon types the plugin answers for (empty = any). */
     val types: List<String>,
@@ -109,22 +109,8 @@ object PluginPermissions {
     }
 
     val always = listOf(
-        "Run for at most a few seconds and use limited memory",
+        "Run for at most 20 seconds, with limited memory and at most 30 web requests",
         "Cannot read your files, accounts or other apps",
         "Cannot see your library, progress or other sources",
     )
-}
-
-data class PluginRunRequest(val type: String, val videoId: String, val title: String?)
-data class PluginStreamCandidate(val name: String, val url: String, val description: String? = null)
-
-/** Seam for the future sandboxed runner. Implementations must isolate failures and enforce time/memory/network limits. */
-interface PluginRunner {
-    val runnable: Boolean
-    suspend fun run(plugin: PluginInfo, request: PluginRunRequest): Result<List<PluginStreamCandidate>>
-}
-
-object NoopPluginRunner : PluginRunner {
-    override val runnable = false
-    override suspend fun run(plugin: PluginInfo, request: PluginRunRequest): Result<List<PluginStreamCandidate>> = Result.success(emptyList())
 }

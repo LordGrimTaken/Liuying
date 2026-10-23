@@ -443,14 +443,14 @@ private fun StreamsSheetContent(sh: StreamsSheet, ui: DetailsUi, vm: DetailsView
             for (g in r.groups) {
                 val st = g.state
                 if (st is SourceStreamsState.Loading) item(key = "l${g.source.id}") { SourceLoadingRow(g.source.displayName) }
-                if (st is SourceStreamsState.Failed) item(key = "f${g.source.id}") { SourceFailedRow(g.source.displayName, st.message, vm::retryStreams) }
+                if (st is SourceStreamsState.Failed) item(key = "f${g.source.id}") { SourceFailedRow(g.source.displayName, st.message, vm::retryStreams, g.source.isPlugin) }
             }
         } else {
             for (g in r.groups) {
                 item(key = "h${g.source.id}") { SectionHeader(g.source.displayName) }
                 when (val st = g.state) {
                     SourceStreamsState.Loading -> item(key = "l${g.source.id}") { SourceLoadingRow(g.source.displayName) }
-                    is SourceStreamsState.Failed -> item(key = "f${g.source.id}") { SourceFailedRow(g.source.displayName, st.message, vm::retryStreams) }
+                    is SourceStreamsState.Failed -> item(key = "f${g.source.id}") { SourceFailedRow(g.source.displayName, st.message, vm::retryStreams, g.source.isPlugin) }
                     is SourceStreamsState.Loaded -> {
                         val list = sorted(st.items.filter { !s.hideNonPlayableStreams || it.enabled })
                         if (list.isEmpty()) item(key = "e${g.source.id}") { Text("Nothing from this source.", color = PaperMuted, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) }
@@ -484,8 +484,11 @@ private fun SourceLoadingRow(name: String) {
 }
 
 @Composable
-private fun SourceFailedRow(name: String, message: String, onRetry: () -> Unit) {
-    ErrorNote("$name: $message", onRetry = onRetry)
+private fun SourceFailedRow(name: String, message: String, onRetry: () -> Unit, isPlugin: Boolean = false) {
+    // a plugin that failed is a quiet line, not an error banner: the addon streams are what matter
+    if (isPlugin) Text("Plugin $name failed: $message", color = PaperMuted, style = MaterialTheme.typography.labelMedium, maxLines = 2, overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
+    else ErrorNote("$name: $message", onRetry = onRetry)
 }
 
 @Composable
@@ -500,7 +503,8 @@ private fun StreamRow(item: StreamItem, showRaw: Boolean, showSource: Boolean, o
     ) {
         Text(item.displayName, color = Paper, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
         val badges = buildList {
-            if (showSource) add(item.source.displayName)
+            if (item.source.isPlugin) add("plugin")
+            if (showSource || item.source.isPlugin) add(item.source.displayName)
             addAll(item.quality.badges)
         }
         if (badges.isNotEmpty()) Row(Modifier.padding(top = 6.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) { badges.forEach { Badge(it) } }

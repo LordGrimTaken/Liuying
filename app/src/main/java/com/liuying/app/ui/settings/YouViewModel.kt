@@ -167,7 +167,7 @@ class YouViewModel(private val c: AppContainer) : ViewModel() {
         repoAdd.update { it.copy(busy = true, error = null) }
         viewModelScope.launch {
             c.plugins.add(input).fold(
-                onSuccess = { repoAdd.value = RepoAddUi(); message.value = "Repository added. Its plugins are listed only; running them isn't available in this version." },
+                onSuccess = { repoAdd.value = RepoAddUi(); message.value = "Repository added. Plugins stay off until you allow them and turn on Run plugins." },
                 onFailure = { e -> repoAdd.update { it.copy(busy = false, error = e.message ?: "Could not add this repository.") } },
             )
         }
@@ -189,6 +189,18 @@ class YouViewModel(private val c: AppContainer) : ViewModel() {
         viewModelScope.launch { pluginIds.forEach { c.plugins.setEnabled(repoId, it, on) } }
     }
     fun setPluginEnabled(repoId: Long, pluginId: String, on: Boolean) { viewModelScope.launch { c.plugins.setEnabled(repoId, pluginId, on) } }
+
+    /** "Test plugin" results by "repoId/pluginId": null value = running. Memory only. */
+    val pluginTests = MutableStateFlow<Map<String, com.liuying.app.data.repo.PluginTestResult?>>(emptyMap())
+    fun testPlugin(repoId: Long, plugin: com.liuying.app.domain.plugins.PluginInfo) {
+        val key = "$repoId/${plugin.id}"
+        if (pluginTests.value.containsKey(key) && pluginTests.value[key] == null) return
+        pluginTests.update { it + (key to null) }
+        viewModelScope.launch {
+            val r = runCatching { c.pluginStreams.test(plugin) }.getOrElse { com.liuying.app.data.repo.PluginTestResult(false, 0, it.message ?: "The test failed.", 0) }
+            pluginTests.update { it + (key to r) }
+        }
+    }
     val updates = c.updates
     val updateState: StateFlow<com.liuying.app.data.update.UpdateState> = c.updates.state
     fun checkForUpdates() = c.updates.checkNow()
