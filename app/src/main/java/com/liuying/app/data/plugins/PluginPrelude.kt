@@ -9,8 +9,8 @@ object PluginPrelude {
     const val SOURCE: String = """
 (function (g) {
   'use strict';
-  var hostFetch = g.__hostFetch, hostLog = g.__hostLog, hostSleep = g.__hostSleep, hostResolve = g.__hostResolve, hostReject = g.__hostReject;
-  ['__hostFetch', '__hostLog', '__hostSleep', '__hostResolve', '__hostReject'].forEach(function (n) { try { delete g[n]; } catch (e) { g[n] = undefined; } });
+  var hostFetch = g.__hostFetch, hostLog = g.__hostLog, hostSleep = g.__hostSleep, hostResolve = g.__hostResolve, hostReject = g.__hostReject, hostModule = g.__hostModule;
+  ['__hostFetch', '__hostLog', '__hostSleep', '__hostResolve', '__hostReject', '__hostModule'].forEach(function (n) { try { delete g[n]; } catch (e) { g[n] = undefined; } });
 
   function errText(e) {
     if (e === null || e === undefined) return 'Unknown error';
@@ -19,6 +19,26 @@ object PluginPrelude {
     return (e.name && e.name !== 'Error' ? e.name + ': ' : '') + m;
   }
 
+  // Only plain ASCII crosses the host boundary: text from the plugin world is \\uXXXX-escaped JSON, messages lose
+  // non-ASCII. (Characters outside the BMP are not safe through the engine's UTF-8 <-> Java string bridge.)
+  function ascii(s) { return s.replace(/[\u0080-\uffff]/g, function (c) { return '\\u' + ('0000' + c.charCodeAt(0).toString(16)).slice(-4); }); }
+  function plain(s) { return String(s).replace(/[^\u0009\u000a\u0020-\u007e]/g, '?'); }
+
+  // ---- small standard-library gaps
+  if (!String.prototype.replaceAll) Object.defineProperty(String.prototype, 'replaceAll', { configurable: true, writable: true, value: function (a, b) {
+    if (a instanceof RegExp) return this.replace(a, b);
+    return this.split(String(a)).join(typeof b === 'function' ? b(String(a)) : String(b));
+  } });
+  if (!Array.prototype.at) Object.defineProperty(Array.prototype, 'at', { configurable: true, writable: true, value: function (i) { i = Math.trunc(i) || 0; if (i < 0) i += this.length; return this[i]; } });
+  if (!Object.fromEntries) Object.fromEntries = function (it) { var o = {}; for (var e of it) o[e[0]] = e[1]; return o; };
+  if (!Object.hasOwn) Object.hasOwn = function (o, k) { return Object.prototype.hasOwnProperty.call(o, k); };
+  if (!Promise.allSettled) Promise.allSettled = function (a) { return Promise.all(Array.from(a, function (p) { return Promise.resolve(p).then(function (value) { return { status: 'fulfilled', value: value }; }, function (reason) { return { status: 'rejected', reason: reason }; }); })); };
+  if (!Promise.any) Promise.any = function (a) { return new Promise(function (res, rej) { var n = 0, errs = [], list = Array.from(a); if (!list.length) rej(new Error('All promises were rejected')); list.forEach(function (p, i) { Promise.resolve(p).then(res, function (e) { errs[i] = e; if (++n === list.length) { var x = new Error('All promises were rejected'); x.name = 'AggregateError'; x.errors = errs; rej(x); } }); }); }); };
+  g.queueMicrotask = function (fn) { Promise.resolve().then(fn); };
+
+  // what the plugin was last doing, for the message when it ends without an answer
+  var diag = { inflight: 0, last: '' };
+
   // ---- console
   function fmt(a) {
     if (typeof a === 'string') return a;
@@ -26,7 +46,7 @@ object PluginPrelude {
   }
   var con = {};
   ['log', 'info', 'warn', 'error', 'debug'].forEach(function (lvl) {
-    con[lvl] = function () { try { hostLog(lvl, Array.prototype.map.call(arguments, fmt).join(' ')); } catch (e) {} };
+    con[lvl] = function () { try { hostLog(lvl, plain(Array.prototype.map.call(arguments, fmt).join(' '))); } catch (e) {} };
   });
   g.console = con;
 
@@ -160,27 +180,172 @@ object PluginPrelude {
   }
   g.URL = URL;
 
+  // ---- bytes: TextEncoder / TextDecoder / Buffer (a subset: utf8, hex, base64, base64url, latin1)
+  function utf8Encode(str) {
+    var out = [];
+    for (var i = 0; i < str.length; i++) {
+      var c = str.charCodeAt(i);
+      if (c >= 0xd800 && c <= 0xdbff && i + 1 < str.length) {
+        var d = str.charCodeAt(i + 1);
+        if (d >= 0xdc00 && d <= 0xdfff) { c = 0x10000 + ((c - 0xd800) << 10) + (d - 0xdc00); i++; }
+      }
+      if (c >= 0xd800 && c <= 0xdfff) c = 0xfffd;
+      if (c < 0x80) out.push(c);
+      else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63));
+      else if (c < 0x10000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
+      else out.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
+    }
+    return out;
+  }
+  function utf8Decode(b, start, end) {
+    var s = '', i = start === undefined ? 0 : start, n = end === undefined ? b.length : end;
+    while (i < n) {
+      var c = b[i++], cp = 0xfffd, extra = 0;
+      if (c < 0x80) cp = c;
+      else if (c >= 0xc2 && c < 0xe0) { cp = c & 31; extra = 1; }
+      else if (c >= 0xe0 && c < 0xf0) { cp = c & 15; extra = 2; }
+      else if (c >= 0xf0 && c < 0xf5) { cp = c & 7; extra = 3; }
+      if (extra) {
+        if (i + extra > n) { cp = 0xfffd; i = n; }
+        else {
+          for (var k = 0; k < extra; k++) {
+            var x = b[i];
+            if ((x & 0xc0) !== 0x80) { cp = 0xfffd; break; }
+            cp = (cp << 6) | (x & 63); i++;
+          }
+          if (cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) cp = 0xfffd;
+        }
+      }
+      if (cp > 0xffff) { cp -= 0x10000; s += String.fromCharCode(0xd800 + (cp >> 10), 0xdc00 + (cp & 1023)); }
+      else s += String.fromCharCode(cp);
+    }
+    return s;
+  }
+  function viewBytes(x) {
+    if (x instanceof ArrayBuffer) return new Uint8Array(x);
+    if (ArrayBuffer.isView(x)) return new Uint8Array(x.buffer, x.byteOffset, x.byteLength);
+    throw new TypeError('The argument must be an ArrayBuffer or a typed array');
+  }
+  function bin(b) { var s = ''; for (var i = 0; i < b.length; i += 8192) s += String.fromCharCode.apply(null, Array.prototype.slice.call(b, i, i + 8192)); return s; }
+  g.TextEncoder = class TextEncoder {
+    get encoding() { return 'utf-8'; }
+    encode(s) { return new Uint8Array(utf8Encode(s === undefined ? '' : String(s))); }
+  };
+  g.TextDecoder = class TextDecoder {
+    constructor(label) {
+      var l = String(label === undefined ? 'utf-8' : label).toLowerCase();
+      if (l === 'utf-8' || l === 'utf8' || l === 'unicode-1-1-utf-8') this._e = 'utf-8';
+      else if (l === 'latin1' || l === 'iso-8859-1' || l === 'ascii' || l === 'us-ascii' || l === 'windows-1252') this._e = 'latin1';
+      else throw new RangeError('The "' + label + '" encoding is not supported');
+    }
+    get encoding() { return this._e; }
+    decode(x) {
+      if (x === undefined) return '';
+      var b = viewBytes(x);
+      if (this._e === 'latin1') return bin(b);
+      if (b.length >= 3 && b[0] === 0xef && b[1] === 0xbb && b[2] === 0xbf) return utf8Decode(b, 3);
+      return utf8Decode(b);
+    }
+  };
+  function fromB64(s) { s = String(s).replace(/-/g, '+').replace(/_/g, '/').replace(/[^A-Za-z0-9+\/]/g, ''); while (s.length % 4) s += '='; var r = g.atob(s), o = new Uint8Array(r.length); for (var i = 0; i < r.length; i++) o[i] = r.charCodeAt(i); return o; }
+  class Buffer extends Uint8Array {
+    static from(v, enc) {
+      if (typeof v === 'string') {
+        enc = String(enc || 'utf8').toLowerCase();
+        var bytes;
+        if (enc === 'hex') { bytes = []; for (var i = 0; i + 1 < v.length; i += 2) { var n = parseInt(v.substr(i, 2), 16); if (isNaN(n)) break; bytes.push(n); } }
+        else if (enc === 'base64' || enc === 'base64url') bytes = fromB64(v);
+        else if (enc === 'latin1' || enc === 'binary' || enc === 'ascii') { bytes = []; for (var j = 0; j < v.length; j++) bytes.push(v.charCodeAt(j) & 255); }
+        else bytes = utf8Encode(v);
+        return Buffer._of(bytes);
+      }
+      if (v instanceof ArrayBuffer) return new Buffer(v);
+      if (ArrayBuffer.isView(v) || Array.isArray(v)) return Buffer._of(Array.prototype.slice.call(ArrayBuffer.isView(v) ? viewBytes(v) : v));
+      throw new TypeError('The first argument must be a string, array or buffer');
+    }
+    static _of(bytes) { var b = new Buffer(bytes.length); for (var i = 0; i < bytes.length; i++) b[i] = bytes[i] & 255; return b; }
+    static alloc(n, fill) { var b = new Buffer(n); if (fill) b.fill(typeof fill === 'string' ? fill.charCodeAt(0) : fill); return b; }
+    static isBuffer(x) { return x instanceof Buffer; }
+    static byteLength(v, enc) { return typeof v === 'string' ? Buffer.from(v, enc).length : viewBytes(v).length; }
+    static concat(list) { var all = []; list.forEach(function (x) { all = all.concat(Array.prototype.slice.call(viewBytes(x))); }); return Buffer._of(all); }
+    toString(enc, start, end) {
+      enc = String(enc || 'utf8').toLowerCase();
+      var b = (start !== undefined || end !== undefined) ? this.subarray(start || 0, end === undefined ? this.length : end) : this;
+      if (enc === 'hex') { var h = ''; for (var i = 0; i < b.length; i++) h += (b[i] < 16 ? '0' : '') + b[i].toString(16); return h; }
+      if (enc === 'base64') return g.btoa(bin(b));
+      if (enc === 'base64url') return g.btoa(bin(b)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+${'$'}/, '');
+      if (enc === 'latin1' || enc === 'binary' || enc === 'ascii') return bin(b);
+      return utf8Decode(b);
+    }
+    toJSON() { return { type: 'Buffer', data: Array.prototype.slice.call(this) }; }
+    equals(o) { if (this.length !== o.length) return false; for (var i = 0; i < this.length; i++) if (this[i] !== o[i]) return false; return true; }
+    slice(a, b) { return this.subarray(a, b); }
+  }
+  g.Buffer = Buffer;
+
+  // ---- AbortController / AbortSignal
+  function abortError(reason) { if (reason !== undefined) return reason; var e = new Error('This operation was aborted'); e.name = 'AbortError'; return e; }
+  class AbortSignal {
+    constructor() { this.aborted = false; this.reason = undefined; this.onabort = null; this._l = []; }
+    addEventListener(t, f) { if (t === 'abort' && typeof f === 'function') this._l.push(f); }
+    removeEventListener(t, f) { this._l = this._l.filter(function (x) { return x !== f; }); }
+    throwIfAborted() { if (this.aborted) throw this.reason; }
+    _abort(reason) {
+      if (this.aborted) return;
+      this.aborted = true; this.reason = abortError(reason);
+      var ev = { type: 'abort', target: this };
+      if (typeof this.onabort === 'function') { try { this.onabort(ev); } catch (e) {} }
+      this._l.slice().forEach(function (f) { try { f(ev); } catch (e) {} });
+    }
+    static abort(reason) { var s = new AbortSignal(); s._abort(reason); return s; }
+    static timeout(ms) { var s = new AbortSignal(); g.setTimeout(function () { var e = new Error('The operation timed out'); e.name = 'TimeoutError'; s._abort(e); }, ms); return s; }
+  }
+  class AbortController {
+    constructor() { this.signal = new AbortSignal(); }
+    abort(reason) { this.signal._abort(reason); }
+  }
+  g.AbortSignal = AbortSignal; g.AbortController = AbortController;
+
+  // ---- Headers
+  class Headers {
+    constructor(init) {
+      this._m = {};
+      if (!init) return;
+      if (Array.isArray(init)) init.forEach(function (p) { this.append(p[0], p[1]); }, this);
+      else if (typeof init.forEach === 'function' && typeof init.get === 'function') init.forEach(function (v, k) { this.append(k, v); }, this);
+      else Object.keys(init).forEach(function (k) { this.append(k, init[k]); }, this);
+    }
+    append(k, v) { k = String(k).toLowerCase(); v = String(v); this._m[k] = this._m[k] === undefined ? v : this._m[k] + ', ' + v; }
+    set(k, v) { this._m[String(k).toLowerCase()] = String(v); }
+    get(k) { var v = this._m[String(k).toLowerCase()]; return v === undefined ? null : v; }
+    has(k) { return this._m[String(k).toLowerCase()] !== undefined; }
+    delete(k) { delete this._m[String(k).toLowerCase()]; }
+    forEach(fn, thisArg) { Object.keys(this._m).forEach(function (k) { fn.call(thisArg, this._m[k], k, this); }, this); }
+    keys() { return Object.keys(this._m)[Symbol.iterator](); }
+    values() { var m = this._m; return Object.keys(m).map(function (k) { return m[k]; })[Symbol.iterator](); }
+    entries() { var m = this._m; return Object.keys(m).map(function (k) { return [k, m[k]]; })[Symbol.iterator](); }
+    [Symbol.iterator]() { return this.entries(); }
+  }
+  g.Headers = Headers;
+
   // ---- fetch
   function makeResponse(r) {
-    var h = r.headers || {};
-    var hdr = {
-      get: function (n) { var v = h[String(n).toLowerCase()]; return v === undefined ? null : v; },
-      has: function (n) { return h[String(n).toLowerCase()] !== undefined; },
-      forEach: function (fn) { Object.keys(h).forEach(function (k) { fn(h[k], k); }); },
-      entries: function () { return Object.keys(h).map(function (k) { return [k, h[k]]; })[Symbol.iterator](); },
-      keys: function () { return Object.keys(h)[Symbol.iterator](); },
-      values: function () { return Object.keys(h).map(function (k) { return h[k]; })[Symbol.iterator](); }
-    };
-    var res = {
-      ok: r.status >= 200 && r.status < 300, status: r.status, statusText: r.statusText || '', url: r.url, headers: hdr,
+    return {
+      ok: r.status >= 200 && r.status < 300, status: r.status, statusText: r.statusText || '', url: r.url, redirected: false,
+      headers: new Headers(r.headers || {}), bodyUsed: false,
       text: function () { return Promise.resolve(r.body); },
-      json: function () { try { return Promise.resolve(JSON.parse(r.body)); } catch (e) { return Promise.reject(e); } },
+      // The parse happens inside a job: a promise that is rejected while it is being created is reported by the engine
+      // as an unhandled rejection and aborts the whole run, even though the plugin awaits (and catches) it a moment later.
+      json: function () { return Promise.resolve().then(function () { return JSON.parse(r.body); }); },
+      arrayBuffer: function () { return Promise.resolve(new Uint8Array(utf8Encode(r.body)).buffer); },
       clone: function () { return makeResponse(r); }
     };
-    return res;
   }
+  function hostOf(u) { var m = /^[a-z][a-z0-9+.\-]*:\/\/([^\/?#:]*)/i.exec(u); return m ? m[1] : 'the web'; }
   g.fetch = function (url, opts) {
     opts = opts || {};
+    var sig = opts.signal;
+    if (sig && sig.aborted) return Promise.reject(abortError(sig.reason));
     var headers = {}, src = opts.headers;
     if (src) {
       if (Array.isArray(src)) src.forEach(function (p) { headers[String(p[0])] = String(p[1]); });
@@ -195,31 +360,60 @@ object PluginPrelude {
         if (!has) headers['Content-Type'] = 'application/x-www-form-urlencoded;charset=UTF-8';
       } else if (typeof body !== 'string') body = String(body);
     } else body = null;
-    var spec = JSON.stringify({ url: String(url instanceof URL ? url.href : url), method: opts.method ? String(opts.method) : 'GET', headers: headers, body: body });
-    return hostFetch(spec).then(function (raw) {
+    var target = String(url instanceof URL ? url.href : (url && url.url ? url.url : url));
+    var spec = ascii(JSON.stringify({ url: target, method: opts.method ? String(opts.method) : 'GET', headers: headers, body: body }));
+    var host = hostOf(target);
+    diag.inflight++;
+    var p = hostFetch(spec).then(function (raw) {
+      diag.inflight--;
       var r = JSON.parse(raw);
-      if (r.error) throw new TypeError('fetch failed: ' + r.error);
+      if (r.error) { diag.last = host + ' failed (' + plain(r.error).slice(0, 80) + ')'; throw new TypeError('fetch failed: ' + r.error); }
+      diag.last = host + ' answered HTTP ' + r.status;
       return makeResponse(r);
+    }, function (e) { diag.inflight--; diag.last = host + ' failed'; throw e; });
+    if (!sig) return p;
+    return new Promise(function (resolve, reject) {
+      sig.addEventListener('abort', function () { reject(abortError(sig.reason)); });
+      p.then(resolve, reject);
     });
   };
 
   // ---- timers
-  var timers = {}, nextTimer = 1;
+  var timers = {}, nextTimer = 1, liveTimers = 0;
   g.setTimeout = function (fn, ms) {
     var id = nextTimer++, args = Array.prototype.slice.call(arguments, 2);
-    timers[id] = true;
-    hostSleep(Math.max(0, +ms || 0)).then(function () { if (timers[id]) { delete timers[id]; fn.apply(undefined, args); } });
+    timers[id] = true; liveTimers++;
+    hostSleep(Math.max(0, +ms || 0)).then(function () { if (timers[id]) { delete timers[id]; liveTimers--; fn.apply(undefined, args); } });
     return id;
   };
-  g.clearTimeout = function (id) { delete timers[id]; };
+  g.clearTimeout = function (id) { if (timers[id]) { delete timers[id]; liveTimers--; } };
 
   // ---- CommonJS-ish surface
   g.module = { exports: {} };
   g.exports = g.module.exports;
-  g.require = function (name) { throw new Error("require('" + name + "') is not available in the Liuying plugin sandbox"); };
+  g.SCRAPER_SETTINGS = {};
+  g.navigator = { userAgent: 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Liuying-Plugin', language: 'en-US', languages: ['en-US'], platform: 'Linux' };
+  var loaded = {};
+  g.require = function (name) {
+    name = String(name);
+    if (name === 'buffer') return { Buffer: Buffer };
+    if (loaded[name]) return loaded[name].exports;
+    var code = null;
+    try { code = hostModule(name); } catch (e) {}
+    if (typeof code !== 'string' || !code) throw new Error("require('" + plain(name) + "') is not available in the Liuying plugin sandbox");
+    var m = { exports: {} };
+    loaded[name] = m;
+    try { (0, g.eval)('(function (module, exports, require) {' + code + '\n})')(m, m.exports, g.require); } catch (e) { delete loaded[name]; throw e; }
+    return m.exports;
+  };
   g.global = g; g.self = g; g.window = g;
 
   // ---- contract: the host starts the plugin through this one function
+  function done(v) {
+    var s;
+    try { s = JSON.stringify(v === undefined ? null : v); } catch (e) { hostReject(plain('The result could not be read: ' + errText(e))); return; }
+    hostResolve(ascii(s === undefined ? 'null' : s));
+  }
   Object.defineProperty(g, '__liuyingInvoke', {
     configurable: true, enumerable: false, writable: true,
     value: function (tmdbId, mediaType, season, episode) {
@@ -227,12 +421,22 @@ object PluginPrelude {
       var fn = (ex && ex.getStreams) || (g.exports && g.exports.getStreams);
       if (typeof fn !== 'function') { hostReject('The plugin does not export getStreams().'); return; }
       var p;
-      try { p = fn(tmdbId, mediaType, season, episode); } catch (e) { hostReject(errText(e)); return; }
-      Promise.resolve(p).then(function (v) {
-        var s;
-        try { s = JSON.stringify(v === undefined ? null : v); } catch (e) { hostReject('The result could not be read: ' + errText(e)); return; }
-        hostResolve(s === undefined ? 'null' : s);
-      }, function (e) { hostReject(errText(e)); });
+      try { p = fn(tmdbId, mediaType, season, episode); } catch (e) { hostReject(plain(errText(e)).slice(0, 300)); return; }
+      Promise.resolve(p).then(done, function (e) { hostReject(plain(errText(e)).slice(0, 300)); });
+    }
+  });
+  // requests in flight + timers waiting: while this is above zero the plugin may still answer
+  Object.defineProperty(g, '__liuyingBusy', {
+    configurable: true, enumerable: false, writable: true,
+    value: function () { return diag.inflight + liveTimers; }
+  });
+  // read by the host when the run ended and neither hostResolve nor hostReject was called
+  Object.defineProperty(g, '__liuyingDiag', {
+    configurable: true, enumerable: false, writable: true,
+    value: function () {
+      return 'The plugin stopped without giving an answer' +
+        (diag.inflight > 0 ? ' while still waiting for ' + diag.inflight + ' web request' + (diag.inflight > 1 ? 's' : '') : '') +
+        (diag.last ? ' (last request: ' + diag.last + ')' : '') + '.';
     }
   });
 })(globalThis);

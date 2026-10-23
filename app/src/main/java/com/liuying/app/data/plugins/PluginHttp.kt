@@ -29,15 +29,6 @@ import java.nio.charset.Charset
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
-/** Resolves hostnames and refuses any answer that contains a private, loopback or link-local address. */
-object SafeDns : Dns {
-    override fun lookup(hostname: String): List<InetAddress> {
-        val all = Dns.SYSTEM.lookup(hostname)
-        if (all.any { PluginUrlSafety.isBlockedAddress(it) }) throw UnknownHostException("blocked: $hostname points at a private address")
-        return all
-    }
-}
-
 /**
  * The only network door a plugin has. Owns its own OkHttp client: no cookie jar, no cache, no interceptors from the app,
  * redirects followed by hand so every hop is re-checked. [newSession] gives each run its own request budget.
@@ -58,11 +49,11 @@ class PluginHttp(
             buildJsonObject {
                 put("status", r.status); put("statusText", r.statusText); put("url", r.url)
                 put("headers", JsonObject(r.headers.mapValues { JsonPrimitive(it.value) })); put("body", r.body)
-            }.toString()
+            }.toString().let(PluginModules::asciiJson)
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Throwable) {
-            buildJsonObject { put("error", (e.message ?: e.javaClass.simpleName).take(300)) }.toString()
+            buildJsonObject { put("error", (e.message ?: e.javaClass.simpleName).take(300)) }.toString().let(PluginModules::asciiJson)
         }
 
         suspend fun fetch(spec: FetchSpec): FetchResult {

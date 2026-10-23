@@ -62,9 +62,13 @@ class PluginStreams(
             .map { list -> list.map(::toStream) }
     }
 
+    /** "Retry failed plugins": forget recorded network failures (the 30 s negative cache) so the retry really goes out. */
+    fun forgetNetworkFailures() = com.liuying.app.data.plugins.SafeDns.clearFailures()
+
     /** The "Test plugin" button: one run with a well-known sample title, regardless of the plugin being enabled. */
     suspend fun test(plugin: PluginInfo): PluginTestResult {
         val t0 = clock()
+        forgetNetworkFailures()
         if (!masterSwitch()) return PluginTestResult(false, 0, "Turn on Run plugins first.", 0)
         val tvOnly = plugin.types.isNotEmpty() && "movie" !in plugin.types.map { it.lowercase() }
         val req = if (tvOnly) PluginRunRequest("1396", "tv", 1, 1) else PluginRunRequest("603", "movie")

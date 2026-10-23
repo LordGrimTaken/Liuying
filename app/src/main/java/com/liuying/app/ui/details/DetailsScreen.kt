@@ -443,10 +443,11 @@ private fun StreamsSheetContent(sh: StreamsSheet, ui: DetailsUi, vm: DetailsView
             for (g in r.groups) {
                 val st = g.state
                 if (st is SourceStreamsState.Loading) item(key = "l${g.source.id}") { SourceLoadingRow(g.source.displayName) }
-                if (st is SourceStreamsState.Failed) item(key = "f${g.source.id}") { SourceFailedRow(g.source.displayName, st.message, vm::retryStreams, g.source.isPlugin) }
+                if (st is SourceStreamsState.Failed && !g.source.isPlugin) item(key = "f${g.source.id}") { SourceFailedRow(g.source.displayName, st.message, vm::retryStreams, false) }
             }
         } else {
             for (g in r.groups) {
+                if (g.source.isPlugin && g.state is SourceStreamsState.Failed) continue // plugin failures are listed together below
                 item(key = "h${g.source.id}") { SectionHeader(g.source.displayName) }
                 when (val st = g.state) {
                     SourceStreamsState.Loading -> item(key = "l${g.source.id}") { SourceLoadingRow(g.source.displayName) }
@@ -463,6 +464,8 @@ private fun StreamsSheetContent(sh: StreamsSheet, ui: DetailsUi, vm: DetailsView
                 }
             }
         }
+        val pluginFails = r.groups.mapNotNull { g -> (g.state as? SourceStreamsState.Failed)?.takeIf { g.source.isPlugin }?.let { g.source.displayName to it.message } }
+        if (pluginFails.isNotEmpty()) item(key = "plugin-failures") { PluginFailuresBlock(pluginFails, vm::retryFailedPlugins) }
         if (r.done && !r.isEmpty) item { Row(Modifier.padding(horizontal = 12.dp)) { InkTextButton("Refresh streams", vm::refreshStreams, color = PaperMuted) } }
     }
 }
@@ -481,6 +484,26 @@ private fun ShowMoreRow(open: Boolean, hidden: Int, onToggle: () -> Unit) {
 @Composable
 private fun SourceLoadingRow(name: String) {
     Text("Asking $name…", color = PaperMuted, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+}
+
+/** Plugin failures as quiet lines: identical reasons share one line (tap for the full text and the plugin names), plus one retry. */
+@Composable
+private fun PluginFailuresBlock(failures: List<Pair<String, String>>, onRetry: () -> Unit) {
+    val groups = remember(failures) { com.liuying.app.domain.plugins.PluginFailures.group(failures) }
+    var open by remember { mutableStateOf(emptySet<String>()) }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp)) {
+        groups.forEach { g ->
+            val isOpen = g.headline in open
+            Column(Modifier.fillMaxWidth().clickable { open = if (isOpen) open - g.headline else open + g.headline }.heightIn(min = 40.dp).padding(vertical = 6.dp)) {
+                Text((if (isOpen) "▾ " else "▸ ") + g.headline, color = PaperMuted, style = MaterialTheme.typography.labelMedium, maxLines = if (isOpen) Int.MAX_VALUE else 2, overflow = TextOverflow.Ellipsis)
+                if (isOpen) {
+                    if (g.names.size > 1) Text(g.names.joinToString(", "), color = PaperMuted, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 4.dp))
+                    Text(g.message, color = PaperMuted, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 4.dp))
+                }
+            }
+        }
+        InkTextButton("Retry failed plugins", onRetry, color = Gold)
+    }
 }
 
 @Composable

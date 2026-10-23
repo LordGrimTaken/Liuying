@@ -234,6 +234,8 @@ class DetailsViewModel(
         onStreamClick(pick)
     }
 
+    /** Sources that already answered are served from memory, so this asks only the ones that failed; recorded network failures are forgotten first. */
+    fun retryFailedPlugins() { c.pluginStreams.forgetNetworkFailures(); retryStreams() }
     fun retryStreams() { _sheet.value?.target?.let { openStreams(it, auto = false) } }
     fun refreshStreams() { _sheet.value?.target?.let { openStreams(it, auto = false, force = true) } }
 

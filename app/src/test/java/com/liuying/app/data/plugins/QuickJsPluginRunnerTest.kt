@@ -79,7 +79,7 @@ class QuickJsPluginRunnerTest {
     @Test fun missingExportAndNoResultAreReported() {
         assertTrue(run(runner("var x = 1;")).exceptionOrNull()!!.message!!.contains("getStreams"))
         val hang = run(runner("module.exports = { getStreams: () => new Promise(function () {}) };")).exceptionOrNull()!!
-        assertTrue(hang.message!!, hang.message!!.contains("without returning"))
+        assertTrue(hang.message!!, hang.message!!.contains("without giving an answer"))
         assertTrue(run(runner("module.exports = { getStreams: () => 42 };")).isFailure)
     }
 
@@ -182,5 +182,100 @@ class QuickJsPluginRunnerTest {
     @Test fun runawayMemoryIsAFailureNotACrash() {
         val e = run(runner("module.exports = { getStreams: () => { const a = []; while (true) a.push('x'.repeat(1024 * 1024) + a.length); } };", timeoutMs = 10_000)).exceptionOrNull()!!
         assertTrue(e.message!!, e is PluginRunException)
+    }
+
+    private fun nameOf(script: String, answer: (Request) -> Response = { ok(it, "{}") }) = run(runner(script, answer = answer)).getOrThrow().single().name
+
+    @Test fun anAwaitedJsonParseFailureIsCatchableByThePlugin() {
+        val script = "module.exports={getStreams: async function(){ try { const r = await fetch('https://a.example.com/x'); await r.json(); return [{name:'no',url:'https://c.example.com/x'}]; } catch(e){ return [{name:'caught '+e.name,url:'https://c.example.com/x'}]; } }};"
+        assertEquals("caught SyntaxError", nameOf(script) { ok(it, "<html>nope</html>", "text/html") })
+        val gen = """
+          var __async=(t,a,g)=>new Promise((res,rej)=>{var ok=v=>{try{st(g.next(v))}catch(e){rej(e)}},er=v=>{try{st(g.throw(v))}catch(e){rej(e)}},st=x=>x.done?res(x.value):Promise.resolve(x.value).then(ok,er);st((g=g.apply(t,a)).next())});
+          function getStreams(){return __async(this,null,function*(){try{const r=yield fetch('https://a.example.com/x');const j=yield r.json();return [j]}catch(e){return []}})}
+          module.exports={getStreams:getStreams};"""
+        assertTrue(run(runner(gen) { ok(it, "", "text/html") }).getOrThrow().isEmpty())
+    }
+
+    @Test fun anUncaughtJsonFailureIsAReadableFailureNotASilentOne() {
+        val e = run(runner("module.exports={getStreams: async function(){ const r = await fetch('https://a.example.com/x'); return await r.json(); }};") { ok(it, "<html>", "text/html") }).exceptionOrNull()!!
+        assertTrue(e.message!!, e.message!!.contains("SyntaxError"))
+    }
+
+    @Test fun nonAsciiAndEmojiSurviveBothDirections() {
+        val script = "module.exports={getStreams: async function(){ " +
+            "const r = await fetch('https://a.example.com/x', { method: 'POST', body: '\\ud83c\\udfac\\u4e2d' }); const j = await r.json(); " +
+            "return [{name: j.t + ' \\ud83c\\udfac \\u4e2d\\u6587', title: '\\u00e9', url: 'https://c.example.com/x'}]; }};"
+        val got = nameOf(script) { ok(it, "{\"t\":\"\\ud83d\\udcfa \\u00fc \\u4e2d\"}") }
+        assertEquals("\uD83D\uDCFA \u00fc \u4e2d \uD83C\uDFAC \u4e2d\u6587", got)
+        assertEquals("\uD83C\uDFAC\u4e2d", requests.last().let { okio.Buffer().also { b -> it.body!!.writeTo(b) }.readUtf8() })
+    }
+
+    @Test fun emojiInTheScriptSourceIsFine() {
+        assertEquals("\uD83C\uDFAC x", nameOf("module.exports={getStreams: ()=>[{name:'\uD83C\uDFAC x',url:'https://c.example.com/x'}]};"))
+    }
+
+    @Test fun aLeftoverTimerDoesNotDelayTheAnswer() {
+        val t0 = System.currentTimeMillis()
+        val n = nameOf("module.exports={getStreams: async()=>{ setTimeout(function(){}, 4000); return [{name:'quick',url:'https://c.example.com/x'}]; }};")
+        assertEquals("quick", n); assertTrue("took ${System.currentTimeMillis() - t0}ms", System.currentTimeMillis() - t0 < 3000)
+    }
+
+    @Test fun aPluginThatNeverAnswersSaysWhatItWasWaitingFor() {
+        val e = run(runner("module.exports={getStreams: ()=> fetch('https://slow.example.com/x').then(function(){ return new Promise(function(){}); })};")).exceptionOrNull()!!
+        assertTrue(e.message!!, e.message!!.contains("without giving an answer") && e.message!!.contains("slow.example.com") && e.message!!.contains("HTTP 200"))
+        assertTrue(run(runner("module.exports={getStreams: ()=>[]};")).getOrThrow().isEmpty())
+    }
+
+    @Test fun bufferTextEncodingAndHeadersShims() {
+        val script = """
+          module.exports={getStreams: ()=>{
+            const b = Buffer.from('h\u00e9llo');
+            const out = [
+              b.toString('hex'), b.toString('base64'), Buffer.from(b.toString('base64'), 'base64').length, Buffer.from('ff00', 'hex').length,
+              new TextDecoder().decode(new TextEncoder().encode('ab')), Buffer.concat([Buffer.from('a'), Buffer.from('b')]).toString(),
+              Buffer.isBuffer(b), new Headers({A:'1'}).get('a'), typeof AbortController, typeof queueMicrotask, typeof SCRAPER_SETTINGS,
+              'a-b-c'.replaceAll('-', '+'), [1,2,3].at(-1), Object.fromEntries([['k', 1]]).k,
+              new TextEncoder().encode('\ud83c\udfac').length, new TextDecoder().decode(new Uint8Array([0xf0,0x9f,0x8e,0xac])).length
+            ];
+            return [{name: out.join('|'), url:'https://c.example.com/x'}];
+          }};"""
+        assertEquals("68c3a96c6c6f|aMOpbGxv|6|2|ab|ab|true|1|function|function|object|a+b+c|3|1|4|2", nameOf(script))
+    }
+
+    @Test fun abortSignalCancelsAFetchInFlight() {
+        val script = """
+          module.exports={getStreams: async()=>{
+            const c = new AbortController(); setTimeout(function(){ c.abort(); }, 20);
+            let r = 'none'; try { await fetch('https://slow.example.com/x', { signal: c.signal }); r = 'fetched'; } catch (e) { r = e.name; }
+            let pre = 'none'; try { await fetch('https://a.example.com/', { signal: AbortSignal.abort() }); } catch (e) { pre = e.name; }
+            return [{name: r + ',' + pre, url:'https://c.example.com/x'}];
+          }};"""
+        assertEquals("AbortError,AbortError", nameOf(script) { Thread.sleep(400); ok(it, "{}") })
+    }
+
+    @Test fun bundledModulesLoadOnDemandAndNothingElseDoes() {
+        val script = """
+          module.exports={getStreams: ()=>{
+            const cheerio = require('cheerio-without-node-native'); const CryptoJS = require('crypto-js');
+            const q = cheerio.load('<ul><li class="a">x</li><li>y</li></ul>');
+            const key = CryptoJS.enc.Utf8.parse('0123456789abcdef'), iv = CryptoJS.enc.Utf8.parse('fedcba9876543210'); const enc = CryptoJS.AES.encrypt('secret', key, { iv: iv }).toString();
+            let bad = 'ok'; try { require('fs'); } catch (e) { bad = 'blocked'; }
+            return [{name: [q('li').length, q('li.a').text(), CryptoJS.AES.decrypt(enc, key, { iv: iv }).toString(CryptoJS.enc.Utf8), CryptoJS.MD5('a').toString(), CryptoJS.SHA256('a').toString().slice(0, 8), bad].join('|'), url:'https://c.example.com/x'}];
+          }};"""
+        assertEquals("2|x|secret|0cc175b9c0f1b6a831c399e269772661|ca978112|blocked", nameOf(script))
+    }
+
+    @Test fun repeatedRunsAlwaysAnswer() {
+        repeat(40) { i ->
+            assertEquals("sync$i", nameOf("module.exports={getStreams: ()=>[{name:'sync$i',url:'https://c.example.com/x'}]};"))
+            assertEquals("net$i", nameOf("module.exports={getStreams: async()=>{ const r = await fetch('https://a.example.com/x'); const j = await r.json(); return [{name:'net$i',url:'https://c.example.com/x'}]; }};"))
+        }
+    }
+
+    @Test fun requestsStillRunningWhenThePluginAnswersAreDropped() {
+        val t0 = System.currentTimeMillis()
+        val slow = runner("module.exports={getStreams: async()=>{ fetch('https://slow.example.com/x').catch(function(){}); return [{name:'first',url:'https://c.example.com/x'}]; }};") { Thread.sleep(5_000); ok(it, "{}") }
+        assertEquals("first", run(slow).getOrThrow().single().name)
+        assertTrue("took ${System.currentTimeMillis() - t0}ms", System.currentTimeMillis() - t0 < 3_000)
     }
 }

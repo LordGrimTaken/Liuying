@@ -153,6 +153,16 @@ object PluginRunGuard {
     } catch (e: PluginRunException) {
         Result.failure(e)
     } catch (e: Throwable) { // includes OutOfMemoryError from the engine's own allocations
-        Result.failure(PluginRunException(e.message?.take(300) ?: e.javaClass.simpleName))
+        Result.failure(PluginRunException(describe(e)))
+    }
+
+    /** A short sentence a person can read: network failures say which host, not "No address associated with hostname". */
+    fun describe(e: Throwable): String = when {
+        e is java.net.UnknownHostException -> e.message?.takeIf { it.startsWith("Could not reach") || it.startsWith("blocked") }?.take(300)
+            ?: "Could not reach the server (DNS lookup failed)."
+        e is java.net.SocketTimeoutException -> "The server did not answer in time."
+        e is javax.net.ssl.SSLException -> "A secure connection could not be made (${e.message?.take(100) ?: "TLS error"})."
+        e is java.io.IOException -> "Network error: ${e.message?.take(200) ?: e.javaClass.simpleName}"
+        else -> e.message?.take(300) ?: e.javaClass.simpleName
     }
 }

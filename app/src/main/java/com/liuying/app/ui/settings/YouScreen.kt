@@ -392,10 +392,13 @@ private fun RepositoriesContent(
                         InkTextButton(if (running) "Testing" else "Test plugin", { if (canTest && !running) vm.testPlugin(r.id, p.info) }, color = if (canTest) Gold else PaperMuted)
                         if (!canTest) Text("Turn on Run plugins and allow this repository to test.", color = PaperMuted, style = MaterialTheme.typography.labelMedium)
                         pluginTests[tkey]?.let { t ->
-                            Text(
-                                if (t.ok) "Pass: ${t.streamCount} stream${if (t.streamCount == 1) "" else "s"} in ${t.elapsedMs / 1000.0}s" else "Failed: ${t.error}",
-                                color = if (t.ok) Paper else Vermilion, style = MaterialTheme.typography.labelMedium,
-                            )
+                            // the whole message, never cut off, and selectable so it can be copied into a report
+                            androidx.compose.foundation.text.selection.SelectionContainer {
+                                Text(
+                                    if (t.ok) "Pass: ${t.streamCount} stream${if (t.streamCount == 1) "" else "s"} in ${t.elapsedMs / 1000.0}s" else "Failed: ${t.error}",
+                                    color = if (t.ok) Paper else Vermilion, style = MaterialTheme.typography.labelMedium,
+                                )
+                            }
                         }
                     }
                 }
