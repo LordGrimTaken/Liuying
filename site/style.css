@@ -118,3 +118,5 @@ footer small{font:12px/1.6 system-ui,sans-serif;display:block;max-width:70ch}
 .hero-signin{display:inline-block;margin-top:14px;font:14px system-ui,sans-serif;letter-spacing:.06em;color:var(--paper);text-decoration-color:var(--gold);text-underline-offset:4px}
 .hero-signin:focus-visible{outline:2px solid var(--gold);outline-offset:3px}
 @media(min-width:700px){.hero-signin{display:none}}
+
+.phone .scr{padding:0;display:block}.phone .scr img{display:block;width:100%;height:100%;object-fit:cover;object-position:top}
