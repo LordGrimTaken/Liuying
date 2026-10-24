@@ -1,0 +1,40 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "liuying",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": { "enabled": true },
+
+  // Static site: built into ./dist by `npm run build` (copies ../site, keeps only the latest APK, adds 404.html and _headers).
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page",
+    // Only these go through the Worker (counted against the 100k/day free requests); everything else is served
+    // directly from the asset store. /watch deep links need the SPA shell; real files under /watch (anything with
+    // a dot) stay static.
+    "run_worker_first": ["/api/*", "/health", "/watch", "/watch/*", "!/watch/*.*"]
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "liuying",
+      "database_id": "ebfd0125-62aa-42b6-a2d3-d06ce1a67fe7",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  // Per-user sync limiter (60/min). Approximate and per location; falls back to a per-isolate counter if absent.
+  "ratelimits": [
+    { "name": "SYNC_RATE", "namespace_id": "7001", "simple": { "limit": 60, "period": 60 } }
+  ],
+
+  "vars": {
+    // PBKDF2-SHA256 iterations for NEW hashes (Workers cap: 100000; 15000 is what fits the free 10 ms CPU budget, see docs/cloudflare.md). Existing hashes keep their stored count and are upgraded on next login.
+    "PBKDF2_ITERATIONS": "15000"
+  }
+}
