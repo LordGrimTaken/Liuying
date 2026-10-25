@@ -151,3 +151,5 @@ headers and CSP, 404/HEAD, APK sha256 against `latest.json`, signup incl. CJK an
 sessions, password change, recovery flow, delete account, every sync endpoint incl. last-write-wins, limits and 429s). It
 deletes every account it creates. Signup is limited to 5 per hour per IP, so on a deployed site run the phases one at a
 time and run `DELETE FROM rate_hits` between them.
+
+Automatic deploys: pushes to main build and deploy through Cloudflare Workers Builds (root directory cloudflare).
