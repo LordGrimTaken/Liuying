@@ -48,6 +48,19 @@ const rule = (p, h, detach = []) => {
 };
 rule('/*', securityHeaders(false));
 rule('/watch/*', { 'Content-Security-Policy': securityHeaders(true)['Content-Security-Policy'] }, ['Content-Security-Policy']);
+// The plugin sandbox frame (plugins run in a Worker started by this page, inside <iframe sandbox="allow-scripts">). It gets its OWN
+// policy instead of the /watch one: no network of any kind (default-src 'none', so no connect-src), and 'unsafe-eval' so plugin
+// scripts can be evaluated. 'unsafe-eval' appears nowhere else. The inline script is the tiny starter in the page; the plugin itself
+// only ever runs in the Worker (worker-src blob:, which inherits this policy). `sandbox allow-scripts` forces an opaque origin even if
+// the page is opened directly; frame-ancestors 'self' lets only the web player embed it. .htm on purpose: Workers Assets redirects
+// .html URLs to the extension-less path, which would miss this rule.
+rule('/watch/plugins/sandbox.htm', {
+  'Content-Security-Policy': "default-src 'none'; script-src 'unsafe-eval' 'unsafe-inline'; worker-src blob:; sandbox allow-scripts; base-uri 'none'; form-action 'none'; frame-ancestors 'self'",
+  'X-Frame-Options': 'SAMEORIGIN',
+  'Content-Type': 'text/html; charset=utf-8',
+  'Cache-Control': 'no-cache',
+  'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=(), display-capture=(), clipboard-read=(), clipboard-write=(), fullscreen=()',
+}, ['Content-Security-Policy', 'X-Frame-Options']);
 rule('/watch/sw.js', { 'Cache-Control': 'no-cache', 'Service-Worker-Allowed': '/watch/' });
 rule('/watch/manifest.webmanifest', { 'Content-Type': 'application/manifest+json; charset=utf-8' });
 rule('/downloads/latest.json', { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache' });

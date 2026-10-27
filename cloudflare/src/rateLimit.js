@@ -1,3 +1,5 @@
+import { LIMITS as RELAY } from '../../site/watch/plugins/rules.js';
+
 // Two limiters with the same semantics as server/src/rateLimit.js (sliding window, blocked attempts not recorded).
 //
 // 1. createLimiter: in-memory, per isolate. Used as a fallback for the sync limiter.
@@ -48,9 +50,11 @@ export const LIMITS = {
   pwChange: { limit: 10, windowMs: 15 * MIN },
   recoverIp: { limit: 10, windowMs: 60 * MIN },
   recoverUser: { limit: 5, windowMs: 60 * MIN },
+  relayMin: { limit: RELAY.PER_MINUTE, windowMs: MIN }, // plugin relay calls per user (sliding window, a few rows)
 };
 export const SYNC_LIMIT = { limit: 60, windowMs: MIN };
 const MAX_WINDOW_MS = 60 * MIN;
+const DAY_MS = 24 * 60 * MIN;
 
 const INSERT_SQL = `INSERT INTO rate_hits (k, ts) SELECT ?1, ?2
   WHERE (SELECT count(*) FROM rate_hits WHERE k = ?1 AND ts > ?3) < ?4 RETURNING ts`;
@@ -82,4 +86,41 @@ export async function checkD1(db, checks, now = Date.now()) {
     });
   }
   return out;
+}
+
+// ---- daily counter (plugin relay, 3000/day/user) -----------------------------------------------------------------
+// A sliding window of 3000 rows would make every call read thousands of D1 rows (5 million rows/day on the free plan), so the
+// daily cap is ONE row per user and UTC day in rate_hits (no schema change): `ts` holds DAY_BASE + count. DAY_BASE is far in the
+// future so the housekeeping delete of old hits (`ts <= now - window`) never removes a counter; old counters are pruned by key.
+export const DAY_BASE = 4e12;
+const dayKey = (name, key, now) => `${name}:${new Date(now).toISOString().slice(0, 10)}:${key}`;
+const DAY_UPDATE = 'UPDATE rate_hits SET ts = ts + 1 WHERE k = ?1 AND ts < ?2 RETURNING ts';
+const DAY_INSERT = 'INSERT INTO rate_hits (k, ts) SELECT ?1, ?2 WHERE NOT EXISTS (SELECT 1 FROM rate_hits WHERE k = ?1) RETURNING ts';
+
+/**
+ * Relay limits in one D1 batch: the per-minute sliding window and the per-day counter. Returns { allowed, retryAfterSec, reason }.
+ * Both count the attempt; a request refused by the minute window still uses a unit of the day (a flood should not get a free day).
+ */
+export async function checkRelay(db, userId, dayLimit, now = Date.now()) {
+  const { limit, windowMs } = LIMITS.relayMin;
+  const dk = dayKey('relayDay', userId, now);
+  const stmts = [
+    db.prepare(INSERT_SQL).bind(`relayMin:${userId}`, now, now - windowMs, limit),
+    db.prepare(DAY_UPDATE).bind(dk, DAY_BASE + dayLimit),
+    db.prepare(DAY_INSERT).bind(dk, DAY_BASE + 1),
+  ];
+  if (Math.random() < 0.04) {
+    stmts.push(db.prepare('DELETE FROM rate_hits WHERE ts <= ?').bind(now - MAX_WINDOW_MS));
+    stmts.push(db.prepare("DELETE FROM rate_hits WHERE k >= 'relayDay:' AND k < ?").bind(`relayDay:${new Date(now - 2 * DAY_MS).toISOString().slice(0, 10)}`));
+  }
+  const res = await db.batch(stmts);
+  const minuteOk = (res[0].results?.length ?? 0) > 0;
+  const dayOk = (res[1].results?.length ?? 0) > 0 || (res[2].results?.length ?? 0) > 0;
+  if (minuteOk && dayOk) return { allowed: true, retryAfterSec: 0, reason: '' };
+  if (!dayOk) {
+    const midnight = Date.UTC(new Date(now).getUTCFullYear(), new Date(now).getUTCMonth(), new Date(now).getUTCDate() + 1);
+    return { allowed: false, retryAfterSec: Math.max(1, Math.ceil((midnight - now) / 1000)), reason: 'day' };
+  }
+  const row = await db.prepare('SELECT min(ts) AS oldest FROM rate_hits WHERE k = ? AND ts > ?').bind(`relayMin:${userId}`, now - windowMs).first();
+  return { allowed: false, retryAfterSec: Math.max(1, Math.ceil(((row?.oldest ?? now) + windowMs - now) / 1000)), reason: 'minute' };
 }

@@ -2,12 +2,13 @@ import { h, icon, clear, toast, confirmDialog, modal } from './dom.js';
 import * as store from '../store.js';
 import * as sync from '../sync.js';
 import { allHomeRows } from './today.js';
-import { moveKey, parsePluginUrl, relTime, syncFace, toCsv, LIBRARY_COLUMNS, libraryCsvRows, HISTORY_COLUMNS, historyCsvRows, historyJson, buildHistory } from '../ux.js';
+import { moveKey, relTime, syncFace, toCsv, LIBRARY_COLUMNS, libraryCsvRows, HISTORY_COLUMNS, historyCsvRows, historyJson, buildHistory } from '../ux.js';
 import { parseEpisodeId } from '../progress.js';
 import { catalogTitle } from '../addon/protocol.js';
 import { COMMON_LANGS, languageName, SUB_PRESETS, presetOf } from '../player/subtitles.js';
 import { VERSION } from '../util.js';
 import { applyTimeoutSetting } from '../addon/service.js';
+import { pluginsPanel, pluginsSummary } from './pluginsPanel.js';
 
 const S = () => store.settings();
 
@@ -147,10 +148,7 @@ export function settings({ query = {} } = {}) {
         row('Manage sources', store.sources().length ? store.sources().map((x) => x.manifest?.name || new URL(x.url).host).join(', ') : 'Add, enable, reorder or remove your sources.', h('a', { class: 'btn sm', href: '#/sources', text: 'Open sources' })),
         toggle('Patient mode', 'Waits longer for slow sources before giving up.', 'patient', applyTimeoutSetting),
         row('Insecure HTTP sources', 'Not available on the web player. Browsers block them on a secure page.', h('span', { class: 'badge', text: 'Blocked' }))),
-      acc('plugins', 'Repositories and plugins', () => `${plugins().length} saved link${plugins().length === 1 ? '' : 's'} · not runnable yet`,
-        h('p', { class: 'mute', text: 'Plugin repositories add new kinds of sources, like on the Android app. Plugins cannot run in the web player yet: you can save a manifest link here, but nothing is installed or executed.' }),
-        pluginForm(),
-        pluginList()),
+      acc('plugins', 'Repositories and plugins', pluginsSummary, pluginsPanel({ onChange: refreshSums })),
       acc('integrations', 'Integrations', () => 'Trakt, Simkl, TMDb · coming soon',
         h('div', { class: 'intgrid' }, [['Trakt', 'Sync watch history and ratings.'], ['Simkl', 'Track what you watch across apps.'], ['TMDb', 'Richer artwork and cast details.']].map(([n, d]) =>
           h('div', { class: 'intcard', 'aria-disabled': 'true' }, h('div', { class: 'intn', 'aria-hidden': 'true', text: n[0] }), h('div', { class: 'grow' }, h('b', { text: n }), h('span', { class: 'mute', text: d })), h('span', { class: 'badge', text: 'Coming soon' }))))),
@@ -220,37 +218,6 @@ export function settings({ query = {} } = {}) {
       row('Reset layout', 'Show every catalog again, in the sources’ own order.', h('button', { class: 'btn sm', type: 'button', text: 'Reset layout', onClick: () => { store.setSettings({ hiddenCatalogs: {}, homeOrder: [], heroCatalog: '' }); toast('Today layout reset'); rerender(); } })));
     draw();
     return wrap;
-  }
-
-  const plugins = () => (Array.isArray(store.prefs().plugins) ? store.prefs().plugins : []);
-  function pluginForm() {
-    const inp = h('input', { class: 'inp', type: 'url', id: 'plug-url', placeholder: 'https://example.com/plugin/manifest.json', 'aria-label': 'Plugin manifest link', autocomplete: 'off' });
-    const add = async () => {
-      const url = parsePluginUrl(inp.value);
-      if (!url) { toast('Enter a full https:// link to a plugin manifest.'); inp.focus(); return; }
-      if (plugins().some((p) => p.url === url)) { toast('That link is already saved.'); return; }
-      const ok = await confirmDialog('Save this plugin link?', `Plugins are code written by third parties and Liuying does not review them. Saving only records the link ${new URL(url).host}; nothing is downloaded or run, and the web player cannot run plugins yet.`, 'Save link');
-      if (!ok) return;
-      store.setPref('plugins', [...plugins(), { url, addedAt: Date.now() }]);
-      toast('Link saved. Not yet runnable.'); rerender();
-    };
-    return h('form', { class: 'plug-form', onSubmit: (e) => { e.preventDefault(); add(); } }, h('label', { class: 'lbl', for: 'plug-url', text: 'Add by manifest link' }), h('div', { class: 'plug-in' }, inp, h('button', { class: 'btn pri', type: 'submit', text: 'Add' })));
-  }
-  function pluginList() {
-    const list = plugins();
-    if (!list.length) return h('p', { class: 'mute', text: 'No plugin links saved.' });
-    const host = (u) => { try { return new URL(u).host; } catch { return u; } };
-    const ul = h('ul', { class: 'plist compact' });
-    const count = h('p', { class: 'mute pcount' });
-    const draw = (q = '') => {
-      const vis = list.filter((p) => !q || p.url.toLowerCase().includes(q));
-      clear(ul).append(...vis.map((p) => h('li', {},
-        h('div', { class: 'grow' }, h('b', { text: host(p.url) }), h('span', { class: 'mute purl', text: p.url })),
-        h('button', { class: 'ibtn', type: 'button', 'aria-label': `Remove ${p.url}`, onClick: () => { store.setPref('plugins', plugins().filter((x) => x.url !== p.url)); rerender(); } }, icon('trash', 18)))));
-      count.textContent = vis.length ? `${vis.length} of ${list.length} saved · not yet runnable` : 'No saved links match.';
-    };
-    draw();
-    return h('div', {}, h('input', { class: 'inp', type: 'search', placeholder: 'Search saved links', 'aria-label': 'Search saved plugin links', onInput: (e) => draw(e.target.value.trim().toLowerCase()) }), count, h('div', { class: 'plist-box' }, ul));
   }
 
   /** Last synced time, pending count and a Sync now button, with a glyph so the state is not colour alone (L032, L104). */

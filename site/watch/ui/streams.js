@@ -1,4 +1,4 @@
-import { h, icon, clear, keepFocus } from './dom.js';
+import { h, icon, clear, keepFocus, toast } from './dom.js';
 import * as store from '../store.js';
 import { loadStreams } from '../addon/service.js';
 import { describeError, fetchStreamsFrom } from '../addon/client.js';
@@ -11,6 +11,8 @@ import { imgUrl } from '../util.js';
 import { artImg, emptyState } from './components.js';
 import { badges } from './components.js';
 import { nextSort, sortStreamsBy, splitTop, fmtBytes } from '../ux.js';
+import * as plugins from '../plugins/service.js';
+import { groupFailures } from '../plugins/contract.js';
 
 export function rememberStream(type, mediaId, videoId, s) {
   const stream = {
@@ -49,6 +51,8 @@ export function streams({ params, query }) {
   let qFilter = '', lFilter = ''; // quality and language chips (L064, L065)
   let sort = null; // {key, dir} once the viewer picks a column
   const expanded = new Set();
+  const pluginFails = new Map(); // "repo/plugin" key -> {name, message, item}
+  let pluginsRunning = 0, pluginsTotal = 0, pluginFailOpen = false, pluginNote = '';
   const TOP = 5;
   let autoTimer = null;
   let autoCancelled = false;
@@ -70,11 +74,31 @@ export function streams({ params, query }) {
     navigate(`/play/${enc(type)}/${enc(id)}`, videoId ? { v: videoId } : undefined);
   }
 
+  function copyLink(url) {
+    const done = () => toast('Link copied');
+    const fallback = () => {
+      const ta = h('textarea', { 'aria-hidden': 'true', tabindex: '-1' }); ta.value = url; document.body.append(ta); ta.select();
+      try { document.execCommand('copy'); done(); } catch { toast('Could not copy the link.'); } ta.remove();
+    };
+    if (navigator.clipboard?.writeText) navigator.clipboard.writeText(url).then(done, fallback); else fallback();
+  }
+
+  /** A plugin stream: the normal row plus a copy-link button (streams that need request headers may not play in a browser). */
   function row(s) {
+    const el = rowCore(s);
+    if (!s.source.isPlugin) return el;
+    const hdrs = s.raw.pluginHeaders ? Object.keys(s.raw.pluginHeaders) : [];
+    return h('div', { class: 'srow-wrap' }, el,
+      h('div', { class: 'srow-extra' },
+        hdrs.length ? h('span', { class: 'mute', text: `Needs request headers (${hdrs.slice(0, 4).join(', ')}${hdrs.length > 4 ? ', …' : ''}) that a browser cannot send.` }) : null,
+        h('button', { class: 'linkbtn copylink', type: 'button', 'aria-label': `Copy link for ${s.title}`, text: 'Copy link', onClick: () => copyLink(s.raw.url) })));
+  }
+
+  function rowCore(s) {
     const c = s.cls;
     const q = s.res ? h('span', { class: 'badge res', text: s.res }) : h('span', { class: 'mute', text: '–' });
     const cells = [
-      h('div', { class: 'smain' }, h('div', { class: 't', text: s.title }), s.desc ? h('div', { class: 'd', text: s.desc }) : null,
+      h('div', { class: 'smain' }, h('div', { class: 't' }, s.title, s.source.isPlugin ? h('span', { class: 'badge plugin', text: 'plugin' }) : null), s.desc ? h('div', { class: 'd', text: s.desc }) : null,
         s.badges.filter((b) => b.kind !== 'res' && b.kind !== 'size').length ? badges(s.badges.filter((b) => b.kind !== 'res' && b.kind !== 'size')) : null,
         c.playable && c.warn ? h('div', { class: 'badges' }, h('span', { class: 'badge warn', text: c.warn })) : null,
         !c.playable && c.note ? h('div', { class: 'note' }, icon('warn', 14), c.note) : null),
@@ -131,14 +155,17 @@ export function streams({ params, query }) {
   function drawChips() {
     drawFacets();
     clear(chipsEl);
-    if (groups.size < 2) return;
+    if (order.filter((u) => !groups.get(u).source.isPlugin).length + (order.some((u) => groups.get(u).source.isPlugin) ? 1 : 0) < 2) return;
     chipsEl.append(h('button', { class: 'chip', type: 'button', 'aria-pressed': String(filter === 'all'), onClick: () => { filter = 'all'; render(); } }, 'All'));
+    const pg = order.map((u) => groups.get(u)).filter((g) => g.source.isPlugin);
     for (const url of order) {
       const g = groups.get(url);
+      if (g.source.isPlugin) continue;
       chipsEl.append(h('button', { class: 'chip', type: 'button', 'aria-pressed': String(filter === url), onClick: () => { filter = url; render(); } },
         g.source.manifest?.name || 'Source',
         g.status === 'loading' ? h('span', { class: 'spin', 'aria-label': 'loading' }) : g.status === 'err' ? h('span', { class: 'edot', title: 'Failed' }) : h('span', { class: 'n', text: String(g.streams.length) })));
     }
+    if (pg.length) chipsEl.append(h('button', { class: 'chip', type: 'button', 'aria-pressed': String(filter === 'plugins'), onClick: () => { filter = 'plugins'; render(); } }, 'Plugins', h('span', { class: 'n', text: String(pg.reduce((n, g) => n + g.streams.length, 0)) })));
   }
 
   function render() { keepFocus(page, renderNow); }
@@ -146,7 +173,7 @@ export function streams({ params, query }) {
     drawChips();
     const s = store.settings();
     clear(listEl);
-    const visible = order.filter((u) => filter === 'all' || filter === u).map((u) => groups.get(u));
+    const visible = order.filter((u) => filter === 'all' || filter === u || (filter === 'plugins' && groups.get(u).source.isPlugin)).map((u) => groups.get(u));
     const keep = (x) => !(s.hideUnplayable && !x.cls.playable && !x.cls.openUrl) && filterStreams([x], { quality: qFilter, lang: lFilter }).length > 0;
     const flat = !!sort || s.streamGroup === 'flat';
     const total = visible.reduce((n, g) => n + g.streams.filter(keep).length, 0);
@@ -171,14 +198,71 @@ export function streams({ params, query }) {
     }
     const loading = [...groups.values()].filter((g) => g.status === 'loading').length;
     clear(progEl);
+    drawPluginStatus();
     if (loading) progEl.append(h('div', { class: 'progress-line', role: 'status' }, h('span', { class: 'spin' }), `Still searching ${loading} source${loading > 1 ? 's' : ''}…`));
     else if (groups.size) {
       const total = [...groups.values()].reduce((n, g) => n + g.streams.length, 0);
       const errs = [...groups.values()].filter((g) => g.status === 'err').length;
-      if (!total && errs === groups.size && !listEl.querySelector('.state.err')) progEl.append(h('p', { class: 'mute', text: 'Every source failed.' }));
-      if (!total && errs < groups.size) progEl.append(emptyState('No streams found', 'Your enabled sources have nothing for this title. Try another source, or check that the right sources are enabled.', h('button', { class: 'btn', type: 'button', text: 'Retry', onClick: start }), h('a', { class: 'btn', href: '#/sources', text: 'Check sources' })));
+      if (!total && !pluginsRunning && !pluginFails.size && errs === groups.size && !listEl.querySelector('.state.err')) progEl.append(h('p', { class: 'mute', text: 'Every source failed.' }));
+      if (!total && !pluginsRunning && errs < groups.size) progEl.append(emptyState('No streams found', 'Your enabled sources have nothing for this title. Try another source, or check that the right sources are enabled.', h('button', { class: 'btn', type: 'button', text: 'Retry', onClick: start }), h('a', { class: 'btn', href: '#/sources', text: 'Check sources' })));
     }
-    if (!groups.size && started) progEl.append(emptyState('No source can provide streams', store.sources().length ? 'None of your enabled sources offers streams for this kind of title.' : 'Add a source to find streams.', h('a', { class: 'btn pri', href: '#/sources', text: 'Open sources' })));
+    if (!groups.size && started && !pluginsRunning) {
+      if (pluginsTotal && !pluginFails.size) progEl.append(emptyState('No streams found', 'Your enabled plugins have nothing for this title.', h('button', { class: 'btn', type: 'button', text: 'Retry', onClick: start }), h('a', { class: 'btn', href: '#/settings?open=plugins', text: 'Check plugins' })));
+      else if (!pluginsTotal) progEl.append(emptyState('No source can provide streams', store.sources().length ? 'None of your enabled sources offers streams for this kind of title.' : 'Add a source to find streams.', h('a', { class: 'btn pri', href: '#/sources', text: 'Open sources' })));
+    }
+  }
+
+  /** Plugins: one progress line while they run, and ALL failures in one expandable line with a Retry button. */
+  function drawPluginStatus() {
+    if (pluginNote) progEl.append(h('p', { class: 'mute plugnote', text: pluginNote }));
+    if (pluginsRunning) progEl.append(h('div', { class: 'progress-line', role: 'status' }, h('span', { class: 'spin' }), `Waiting for ${pluginsRunning} plugin${pluginsRunning > 1 ? 's' : ''}…`));
+    if (!pluginFails.size) return;
+    const fails = [...pluginFails.values()];
+    const grouped = groupFailures(fails.map((f) => [f.name, f.message]));
+    const summary = fails.length === 1 ? grouped[0].headline : grouped.length === 1 ? grouped[0].headline : `${fails.length} plugins failed`;
+    const bid = 'plug-fail-body';
+    progEl.append(h('div', { class: 'pfail' },
+      h('div', { class: 'pfail-h' },
+        h('button', { class: 'pfail-t', type: 'button', 'aria-expanded': String(pluginFailOpen), 'aria-controls': bid, onClick: () => { pluginFailOpen = !pluginFailOpen; render(); } },
+          icon(pluginFailOpen ? 'up' : 'down', 16), h('span', { text: summary })),
+        h('button', { class: 'btn sm', type: 'button', text: 'Retry', disabled: !!pluginsRunning, onClick: retryPlugins })),
+      pluginFailOpen ? h('ul', { class: 'pfail-body', id: bid }, grouped.map((g) => h('li', {}, h('b', { text: g.headline }), g.names.length > 1 ? h('span', { class: 'mute', text: ` — ${g.names.join(', ')}` }) : null))) : null));
+  }
+
+  function startPlugins(items) {
+    const { target, list } = items || plugins.eligible(type, streamId);
+    pluginNote = '';
+    if (!target || !list.length) {
+      if (!items && target === null) {
+        const why = plugins.blockedReason();
+        if (why === 'signedout' && plugins.repos().some((r) => (r.plugins || []).some((p) => p.enabled))) pluginNote = 'Plugins are on but need you to be signed in to Liuying.';
+      }
+      return;
+    }
+    pluginsRunning += list.length; pluginsTotal = Math.max(pluginsTotal, pluginsRunning);
+    list.forEach(({ repo, plugin }) => pluginFails.delete(`${repo.id}/${plugin.id}`));
+    render();
+    plugins.runForTitle(list, target, {
+      signal: ctl.signal,
+      onResult: (r) => {
+        pluginsRunning = Math.max(0, pluginsRunning - 1);
+        if (r.ok) {
+          if (r.streams.length) {
+            const g = { source: r.source, status: 'ok', streams: r.streams.map((raw, i) => describeStream(raw, r.source, i, { pageSecure: true })), error: null };
+            if (!groups.has(r.source.url)) order.push(r.source.url);
+            groups.set(r.source.url, g);
+          }
+        } else pluginFails.set(`${r.repo.id}/${r.plugin.id}`, { name: r.plugin.name, message: r.error, item: { repo: r.repo, plugin: r.plugin } });
+        render(); considerAuto();
+      },
+    }).catch(() => {}).finally(() => { if (!ctl.signal.aborted) { pluginsRunning = 0; render(); } });
+  }
+  function retryPlugins() {
+    const items = [...pluginFails.values()].map((f) => f.item);
+    const { target } = plugins.eligible(type, streamId);
+    if (!target || !items.length) return;
+    pluginsTotal = 0;
+    startPlugins({ target, list: items });
   }
 
   async function retry(g) {
@@ -199,7 +283,7 @@ export function streams({ params, query }) {
     const all = order.flatMap((u) => groups.get(u).streams);
     let pick = wantBinge ? pickSimilar(all, store.prefs().lastStream?.[id]) : null;
     if (!pick && !wantBinge) {
-      const playable = all.filter((x) => x.cls.playable);
+      const playable = all.filter((x) => x.cls.playable && !(x.source.isPlugin && x.raw.pluginHeaders));
       pick = sortStreams(playable, 'resolution').sort((a, b) => (RES_RANK[b.res] || 0) - (RES_RANK[a.res] || 0))[0] || null;
       if (!pick) return;
     }
@@ -214,7 +298,7 @@ export function streams({ params, query }) {
 
   let started = false;
   function start() {
-    groups.clear(); order = []; started = true;
+    groups.clear(); order = []; started = true; pluginFails.clear(); pluginsRunning = 0; pluginsTotal = 0;
     render();
     loadStreams(type, streamId, {
       signal: ctl.signal,
@@ -226,6 +310,7 @@ export function streams({ params, query }) {
         render(); considerAuto();
       },
     }).then(() => { if (!ctl.signal.aborted) render(); });
+    startPlugins();
   }
   start();
   return { destroy() { ctl.abort(); clearTimeout(autoTimer); } };

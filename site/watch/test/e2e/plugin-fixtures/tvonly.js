@@ -1,0 +1,1 @@
+module.exports.getStreams = async function (id, type, s, e) { return [{ name: 'Fixture TV', title: 'tv ' + id + ' ' + type + ' ' + s + 'x' + e, url: 'https://cdn.fixture.dev/tv.mp4', quality: '1080p' }]; };

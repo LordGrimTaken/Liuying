@@ -921,3 +921,49 @@ html{scroll-padding-top:calc(var(--tb) + env(safe-area-inset-top) + 16px);scroll
 .ep.spoil .o .blur{filter:blur(6px);user-select:none}
 /* the fixed sign-in banner must never cover the last buttons on a page */
 body:has(#banner:not([hidden])) #view{padding-bottom:110px}
+
+/* ---- plugins (settings panel and streams page) ---- */
+.plug{display:grid;gap:12px}
+.plug .risk{color:#ff9a8e;font-size:14.5px}
+:root[data-theme="paper"] .plug .risk{color:#a3281f}
+.plug .perr,.perr{color:#ff9a8e;font-size:13.5px;margin-top:6px;overflow-wrap:anywhere}
+:root[data-theme="paper"] .perr{color:#a3281f}
+.plug .switch{border-bottom:0;padding:4px 0}
+.plug .plug-form{margin:0}
+.plug .pmeta{font-size:12.5px;margin-bottom:4px}
+.wrapbulk{flex-wrap:wrap}
+.prows .prow{display:block;padding:6px 6px 6px 12px}
+.prow-h{display:flex;align-items:center;gap:10px;justify-content:space-between;min-height:44px}
+.pname{display:flex;align-items:center;gap:8px;flex:1;min-width:0;text-align:left;padding:6px 0}
+.pname b{font-weight:600;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pname .ico{flex:none;color:var(--mute);transition:transform var(--dur-fast)}
+.pname[aria-expanded="true"] .ico{transform:rotate(180deg)}
+.pdetail{display:grid;gap:8px;padding:2px 0 10px}
+.pdetail .perms{font-size:12.5px;color:var(--gold)}
+.ptest{font-size:13.5px;overflow-wrap:anywhere;user-select:text;-webkit-user-select:text}
+.ptest.pass{color:#9fd2ac}
+.ptest.fail{color:#ff9a8e}
+:root[data-theme="paper"] .ptest.pass{color:#2d6a3d}
+:root[data-theme="paper"] .ptest.fail{color:#a3281f}
+.consent{display:grid;gap:8px}
+.consent ul{padding-left:20px;display:grid;gap:3px}
+.consent .perm{color:var(--gold)}
+.keyrow{align-items:start}
+.keyin{display:grid;gap:8px}
+.plug .state.compact{display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:space-between;text-align:left}
+.badge.plugin{margin-left:8px;border-color:var(--red2);color:#ff9a8e;vertical-align:1px}
+:root[data-theme="paper"] .badge.plugin{color:#a3281f}
+.srow-wrap{margin-bottom:8px}
+.srow-wrap .srow{margin-bottom:0}
+.srow-extra{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:4px 12px;padding:4px 14px 0 17px;font-size:12.5px}
+.srow-extra .copylink{font-size:13px;min-height:32px}
+.pfail{border:1px solid var(--line2);border-radius:var(--radius);background:rgba(0,0,0,.14);margin:8px 0;padding:4px 10px 4px 4px}
+.pfail-h{display:flex;align-items:center;gap:10px;justify-content:space-between}
+.pfail-t{display:flex;align-items:center;gap:8px;flex:1;min-width:0;min-height:44px;padding:6px 8px;text-align:left;color:var(--mute);font-size:14px}
+.pfail-t span{overflow-wrap:anywhere}
+.pfail-body{list-style:none;display:grid;gap:6px;padding:2px 8px 10px 12px;font-size:13px;color:var(--mute)}
+.pfail-body b{font-weight:600;color:var(--fg);overflow-wrap:anywhere}
+.plugnote{font-size:13px}
+/* a stream without a size or quality gets class "empty" on its cell; the empty-state rule (.empty, 58vh) must not stretch the row */
+.scell.empty{min-height:0;padding:0;gap:0;display:block;text-align:inherit;animation:none}
+@media(max-width:719px){.scell.empty{display:none}}

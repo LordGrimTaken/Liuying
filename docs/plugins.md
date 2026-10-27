@@ -1,7 +1,8 @@
 # Plugins (stream scrapers)
 
 Liuying can run small JavaScript plugins that look up streams for a title. They are listed next to the streams from your
-addon sources on the Details screen, with a **plugin** badge. This is off by default and Android only.
+addon sources on the Details screen, with a **plugin** badge. This is off by default. It runs on Android and, since the web player
+got a sandbox and a relay, in the browser too (see "Web player" below for what differs).
 
 > Plugins are third-party code. Liuying does not review, host or endorse them or what they link to. Use them at your own risk.
 
@@ -125,8 +126,121 @@ the background) but the engine's thread is only reclaimed when the engine honour
 
 ## Web player
 
-Running plugins is **Android only for now**. A browser cannot fetch arbitrary third-party sites because of CORS, and Liuying
-deliberately does not ship a server-side open proxy for plugins. The web player does not run plugins.
+The web player (`/watch`, Settings > Repositories and plugins) runs the same plugins with the same contract, behind a server relay
+and a browser sandbox. Everything below is about the web; the Android sections above still describe Android.
+
+### What you see
+
+* Settings > **Repositories and plugins**: the Android risk notice (word for word), the master **Run plugins** switch (default **off**,
+  stored in this browser, not synced), add a repository by manifest URL, per repository: description, consent state, search (more
+  than 8 plugins), Enable all / Disable all / Update / Remove, per plugin: enable switch, description, permissions, **Test plugin**.
+* Consent is per repository, asked the first time you enable one of its plugins (same wording as Android, plus a line saying
+  requests go through the Liuying relay). A plugin whose update asks for new permissions is switched off again.
+* Needs a **signed-in Liuying account**: the relay only serves signed-in users. Signed out, the panel says so and nothing runs.
+* On the streams page plugin results sit next to the addon streams, each stream with a **plugin** badge, under the plugin's name
+  (one "Plugins" filter chip instead of one chip per plugin). Plugins that found nothing are not listed. Every failure goes into
+  **one** expandable line ("3 plugins failed", same grouping as Android: identical reasons and unreachable hosts merge) with a
+  **Retry** button that asks only the failed plugins again.
+* A stream that carries required request headers (`headers`, e.g. `Referer`) cannot be played faithfully by a browser, which cannot set
+  those headers on a media request. It is marked **May not play in a browser**, names the headers, is never auto-selected, and every
+  plugin stream has a **Copy link** button.
+* Ids: the streams page knows IMDb ids. If you save a TMDB key (Settings > Repositories and plugins > Metadata API key, v3 key or v4
+  read token; kept in this browser only, never synced, sent only to `api.themoviedb.org`, never given to a plugin) the page resolves
+  IMDb to TMDB through `/find` like Android; otherwise the plugin receives the IMDb id in `tmdbId`. `tmdb:<id>` ids are used as they are.
+* **Test plugin** uses the same sample titles as Android (TMDB 603 as a movie, or 1396 S1E1 for TV-only plugins) and shows
+  `Pass: N streams in X.Xs` or `Failed: <error>`.
+
+### How it runs
+
+```
+page (/watch)  --postMessage-->  <iframe sandbox="allow-scripts" src="/watch/plugins/sandbox.htm">   opaque origin, own CSP
+                                      \-- dedicated Worker running plugins/engine.js                  inherits that CSP
+page  --POST /api/relay-->  Worker (signed-in session, limits, public hosts only)  -->  the internet
+```
+
+1. The page (`plugins/host.js`) creates a hidden iframe with `sandbox="allow-scripts"` and **no** `allow-same-origin`: the frame has an
+   opaque origin, so it cannot read the player's cookies, `localStorage`, IndexedDB, DOM or session, and cannot reach any origin.
+2. The frame is served from its own static page with its own policy (generated into `_headers` by `cloudflare/scripts/build-assets.mjs`):
+   `default-src 'none'; script-src 'unsafe-eval' 'unsafe-inline'; worker-src blob:; sandbox allow-scripts; base-uri 'none';
+   form-action 'none'; frame-ancestors 'self'`. There is **no `connect-src`**, so nothing in the frame can open a network connection.
+   `'unsafe-eval'` exists on this one page only; the `/watch` policy is unchanged (`script-src 'self'`, no `unsafe-*`), and a test
+   (`cloudflare/test/headers.test.js`) fails if `unsafe-eval` appears anywhere else. The page is `sandbox.htm`, not `.html`, because
+   Workers Assets redirects `.html` URLs to the extension-less path, which would miss the headers rule.
+3. The frame's only script is a 20-line starter. It starts `engine.js` (sent by the page as text) in a **dedicated Worker**
+   and forwards messages between the Worker and the page. The plugin runs only in that Worker, which inherits the frame's CSP. The Worker
+   matters for two reasons: a plugin stuck in a tight `while (true)` freezes only the Worker (the page stays responsive and the
+   20-second timer still fires; the e2e test checks this), and workers have no DOM, no WebRTC and no way to navigate the frame.
+   If the browser cannot start the Worker the run fails closed ("This browser cannot start the plugin sandbox").
+4. `engine.js` is a browser port of `PluginPrelude.kt` (same host API and contract). The browser's own `URL`, `URLSearchParams`,
+   `atob`/`btoa`, `TextEncoder`/`TextDecoder` are used; `Headers`, `AbortController`, `Buffer` and the `fetch` shim are ported.
+   The shim posts the request to the page and waits for the answer. `XMLHttpRequest`, `WebSocket`, `EventSource`, `importScripts`,
+   `Worker`, `indexedDB`, `caches`, `WebAssembly`, `setInterval` and `postMessage` are removed from the plugin's global (defence in
+   depth: the CSP already blocks every network path).
+5. **The page trusts nothing the frame sends** (a plugin can post any message). Every `fetch` request is validated by the same rules
+   the relay applies (`plugins/rules.js`), headers are sanitised again, requests are counted, the response is size-checked, and the
+   result is re-parsed (`parseResult`: public http(s) URLs only, 100 streams, header limits). Only messages from the frame's window
+   with origin `null` are read.
+6. Per-run limits are enforced by the page: **20 s** wall clock for the whole run (script download, execution, waiting), then the
+   iframe is removed (which kills the Worker); **30 requests** (redirect hops reported by the relay count); 5 MB per response; 15 s per
+   request; at most 3 plugins at a time and 4 downloads at a time. Scripts and manifests are downloaded through the relay too, and scripts are cached in memory for 10 minutes.
+   `cheerio-without-node-native` 0.20.2 and `crypto-js` 4.2.0 are the same unmodified MIT files as Android (`plugins/vendor/`,
+   `NOTICE.txt`; a test checks they are byte-identical to the Android assets) and are handed to the Worker as text when the script
+   mentions `require`. Any other `require` throws.
+
+### The relay: `POST /api/relay`
+
+`cloudflare/src/relay.js`, rules in `site/watch/plugins/rules.js` (shared with the page). Request `{ url, method, headers, body }`
+(JSON, `Content-Type: application/json`, the usual CSRF checks); answer `{ status, statusText, url, headers, body, binary, hops }`.
+
+| rule | value |
+| --- | --- |
+| who | signed-in users only (session cookie; the cookie is read by the Worker and is **never** forwarded) |
+| methods | `GET`, `HEAD`, `POST` (a body only on `POST`) |
+| targets | `http`/`https` only; **host must be a public DNS name**: IP literals (v4, v6 and numeric forms such as `2130706433`), `localhost`, `.local`, `.internal`, `.lan`, `.home.arpa`, `.test`, single-label names and wildcard-DNS names (`nip.io`, `sslip.io`, ...) are refused; ports 80, 443, 8080, 8443 only; no `user:pass@`; the Worker's own host names, `*.workers.dev` and `liuyingapp.com` are refused (no loops); URLs up to 4096 characters. Workers cannot check where a name resolves, so a public name that points at a private address is not detected here (Cloudflare's network cannot reach private addresses, which is the real protection) |
+| request headers | `Cookie`, `Cookie2`, `Authorization`, `Proxy-Authorization`, `Host`, `Content-Length`, hop-by-hop headers, `Forwarded`, `Via`, `X-Forwarded-*`, `X-Real-IP`, `True-Client-IP`, `CF-*`, `Sec-*`, `Accept-Encoding` and header names or values that are not valid are dropped (the plugin still gets its request, without them); at most 30 headers. `User-Agent` defaults to `Liuying/1.0 (Web plugin relay; ...)`, a plugin may set its own |
+| redirects | followed **by hand**, at most 5, every hop re-validated like the first request (a redirect to a private or own address is refused: `Redirect refused: ...`); 301/302/303 turn a body request into a `GET` |
+| request body | at most **64 KB** (UTF-8 bytes) |
+| response | streamed and counted, aborted over **5 MB** (also by `Content-Length`); text is decoded with the response charset; `Set-Cookie` is removed; binary content types come back as base64 with `binary: true`, at most **512 KB** (base64 is CPU work on the free plan) |
+| time | 15 s per call (including redirects) |
+| per user | **120 calls per minute** (sliding window) and **3000 per day** (UTC day; one counter row in `rate_hits`), then `429` with `Retry-After` |
+| privacy | nothing is stored and nothing sensitive is logged; the sites a plugin contacts see the Worker's address, not the user's |
+| CPU | I/O only (the upstream body is never parsed); session lookup and the limiter are two D1 calls |
+
+Refusals are `400 blocked_target` (target not allowed), `405` (method), `413` (body), `401`, `429`; upstream problems are `502`
+(`Could not reach <host> (...)`, `too_large`, `too_many_redirects`) or `504 timeout`.
+
+### Differences from Android
+
+| | Android | Web |
+| --- | --- | --- |
+| signed in | not needed | **required** (relay) |
+| engine | QuickJS | the browser's own JS engine in a sandboxed Worker; `WebAssembly` is removed to match |
+| request body | 1 MB | 64 KB |
+| methods | GET, HEAD, POST, PUT, PATCH, DELETE | GET, HEAD, POST |
+| request headers | everything but a few | also no `Cookie`/`Authorization`, so plugins that need a bearer token or cookie for an API cannot work on the web |
+| ports | any | 80, 443, 8080, 8443 |
+| `*.workers.dev` hosts | allowed | refused as request targets (stream links on them are fine) |
+| binary responses | decoded as text | `arrayBuffer()` is real bytes (up to 512 KB) |
+| streams that need headers | player sends them | cannot play in a browser: marked, link can be copied |
+| streams on public IP literals | allowed | dropped |
+| DNS | own resolver with DoH fallback | Cloudflare's |
+
+### What cannot work in a browser
+
+* Plugins that need request **headers on the media request** (Referer, cookies, tokens): the browser's `<video>` cannot send them. The stream is listed, marked, and can be copied.
+* Plugins that need a header the relay strips (Cookie, Authorization), a method other than GET/HEAD/POST, a port outside the list, or more than 64 KB of request body.
+* Sites that block Cloudflare Workers' addresses (many scrapers target such sites): they answer the relay with an error page or a 403 and the plugin fails or returns nothing. This is a property of the data-centre address, not a bug.
+* Streams from hosts that are HTTP only (the page is HTTPS, the browser blocks mixed content) and media the browser cannot decode.
+* A hostile plugin can still use its 30 requests per run and 3000 per day to make the relay fetch public pages; it cannot reach private addresses, the user's session or any other origin.
+
+### Tests
+
+`cloudflare/test/relay.test.js` (validator tables, header stripping, redirect re-validation, size and time caps, binary, auth, CSRF,
+rate limits, session cookie never forwarded), `cloudflare/test/headers.test.js` (generated policies), `site/watch/test/plugins.test.mjs`
+(manifest and result parsing, request validation, the engine in a fake worker including `require` of both modules, file integrity) and
+`site/watch/test/e2e/plugins_e2e.py` (Playwright against `wrangler dev`, with a mock relay and fixture plugins under
+`plugin-fixtures/`: settings flow, consent, Test, streams page, grouped failures and Retry, the 30-request cap, a tight-loop plugin
+stopped at 20 s while the page keeps ticking, and a hostile plugin whose every escape attempt is checked).
 
 ## Engine
 
@@ -151,7 +265,7 @@ Known not to work fully (loads, but a feature is missing):
 - `peachify`: uses `localStorage` in a guarded path; `netmirror`, `animezey`, `einthusan`, `gramcinema`, `showbox`, `torrentio` read `SCRAPER_SETTINGS` (empty, so their defaults apply).
 - Plugins whose real sites block or change are outside what any runner can fix.
 
-## Verification status
+## Verification status (Android)
 
 See the build notes in the commit message and the project report: automated tests cover the URL rules, the HTTP door,
 the contract and the engine on the JVM. The Android build of the engine, the settings UI and the Details list are not

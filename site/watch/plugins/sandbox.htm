@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Liuying plugin sandbox</title></head>
+<body>
+<!-- Plugin sandbox frame. Loaded only as <iframe sandbox="allow-scripts"> by the Liuying web player (opaque origin: no cookies, no
+     storage, no access to the page). Served with its own CSP (default-src 'none': no network of any kind) and no framing by other sites.
+     The one inline script below only starts the engine in a Worker and passes messages between that Worker and the page. -->
+<script>
+(function () {
+  var P = window.parent, w = null;
+  function toPage(m) { try { P.postMessage(m, '*'); } catch (e) {} }
+  window.addEventListener('message', function (ev) {
+    if (ev.source !== P) return;
+    var d = ev.data;
+    if (!d || typeof d !== 'object') return;
+    if (!w) {
+      if (d.type !== 'init' || typeof d.engine !== 'string') return;
+      try { w = new Worker(URL.createObjectURL(new Blob([d.engine], { type: 'text/javascript' }))); }
+      catch (e) { toPage({ type: 'fatal', message: 'This browser cannot start the plugin sandbox.' }); return; }
+      w.onmessage = function (m) { toPage(m.data); };
+      w.onerror = function (m) { toPage({ type: 'fatal', message: 'The plugin crashed' + (m && m.message ? ': ' + String(m.message).slice(0, 200) : '.') }); };
+      return;
+    }
+    w.postMessage(d);
+  });
+  toPage({ type: 'boot' });
+})();
+</script>
+</body></html>

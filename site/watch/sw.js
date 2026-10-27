@@ -8,12 +8,12 @@
  * content changed without the hash being updated (the failure prints the new hash).
  * Between bumps, shell assets are served stale-while-revalidate, so an edit that forgot the bump
  * still arrives on the next load.
- * shell-hash: 0f0a39c02303
+ * shell-hash: 41a4c4e6de74
  *
  * NEVER cached: /api/*, addon manifests/catalogs/streams, subtitles, posters and media (cross-origin
  * or non-shell). Only same-origin GETs under /watch/ and the hls vendor file are handled here.
  */
-const VERSION = 'v20';
+const VERSION = 'v23';
 const CACHE = `liuying-shell-${VERSION}`;
 const PREFIX = 'liuying-shell-';
 const SCOPE_PATH = '/watch/';
@@ -50,6 +50,15 @@ const SHELL = [
   '/watch/player/player.js',
   '/watch/player/subs-controller.js',
   '/watch/player/subtitles.js',
+  '/watch/plugins/contract.js',
+  '/watch/plugins/engine.js',
+  '/watch/plugins/host.js',
+  '/watch/plugins/rules.js',
+  '/watch/plugins/sandbox.htm',
+  '/watch/plugins/service.js',
+  '/watch/plugins/vendor/NOTICE.txt',
+  '/watch/plugins/vendor/cheerio.js',
+  '/watch/plugins/vendor/crypto-js.js',
   '/watch/ui/browse.js',
   '/watch/ui/calendar.js',
   '/watch/ui/catalogPage.js',
@@ -58,6 +67,7 @@ const SHELL = [
   '/watch/ui/details.js',
   '/watch/ui/hero.js',
   '/watch/ui/dom.js',
+  '/watch/ui/pluginsPanel.js',
   '/watch/ui/search.js',
   '/watch/ui/searchOverlay.js',
   '/watch/ui/settings.js',
@@ -112,11 +122,12 @@ self.addEventListener('fetch', (event) => {
   if (!handled(req, url)) return;
   event.respondWith((async () => {
     const cache = await caches.open(CACHE);
-    const nav = req.mode === 'navigate';
-    // every in-scope navigation (/watch/, /watch/anything) gets the same SPA shell
+    // every in-scope page navigation (/watch/, /watch/anything) gets the same SPA shell. A navigation to a real file (the plugin
+    // sandbox frame, /watch/plugins/sandbox.htm) must get that file, with its own headers, not the shell.
+    const nav = req.mode === 'navigate' && !/\.[^/]+$/.test(url.pathname);
     const key = nav ? '/watch/' : url.pathname;
     const hit = await cache.match(key);
-    const update = revalidate(cache, key, nav ? new Request('/watch/', { cache: 'no-cache' }) : req);
+    const update = revalidate(cache, key, nav ? new Request('/watch/', { cache: 'no-cache' }) : req.mode === 'navigate' ? new Request(url.pathname, { cache: 'no-cache' }) : req);
     if (hit) { event.waitUntil(update.catch(() => {})); return hit; }
     try { return await update; } catch (err) {
       if (nav) { const off = await cache.match(OFFLINE); if (off) return off; }

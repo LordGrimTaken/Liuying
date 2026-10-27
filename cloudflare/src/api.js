@@ -6,7 +6,9 @@ import {
 } from './auth.js';
 import { ApiError } from './errors.js';
 import { clientIp } from './clientIp.js';
-import { checkD1, createLimiter, SYNC_LIMIT } from './rateLimit.js';
+import { checkD1, checkRelay, createLimiter, SYNC_LIMIT } from './rateLimit.js';
+import { parseRelaySpec, relayFetch } from './relay.js';
+import { LIMITS as RELAY_LIMITS } from '../../site/watch/plugins/rules.js';
 import { handleSync } from './sync.js';
 import { json, respond, parseJsonBody } from './http.js';
 
@@ -38,7 +40,7 @@ const bodyObject = (b) => {
   return b;
 };
 
-export async function handleApi(request, env, ctx, { now = () => Date.now() } = {}) {
+export async function handleApi(request, env, ctx, { now = () => Date.now(), relayFetchImpl } = {}) {
   const url = new URL(request.url);
   const secure = url.protocol === 'https:';
   const cookies = { set: [] };
@@ -58,6 +60,10 @@ export async function handleApi(request, env, ctx, { now = () => Date.now() } = 
       const out = await syncRoute();
       if (out) return finish(out.status, out.body);
       return json(404, { error: 'not_found', message: 'Not found.' });
+    }
+    if (path === '/relay') {
+      if (method !== 'POST') throw new ApiError(405, 'method_not_allowed', 'Use POST.', { Allow: 'POST' });
+      return await relayRoute();
     }
     const out = await authRoute();
     if (out) return finish(out.status, out.body);
@@ -79,6 +85,20 @@ export async function handleApi(request, env, ctx, { now = () => Date.now() } = 
       const u = token ? await sessionRow(token) : null;
       if (!u) throw new ApiError(401, 'unauthenticated', 'You are not signed in.');
       return u;
+    }
+
+    // Plugin relay for the web player's sandbox. Order: session, per-user limits, body, then the outbound request.
+    // The session cookie is read here and goes no further: relayFetch only ever sees the plugin's own (sanitised) headers.
+    async function relayRoute() {
+      const u = await requireUser();
+      const rl = await checkRelay(db, u.id, RELAY_LIMITS.PER_DAY, now());
+      if (!rl.allowed) {
+        throw new ApiError(429, 'rate_limited', rl.reason === 'day' ? 'Daily plugin request limit reached. Try again tomorrow.' : 'Too many plugin requests. Slow down for a moment.',
+          { 'Retry-After': String(rl.retryAfterSec) });
+      }
+      const spec = parseRelaySpec(bodyObject(await parseJsonBody(request, 96 * 1024)));
+      const result = await relayFetch(spec, { fetchImpl: relayFetchImpl, ownHosts: [url.hostname, (request.headers.get('host') || '').split(':')[0]].filter(Boolean) });
+      return json(200, result);
     }
 
     async function syncRoute() {

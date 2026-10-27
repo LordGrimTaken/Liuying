@@ -1,0 +1,17 @@
+{
+  "name": "Fixture Repo",
+  "version": "1.2.3",
+  "description": "Plugins used by the web player end-to-end test.",
+  "scrapers": [
+    { "id": "okplug", "name": "Fixture OK", "version": "1.0.0", "author": "Test", "description": "Returns two streams.", "supportedTypes": ["movie", "tv"], "filename": "okplug.js" },
+    { "id": "cryptoplug", "name": "Fixture Crypto", "version": "1.0.0", "supportedTypes": ["movie", "tv"], "filename": "cryptoplug.js" },
+    { "id": "failplug", "name": "Fixture Fail", "version": "1.0.0", "supportedTypes": ["movie", "tv"], "filename": "failplug.js" },
+    { "id": "down1", "name": "Fixture Down One", "version": "1.0.0", "supportedTypes": ["movie"], "filename": "down.js" },
+    { "id": "down2", "name": "Fixture Down Two", "version": "1.0.0", "supportedTypes": ["movie"], "filename": "down.js" },
+    { "id": "hangplug", "name": "Fixture Hang", "version": "1.0.0", "supportedTypes": ["movie"], "filename": "hangplug.js" },
+    { "id": "quietplug", "name": "Fixture Quiet", "version": "1.0.0", "supportedTypes": ["movie"], "filename": "quietplug.js" },
+    { "id": "evilplug", "name": "Fixture Evil", "version": "1.0.0", "supportedTypes": ["movie"], "filename": "evilplug.js" },
+    { "id": "manyplug", "name": "Fixture Many", "version": "1.0.0", "supportedTypes": ["movie"], "filename": "manyplug.js" },
+    { "id": "tvonly", "name": "Fixture TV Only", "version": "1.0.0", "supportedTypes": ["tv"], "filename": "tvonly.js" }
+  ]
+}
