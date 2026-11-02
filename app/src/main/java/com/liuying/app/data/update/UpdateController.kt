@@ -6,6 +6,7 @@ import android.net.Uri
 import android.provider.Settings
 import androidx.core.content.FileProvider
 import androidx.core.content.pm.PackageInfoCompat
+import com.liuying.app.BuildConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -46,6 +47,7 @@ class UpdateController(
 
     /** App start: honours the setting and the 12 h throttle; failures stay silent. */
     fun checkOnStart() {
+        if (BuildConfig.PLAY_BUILD) return // Play builds are updated by Google Play only.
         scope.launch {
             runCatching { updatesDir.listFiles()?.forEach { it.delete() } } // stale downloads from earlier versions
             if (UpdatePolicy.shouldAutoCheck(autoEnabled(), now(), prefs.getLong(KEY_LAST, 0L))) check(manual = false)
@@ -53,7 +55,10 @@ class UpdateController(
     }
 
     /** Manual check from Settings: always runs and always reports a result. */
-    fun checkNow() { if (_state.value !is UpdateState.Checking && _state.value !is UpdateState.Downloading) check(manual = true) }
+    fun checkNow() {
+        if (BuildConfig.PLAY_BUILD) return // No self-update path in the Play build.
+        if (_state.value !is UpdateState.Checking && _state.value !is UpdateState.Downloading) check(manual = true)
+    }
 
     private fun check(manual: Boolean) {
         job?.cancel()

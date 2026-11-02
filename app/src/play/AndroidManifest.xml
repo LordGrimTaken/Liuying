@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Google Play build type overlay.
+
+  Play does not grant REQUEST_INSTALL_PACKAGES to a media app that updates itself from a
+  website, and an in-app APK updater is not an allowed distribution path. The Play build
+  therefore drops the permission entirely; the matching runtime guard lives in
+  UpdateController (BuildConfig.PLAY_BUILD).
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission
+        android:name="android.permission.REQUEST_INSTALL_PACKAGES"
+        tools:node="remove" />
+</manifest>

@@ -20,12 +20,12 @@ val releaseStore = signingValue("LIUYING_KEYSTORE", "storeFile")?.let { file(it)
 
 android {
     namespace = "com.liuying.app"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.liuying.app"
         minSdk = 24
-        targetSdk = 35
+        targetSdk = 36
         versionCode = (project.property("liuying.versionCode") as String).toInt()
         versionName = project.property("liuying.versionName") as String
     }
@@ -44,6 +44,7 @@ android {
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
+            buildConfigField("boolean", "PLAY_BUILD", "false")
         }
         release {
             // R8 off on purpose: correctness over APK size (0.3.0 failed to add sources when minified).
@@ -51,6 +52,17 @@ android {
             isShrinkResources = false
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            buildConfigField("boolean", "PLAY_BUILD", "false")
+        }
+        // Google Play track: same code as release, minus everything Play forbids.
+        // - the in-app APK self-updater is disabled (BuildConfig.PLAY_BUILD)
+        // - REQUEST_INSTALL_PACKAGES is stripped by src/play/AndroidManifest.xml
+        // - signing never falls back to the debug key: the Play upload key is mandatory.
+        create("play") {
+            initWith(getByName("release"))
+            buildConfigField("boolean", "PLAY_BUILD", "true")
+            signingConfig = signingConfigs.findByName("release")
+            matchingFallbacks += listOf("release")
         }
     }
 
@@ -60,7 +72,10 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
 
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
 
     testOptions {
         unitTests {
