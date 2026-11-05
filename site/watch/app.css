@@ -969,7 +969,9 @@ body:has(#banner:not([hidden])) #view{padding-bottom:110px}
 @media(max-width:719px){.scell.empty{display:none}}
 
 /* ---------- watch party ---------- */
-.party-fab{position:fixed;right:16px;bottom:calc(92px + env(safe-area-inset-bottom,0px));z-index:60;display:grid;place-items:center;width:46px;height:46px;border-radius:50%;border:1px solid rgba(201,164,92,.35);background:rgba(29,25,22,.82);color:var(--paper);backdrop-filter:blur(10px);cursor:pointer;transition:color .2s,transform .15s}
+.party-fab{position:fixed;right:16px;bottom:calc(92px + env(safe-area-inset-bottom,0px));z-index:60;display:flex;align-items:center;gap:8px;height:40px;padding:0 14px;border-radius:999px;border:1px solid rgba(201,164,92,.35);background:rgba(29,25,22,.86);color:var(--paper);backdrop-filter:blur(10px);cursor:pointer;font:600 13px/1 system-ui,sans-serif;letter-spacing:.01em;transition:color .2s,transform .15s,background .2s}
+.party-fab svg{flex:0 0 auto}
+.party-fab-label{white-space:nowrap}
 .party-fab:hover,.party-fab:focus-visible{color:var(--gold);transform:scale(1.04)}
 .party-badge{position:fixed;top:calc(14px + env(safe-area-inset-top,0px));right:16px;z-index:60;padding:5px 11px;border-radius:999px;background:var(--red);color:#fff;font:600 12px/1.4 system-ui,sans-serif;letter-spacing:.02em}
 .party-dialog{position:fixed;right:16px;bottom:calc(148px + env(safe-area-inset-bottom,0px));z-index:70;width:min(300px,calc(100vw - 32px));background:var(--surface);color:var(--paper);border:1px solid rgba(201,164,92,.28);border-radius:14px;padding:14px;box-shadow:0 18px 44px rgba(0,0,0,.55);font:400 14px/1.45 system-ui,sans-serif}

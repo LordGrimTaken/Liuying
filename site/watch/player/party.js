@@ -39,10 +39,10 @@ export function attachParty({ video, getMedia, toast }) {
 
   // ---------- UI ----------
   const fab = h('button', {
-    class: 'party-fab', type: 'button', 'aria-label': 'Watch party', title: 'Watch party',
+    class: 'party-fab', type: 'button', 'aria-label': 'Watch party', title: 'Watch party — start or join',
     onClick: () => toggleDialog(),
   });
-  fab.innerHTML = PEOPLE;
+  fab.innerHTML = `${PEOPLE}<span class="party-fab-label">Watch party</span>`;
 
   const badge = h('div', { class: 'party-badge', hidden: true });
 
