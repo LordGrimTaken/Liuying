@@ -1,62 +1,62 @@
 {
-  "name": "liuying-desktop",
-  "version": "0.1.0",
-  "private": true,
-  "description": "Liuying desktop shell: the same web player, without the browser's CORS limits, with native playback hand-off.",
-  "main": "main.js",
-  "scripts": {
-    "start": "electron .",
-    "dist": "electron-builder --win nsis",
-    "dist:mac": "electron-builder --mac dmg zip"
-  },
-  "devDependencies": {
-    "electron": "^33.0.0",
-    "electron-builder": "^25.1.8"
-  },
-  "build": {
-    "appId": "com.liuying.desktop",
-    "productName": "Liuying",
-    "directories": {
-      "output": "dist",
-      "buildResources": "resources"
-    },
-    "files": [
-      "main.js",
-      "package.json"
-    ],
-    "win": {
-      "target": [
-        "nsis"
-      ],
-      "icon": "resources/icon.png",
-      "signAndEditExecutable": false
-    },
-    "nsis": {
-      "oneClick": false,
-      "perMachine": false,
-      "allowToChangeInstallationDirectory": true,
-      "shortcutName": "Liuying"
-    },
-    "mac": {
-      "category": "public.app-category.entertainment",
-      "icon": "resources/icon.png",
-      "identity": null,
-      "target": [
-        {
-          "target": "dmg",
-          "arch": [
-            "x64",
-            "arm64"
-          ]
-        },
-        {
-          "target": "zip",
-          "arch": [
-            "x64",
-            "arm64"
-          ]
-        }
-      ]
-    }
-  }
+    "name":  "liuying-desktop",
+    "version":  "0.1.0",
+    "private":  true,
+    "description":  "Liuying desktop shell: the same web player, without the browser\u0027s CORS limits, with native playback hand-off.",
+    "main":  "main.js",
+    "scripts":  {
+                    "start":  "electron .",
+                    "dist":  "electron-builder --win nsis",
+                    "dist:mac":  "electron-builder --mac"
+                },
+    "devDependencies":  {
+                            "electron":  "^33.0.0",
+                            "electron-builder":  "^25.1.8"
+                        },
+    "build":  {
+                  "appId":  "com.liuying.desktop",
+                  "productName":  "Liuying",
+                  "directories":  {
+                                      "output":  "dist",
+                                      "buildResources":  "resources"
+                                  },
+                  "files":  [
+                                "main.js",
+                                "package.json"
+                            ],
+                  "win":  {
+                              "target":  [
+                                             "nsis"
+                                         ],
+                              "icon":  "resources/icon.png",
+                              "signAndEditExecutable":  false
+                          },
+                  "nsis":  {
+                               "oneClick":  false,
+                               "perMachine":  false,
+                               "allowToChangeInstallationDirectory":  true,
+                               "shortcutName":  "Liuying"
+                           },
+                  "mac":  {
+                              "category":  "public.app-category.entertainment",
+                              "icon":  "resources/icon.png",
+                              "identity":  null,
+                              "target":  [
+                                             {
+                                                 "target":  "dmg",
+                                                 "arch":  [
+                                                              "x64",
+                                                              "arm64"
+                                                          ]
+                                             },
+                                             {
+                                                 "target":  "zip",
+                                                 "arch":  [
+                                                              "x64",
+                                                              "arm64"
+                                                          ]
+                                             }
+                                         ]
+                          }
+              }
 }
