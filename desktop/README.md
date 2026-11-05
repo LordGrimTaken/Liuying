@@ -19,6 +19,19 @@ npm install
 npm start
 ```
 
+## Build installers
+
+```powershell
+npm run dist       # Windows NSIS installer -> dist/Liuying Setup <version>.exe
+npm run dist:mac   # macOS dmg + zip, x64 and arm64 — must run on macOS
+```
+
+macOS bundles cannot be produced on Windows; `.github/workflows/desktop-macos.yml` builds them on a
+`macos-latest` runner (workflow_dispatch, or a `desktop-v*` tag which also attaches them to the release).
+
+Both build unsigned: Windows shows SmartScreen, macOS needs right-click → Open once, or
+`xattr -dr com.apple.quarantine /Applications/Liuying.app`.
+
 ## Self-check (headless, no window)
 
 ```powershell
