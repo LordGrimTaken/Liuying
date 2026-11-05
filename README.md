@@ -149,6 +149,11 @@ Nothing sensitive is committed. The repository ignores `keystore.properties`, `*
 | [docs/research-report.md](docs/research-report.md) | The user research behind the features |
 | [docs/backlog-100.md](docs/backlog-100.md) | 137 itemised improvements with status |
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the conventions, test commands and what the project will not
+merge. Release history is in [CHANGELOG.md](CHANGELOG.md).
+
 ## License
 
 [MIT](LICENSE) © 2026 Liuying.
