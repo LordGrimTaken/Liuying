@@ -1,0 +1,13 @@
+{
+  "name": "liuying-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Liuying desktop shell: the same web player, without the browser's CORS limits, with native playback hand-off.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^33.0.0"
+  }
+}
