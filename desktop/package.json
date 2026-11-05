@@ -1,6 +1,6 @@
 {
     "name":  "liuying-desktop",
-    "version":  "0.1.1",
+    "version":  "0.1.2",
     "private":  true,
     "description":  "Liuying desktop shell: the same web player, without the browser\u0027s CORS limits, with native playback hand-off.",
     "main":  "main.js",
@@ -23,6 +23,7 @@
                   "files":  [
                                 "main.js",
                                 "preload.js",
+                                "updater.js",
                                 "package.json"
                             ],
                   "win":  {

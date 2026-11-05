@@ -10,8 +10,10 @@
 // It loads the production web player unchanged; there is no second UI to maintain.
 const { app, BrowserWindow, Menu, ipcMain, shell, dialog } = require('electron');
 const http = require('node:http');
+const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
+const { checkForUpdate } = require('./updater');
 
 const APP_URL = process.env.LIUYING_APP_URL || 'https://www.liuyingapp.com/watch/';
 const PROXY_PORT = Number(process.env.LIUYING_PROXY_PORT || 47821);
@@ -103,9 +105,52 @@ function createWindow({ show = true } = {}) {
   win.on('closed', () => { win = null; });
 }
 
+const UPDATE_STAMP = () => path.join(app.getPath('userData'), 'update-check.json');
+const CHECK_EVERY_MS = 12 * 60 * 60 * 1000;
+
+function lastCheckAt() {
+  try { return Number(JSON.parse(fs.readFileSync(UPDATE_STAMP(), 'utf8')).at) || 0; } catch { return 0; }
+}
+function stampCheck(at) {
+  try { fs.mkdirSync(path.dirname(UPDATE_STAMP()), { recursive: true }); fs.writeFileSync(UPDATE_STAMP(), JSON.stringify({ at })); } catch { /* non-fatal */ }
+}
+
+/** Ask GitHub whether a newer desktop build exists. Never downloads or installs anything itself. */
+async function checkUpdates({ silent = true } = {}) {
+  const res = await checkForUpdate({ currentVersion: app.getVersion() });
+  stampCheck(Date.now());
+  if (res.available) {
+    const { response } = await dialog.showMessageBox({
+      type: 'info',
+      title: 'Update available',
+      message: `Liuying ${res.latest} is available`,
+      detail: `You have ${res.current}. Open the release page to download the new build.`,
+      buttons: ['Open download page', 'Later'],
+      defaultId: 0,
+      cancelId: 1,
+    });
+    if (response === 0 && res.url) shell.openExternal(res.url);
+  } else if (!silent) {
+    dialog.showMessageBox({
+      type: 'info',
+      title: 'Updates',
+      message: res.error ? 'Could not check for updates' : 'You are up to date',
+      detail: res.error ? `The check failed: ${res.error}` : `Liuying ${res.current} is the newest desktop build.`,
+    });
+  }
+  return res;
+}
+
 function buildMenu() {
   const template = [
-    { label: 'Liuying', submenu: [{ role: 'reload' }, { role: 'toggleDevTools' }, { type: 'separator' }, { role: 'quit' }] },
+    {
+      label: 'Liuying',
+      submenu: [
+        { label: 'Check for updates…', click: () => checkUpdates({ silent: false }) },
+        { type: 'separator' },
+        { role: 'reload' }, { role: 'toggleDevTools' }, { type: 'separator' }, { role: 'quit' },
+      ],
+    },
     { label: 'Play', submenu: [{ role: 'togglefullscreen' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { role: 'resetZoom' }] },
     {
       label: 'External player',
@@ -132,6 +177,12 @@ app.whenReady().then(() => {
     if (typeof url !== 'string' || !/^https?:/i.test(url)) return null;
     return openExternal(url);
   });
+  if (process.env.LIUYING_UPDATE_CHECK === '1') {
+    checkForUpdate({ currentVersion: app.getVersion() })
+      .then((r) => { console.log(JSON.stringify({ updateCheck: true, ...r })); app.exit(0); })
+      .catch((e) => { console.error(String(e)); app.exit(3); });
+    return;
+  }
   if (process.env.LIUYING_SMOKE === '1') {
     // Headless self-check: load the site in a hidden window, print what rendered, exit.
     createWindow({ show: false });
@@ -156,6 +207,8 @@ app.whenReady().then(() => {
   createWindow();
   ipcMain.handle('proxy-info', () => ({ port: PROXY_PORT }));
   app.on('activate', () => { if (!win) createWindow(); });
+  // Startup check, throttled to once per 12 h so a launch never waits on the network.
+  if (Date.now() - lastCheckAt() > CHECK_EVERY_MS) setTimeout(() => { checkUpdates({ silent: true }).catch(() => {}); }, 4000);
 });
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
