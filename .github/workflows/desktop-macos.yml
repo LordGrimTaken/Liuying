@@ -1,4 +1,4 @@
-name: Desktop (macOS)
+﻿name: Desktop (macOS)
 
 # macOS bundles cannot be built on Windows, so they are built here on a macOS runner
 # and attached to the matching desktop-v* release.
@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   mac:
-    runs-on: macos-14
+    runs-on: macos-latest
     defaults:
       run:
         working-directory: desktop
@@ -50,3 +50,4 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         working-directory: .
         run: gh release upload "${GITHUB_REF_NAME}" desktop/dist/*.dmg desktop/dist/*.zip --clobber
+
