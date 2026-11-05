@@ -98,8 +98,10 @@ function createWindow({ show = true } = {}) {
   // Addon hosts are reached through the proxy; the page itself stays same-origin with the real site.
   win.webContents.session.webRequest.onHeadersReceived((details, callback) => {
     const headers = { ...details.responseHeaders };
-    // 1. Responses the page fetches directly can be read even without CORS on the addon side.
-    headers['Access-Control-Allow-Origin'] = ['*'];
+    // 1. Make responses readable even when the addon sends no CORS headers — but never add a second
+    //    Access-Control-Allow-Origin to a response that already has one, or the browser rejects both.
+    const hasAcao = Object.keys(headers).some((k) => k.toLowerCase() === 'access-control-allow-origin');
+    if (!hasAcao) headers['Access-Control-Allow-Origin'] = ['*'];
     // 2. The page's CSP must allow the loopback proxy, otherwise connect-src blocks it. Only this
     //    desktop session gets the extra origin; the public site keeps its stricter policy.
     const cspKey = Object.keys(headers).find((k) => k.toLowerCase() === 'content-security-policy');
@@ -159,6 +161,10 @@ function buildMenu() {
     {
       label: 'Liuying',
       submenu: [
+        { label: 'About Liuying', click: () => dialog.showMessageBox({
+          type: 'info', title: 'About', message: `Liuying ${app.getVersion()}`,
+          detail: `Desktop shell ${app.getVersion()} on ${process.platform}.\nPlayer: ${APP_URL}`,
+        }) },
         { label: 'Check for updates…', click: () => checkUpdates({ silent: false }) },
         { type: 'separator' },
         { role: 'reload' }, { role: 'toggleDevTools' }, { type: 'separator' }, { role: 'quit' },
@@ -195,13 +201,13 @@ app.whenReady().then(() => {
     win.webContents.once('did-finish-load', async () => {
       try {
         const out = await win.webContents.executeJavaScript(`(async () => {
-          const url = 'https://thepiratebay-plus.strem.fun/manifest.json';
-          const probe = async (target) => { try { const r = await fetch(target); const j = await r.json(); return j.name || 'ok'; } catch (e) { return 'BLOCKED: ' + e.message; } };
-          return JSON.stringify({
-            proxy: await probe('http://127.0.0.1:${PROXY_PORT}/?url=' + encodeURIComponent(url)),
-            direct: await probe(url),
-            proxyFlag: !!(window.liuyingDesktop && window.liuyingDesktop.proxy),
-          });
+          const urls = ['https://torrentio.strem.fun/manifest.json', 'https://comet.elfhosted.com/manifest.json'];
+          const probe = async (target) => { try { const r = await fetch(target); const j = await r.json(); return (j.name || 'ok') + ' (' + r.status + ')'; } catch (e) { return 'BLOCKED: ' + e.message; } };
+          const results = {};
+          for (const u of urls) {
+            results[u] = { proxy: await probe('http://127.0.0.1:${PROXY_PORT}/?url=' + encodeURIComponent(u)), direct: await probe(u) };
+          }
+          return JSON.stringify({ proxyFlag: !!(window.liuyingDesktop && window.liuyingDesktop.proxy), results });
         })()`);
         console.log(JSON.stringify({ corsProbe: true, ...JSON.parse(out) }));
         app.exit(0);

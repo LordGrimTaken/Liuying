@@ -45,12 +45,18 @@ export async function fetchJson(url, { timeout = 15000, signal, fetchImpl } = {}
   if (signal) { if (signal.aborted) ctl.abort(); else signal.addEventListener('abort', onAbort, { once: true }); }
   try {
     let res;
+    const attempt = (u) => f(u, { signal: ctl.signal, credentials: 'omit', redirect: 'follow', headers: { Accept: 'application/json, */*;q=0.5' } });
     try {
-      res = await f(target, { signal: ctl.signal, credentials: 'omit', redirect: 'follow', headers: { Accept: 'application/json, */*;q=0.5' } });
+      res = await attempt(target);
     } catch (e) {
       if (timedOut) throw new AddonError('timeout', 'timeout');
       if (signal?.aborted) throw new AddonError('abort', 'aborted');
-      throw new AddonError('network', 'network error');
+      // The desktop proxy can fail for its own reasons; the addon may still answer directly.
+      if (target !== url) {
+        try { res = await attempt(url); } catch { throw new AddonError('network', 'network error'); }
+      } else {
+        throw new AddonError('network', 'network error');
+      }
     }
     if (!res.ok) throw new AddonError('http', `HTTP ${res.status}`, { status: res.status });
     let text;
