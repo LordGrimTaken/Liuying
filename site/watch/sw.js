@@ -1,4 +1,4 @@
-/* Liuying web player service worker. Served at /watch/sw.js, scope /watch/.
+﻿/* Liuying web player service worker. Served at /watch/sw.js, scope /watch/.
  *
  * UPDATING: the app shell is precached in a versioned cache. Whenever ANY shell file changes (or one
  * is added/removed), bump VERSION below and refresh the hash line. A changed sw.js makes the browser
@@ -8,12 +8,12 @@
  * content changed without the hash being updated (the failure prints the new hash).
  * Between bumps, shell assets are served stale-while-revalidate, so an edit that forgot the bump
  * still arrives on the next load.
- * shell-hash: 0dc56165946a
+ * shell-hash: a808a710b1f6
  *
  * NEVER cached: /api/*, addon manifests/catalogs/streams, subtitles, posters and media (cross-origin
  * or non-shell). Only same-origin GETs under /watch/ and the hls vendor file are handled here.
  */
-const VERSION = 'v24';
+const VERSION = 'v25';
 const CACHE = `liuying-shell-${VERSION}`;
 const PREFIX = 'liuying-shell-';
 const SCOPE_PATH = '/watch/';
@@ -136,3 +136,5 @@ self.addEventListener('fetch', (event) => {
     }
   })());
 });
+
+

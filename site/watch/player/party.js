@@ -163,7 +163,14 @@ export function attachParty({ video, getMedia, toast }) {
     badge.textContent = `${room.host ? 'Hosting' : 'Watching'} · ${room.code}`;
   }
 
+  let warnedOtherTitle = false;
+
   function applyRemote(state) {
+    // The room carries one title. If the guest wandered to another one, never seek their player.
+    if (state.mediaId && state.mediaId !== getMedia().mediaId) {
+      if (!warnedOtherTitle) { warnedOtherTitle = true; toast('The party is watching a different title'); }
+      return;
+    }
     applying = true;
     try {
       const target = Math.max(0, Number(state.positionMs) || 0);
