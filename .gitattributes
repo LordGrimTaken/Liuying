@@ -1,0 +1,13 @@
+# Normalise text to LF so the repository is identical on every platform.
+* text=auto eol=lf
+
+# Binary assets: never touch these.
+*.png binary
+*.jpg binary
+*.webp binary
+*.ico binary
+*.apk binary
+*.aab binary
+*.jks binary
+*.zip binary
+*.jar binary

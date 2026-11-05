@@ -1,6 +1,6 @@
 # Android audit
 
-Scope: all Android code under `app/` checked against `/home/claude/liuying-spec`. The app has never run on a device (no adb/emulator in the build environment), so every finding comes from reading the code and from JVM unit tests. Anything marked "needs device" has not been exercised.
+Scope: all Android code under `app/` checked against the project specification. The app has never run on a device (no adb/emulator in the build environment), so every finding comes from reading the code and from JVM unit tests. Anything marked "needs device" has not been exercised.
 
 Severity: **H** wrong behaviour or data loss in a normal flow, **M** wrong in an edge case or spec gap users will notice, **L** polish.
 

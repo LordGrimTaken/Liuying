@@ -4,8 +4,8 @@
 #   scripts/release-android.sh [-n "release notes"] [--skip-tests]
 #
 # Version comes from gradle.properties (liuying.versionName / liuying.versionCode): bump those first.
-# Signing key: /home/claude/liuying-keys/keystore.properties or LIUYING_KEYSTORE* env vars (see app/build.gradle.kts).
-# Afterwards: git add -A && git commit && git push  (Render deploys the site).
+# Signing key: ./keystore.properties or LIUYING_KEYSTORE* env vars (see app/build.gradle.kts).
+# Afterwards: review the diff and commit. Publishing is a separate, deliberate step.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -28,7 +28,7 @@ VERSION_CODE="$(prop liuying.versionCode)"
 BASE_URL="${LIUYING_SITE_URL:-https://www.liuyingapp.com}"
 
 # Refuse to publish an APK that would not be upgradable: the real key must be present.
-KEYPROPS="${LIUYING_KEYSTORE_PROPERTIES:-/home/claude/liuying-keys/keystore.properties}"
+KEYPROPS="${LIUYING_KEYSTORE_PROPERTIES:-$ROOT/keystore.properties}"
 if [ -z "${LIUYING_KEYSTORE:-}" ] && [ ! -f "$KEYPROPS" ]; then
   echo "No release keystore found ($KEYPROPS). Refusing to publish a debug-signed APK." >&2
   exit 1

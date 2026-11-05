@@ -1,7 +1,7 @@
 // Throwaway mock of the Liuying site + sync API. Port 4181. Serves /watch, /vendor from site/ with the web-player CSP.
 const http = require('http'), fs = require('fs'), path = require('path');
 const PORT = +process.env.SYNC_PORT || 4181;
-const SITE = '/home/claude/liuying/site';
+const SITE = path.resolve(__dirname, '../../../../..', 'site');
 const CSP = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https:; font-src 'self'; connect-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; media-src 'self' blob: https:; worker-src 'self' blob:";
 const STRICT = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.json': 'application/json', '.png': 'image/png', '.txt': 'text/plain', '.webmanifest': 'application/manifest+json' };

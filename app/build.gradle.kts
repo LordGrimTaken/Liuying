@@ -8,10 +8,10 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
-// Release signing: keystore.properties (default /home/claude/liuying-keys) or LIUYING_* env vars.
+// Release signing: keystore.properties in the repository root, or LIUYING_* environment variables.
 // Absent both, release falls back to the debug key (installable, but not upgradable from a real release).
 val signingProps = Properties().apply {
-    val f = file(System.getenv("LIUYING_KEYSTORE_PROPERTIES") ?: "/home/claude/liuying-keys/keystore.properties")
+    val f = file(System.getenv("LIUYING_KEYSTORE_PROPERTIES") ?: "keystore.properties")
     if (f.isFile) f.inputStream().use { load(it) }
 }
 fun signingValue(env: String, prop: String): String? =
