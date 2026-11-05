@@ -743,6 +743,11 @@ export function player({ params, query }) {
   root.dataset.state = 'ready';
 
   // ---------- watch party ----------
+  // A read-only hook for the desktop shell: it hands this URL to mpv/VLC when the container or codec is
+  // one Chromium cannot decode. Nothing in the page depends on it.
+  window.__liuyingPlayback = { url: stream?.url || '', title, mediaId: id, episodeId: videoId || null };
+  cleanups.push(() => { delete window.__liuyingPlayback; });
+
   const party = attachParty({
     video,
     getMedia: () => ({ mediaId: id, episodeId: videoId || null, name: title }),

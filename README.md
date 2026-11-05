@@ -47,6 +47,7 @@ small account/sync backend. Liuying hosts nothing: you point it at sources you a
 | `site/` | The public website and the web player (`site/watch/`) — plain HTML/CSS/JS, no build step |
 | `cloudflare/` | The current backend: one Worker serving the site, the web player and the sync API on D1 |
 | `server/` | The previous Express + PostgreSQL backend, kept until the Cloudflare cutover is complete |
+| `desktop/` | Electron shell: the web player with CORS-free addon access and native playback hand-off |
 | `docs/` | Architecture, plugin contract, design reference, research, audits, release notes |
 | `scripts/` | Release tooling |
 

@@ -1,13 +1,40 @@
 {
-  "name": "liuying-desktop",
-  "version": "0.1.0",
-  "private": true,
-  "description": "Liuying desktop shell: the same web player, without the browser's CORS limits, with native playback hand-off.",
-  "main": "main.js",
-  "scripts": {
-    "start": "electron ."
-  },
-  "devDependencies": {
-    "electron": "^33.0.0"
-  }
+    "name":  "liuying-desktop",
+    "version":  "0.1.0",
+    "private":  true,
+    "description":  "Liuying desktop shell: the same web player, without the browser\u0027s CORS limits, with native playback hand-off.",
+    "main":  "main.js",
+    "scripts":  {
+                    "start":  "electron .",
+                    "dist":  "electron-builder --win nsis"
+                },
+    "devDependencies":  {
+                            "electron":  "^33.0.0",
+                            "electron-builder":  "^25.1.8"
+                        },
+    "build":  {
+                  "appId":  "com.liuying.desktop",
+                  "productName":  "Liuying",
+                  "directories":  {
+                                      "output":  "dist",
+                                      "buildResources":  "build"
+                                  },
+                  "files":  [
+                                "main.js",
+                                "package.json"
+                            ],
+                  "win":  {
+                              "target":  [
+                                             "nsis"
+                                         ],
+                              "icon":  "build/icon.png",
+                              "signAndEditExecutable":  false
+                          },
+                  "nsis":  {
+                               "oneClick":  false,
+                               "perMachine":  false,
+                               "allowToChangeInstallationDirectory":  true,
+                               "shortcutName":  "Liuying"
+                           }
+              }
 }

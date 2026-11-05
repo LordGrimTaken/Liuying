@@ -98,10 +98,14 @@ function buildMenu() {
       label: 'External player',
       click: async () => {
         const url = await win?.webContents.executeJavaScript(
-          `document.querySelector('video')?.currentSrc || document.querySelector('video')?.src || ''`);
-        if (!url) { dialog.showMessageBox({ message: 'Nothing is playing.', detail: 'Start a stream first.' }); return; }
+          `(window.__liuyingPlayback && window.__liuyingPlayback.url) || document.querySelector('video')?.currentSrc || document.querySelector('video')?.src || ''`);
+        if (!url) {
+          dialog.showMessageBox({ message: 'No stream selected yet.', detail: 'Open a title, pick a stream, then try again.' });
+          return;
+        }
         const used = openExternal(url);
         if (!used) dialog.showMessageBox({ message: 'No external player found.', detail: 'Install mpv or VLC, or set the path in desktop/main.js.' });
+        else dialog.showMessageBox({ message: 'Opened in ' + used, detail: url.slice(0, 120) });
       },
     },
   ];
