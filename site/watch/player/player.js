@@ -748,6 +748,20 @@ export function player({ params, query }) {
   window.__liuyingPlayback = { url: stream?.url || '', title, mediaId: id, episodeId: videoId || null };
   cleanups.push(() => { delete window.__liuyingPlayback; });
 
+  // Desktop shell only: hand the stream to mpv/VLC. A browser cannot launch a local app, so this stays hidden there.
+  if (window.liuyingDesktop?.openExternal) {
+    const openBtn = h('button', {
+      class: 'party-fab desktop-open', type: 'button', 'aria-label': 'Open in an external player',
+      onClick: async () => {
+        const used = await window.liuyingDesktop.openExternal(stream?.url || '');
+        pToast(used ? `Opened in ${used}` : 'No mpv or VLC found — install one to use this');
+      },
+    });
+    openBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m10 9 5 3-5 3z"/></svg><span class="party-fab-label">Open in player</span>';
+    document.body.append(openBtn);
+    cleanups.push(() => openBtn.remove());
+  }
+
   const party = attachParty({
     video,
     getMedia: () => ({ mediaId: id, episodeId: videoId || null, name: title }),

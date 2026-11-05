@@ -83,14 +83,16 @@ export function streams({ params, query }) {
     if (navigator.clipboard?.writeText) navigator.clipboard.writeText(url).then(done, fallback); else fallback();
   }
 
-  /** A plugin stream: the normal row plus a copy-link button (streams that need request headers may not play in a browser). */
+  /** Plugin streams and anything the browser may refuse (MKV/Dolby, header-locked URLs) get a copy-link action. */
   function row(s) {
     const el = rowCore(s);
-    if (!s.source.isPlugin) return el;
-    const hdrs = s.raw.pluginHeaders ? Object.keys(s.raw.pluginHeaders) : [];
+    const hdrs = s.source.isPlugin && s.raw.pluginHeaders ? Object.keys(s.raw.pluginHeaders) : [];
+    const risky = !s.cls.playable || !!s.cls.warn;
+    if (!s.source.isPlugin && !risky) return el;
     return h('div', { class: 'srow-wrap' }, el,
       h('div', { class: 'srow-extra' },
-        hdrs.length ? h('span', { class: 'mute', text: `Needs request headers (${hdrs.slice(0, 4).join(', ')}${hdrs.length > 4 ? ', …' : ''}) that a browser cannot send.` }) : null,
+        hdrs.length ? h('span', { class: 'mute', text: `Needs request headers (${hdrs.slice(0, 4).join(', ')}${hdrs.length > 4 ? ', …' : ''}) that a browser cannot send.` })
+          : risky ? h('span', { class: 'mute', text: 'If the built-in player refuses this file, copy the link and open it in VLC or mpv.' }) : null,
         h('button', { class: 'linkbtn copylink', type: 'button', 'aria-label': `Copy link for ${s.title}`, text: 'Copy link', onClick: () => copyLink(s.raw.url) })));
   }
 

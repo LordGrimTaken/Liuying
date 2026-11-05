@@ -45,18 +45,30 @@ function startProxy() {
   proxy.listen(PROXY_PORT, '127.0.0.1');
 }
 
-/** Try a native player for containers/codecs Chromium cannot decode. */
+/** Try a native player for containers/codecs Chromium cannot decode. Returns the player used, or null. */
 function openExternal(streamUrl) {
-  const candidates = [
+  const win = [
     { cmd: 'mpv', args: [streamUrl] },
     { cmd: 'C:\\Program Files\\VideoLAN\\VLC\\vlc.exe', args: [streamUrl] },
     { cmd: 'C:\\Program Files (x86)\\VideoLAN\\VLC\\vlc.exe', args: [streamUrl] },
   ];
+  const mac = [
+    { cmd: '/opt/homebrew/bin/mpv', args: [streamUrl] },
+    { cmd: '/usr/local/bin/mpv', args: [streamUrl] },
+    { cmd: '/Applications/VLC.app/Contents/MacOS/VLC', args: [streamUrl] },
+    { cmd: 'open', args: ['-a', 'VLC', streamUrl] },
+    { cmd: 'open', args: ['-a', 'IINA', streamUrl] },
+  ];
+  const linux = [
+    { cmd: 'mpv', args: [streamUrl] },
+    { cmd: 'vlc', args: [streamUrl] },
+  ];
+  const candidates = process.platform === 'darwin' ? mac : process.platform === 'linux' ? linux : win;
   for (const { cmd, args } of candidates) {
     try {
       const child = spawn(cmd, args, { detached: true, stdio: 'ignore' });
       child.unref();
-      return cmd;
+      return require('node:path').basename(cmd);
     } catch { /* try the next one */ }
   }
   return null;
@@ -77,6 +89,7 @@ function createWindow({ show = true } = {}) {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      preload: path.join(__dirname, 'preload.js'),
     },
   });
 
@@ -115,12 +128,17 @@ function buildMenu() {
 app.whenReady().then(() => {
   startProxy();
   buildMenu();
+  ipcMain.handle('open-external', (_event, url) => {
+    if (typeof url !== 'string' || !/^https?:/i.test(url)) return null;
+    return openExternal(url);
+  });
   if (process.env.LIUYING_SMOKE === '1') {
     // Headless self-check: load the site in a hidden window, print what rendered, exit.
     createWindow({ show: false });
     win.webContents.once('did-finish-load', async () => {
       try {
         const title = await win.webContents.executeJavaScript('document.title');
+        const bridge = await win.webContents.executeJavaScript('typeof window.liuyingDesktop?.openExternal');
         const proxyOk = await new Promise((res) => {
           http.get(`http://127.0.0.1:${PROXY_PORT}/?url=https%3A%2F%2Fv3-cinemeta.strem.io%2Fmanifest.json`, (r) => {
             let body = '';
@@ -128,7 +146,7 @@ app.whenReady().then(() => {
             r.on('end', () => res({ status: r.statusCode, cors: r.headers['access-control-allow-origin'], name: (() => { try { return JSON.parse(body).name; } catch { return null; } })() }));
           }).on('error', (e) => res({ error: String(e.message) }));
         });
-        console.log(JSON.stringify({ smoke: true, title, url: win.webContents.getURL(), proxy: proxyOk }));
+        console.log(JSON.stringify({ smoke: true, title, url: win.webContents.getURL(), bridge, proxy: proxyOk }));
         app.exit(0);
       } catch (e) { console.error(String(e)); app.exit(3); }
     });

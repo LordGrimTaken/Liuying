@@ -985,3 +985,5 @@ body:has(#banner:not([hidden])) #view{padding-bottom:110px}
 .party-join input{flex:1;min-width:0;padding:8px 10px;border-radius:10px;border:1px solid rgba(201,164,92,.3);background:var(--surface2);color:var(--paper);font:600 14px/1.2 ui-monospace,Menlo,monospace;letter-spacing:.12em;text-transform:uppercase}
 .party-join input:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
 @media (prefers-reduced-motion: reduce){.party-fab{transition:none}}
+
+.party-fab.desktop-open{bottom:calc(140px + env(safe-area-inset-bottom,0px))}
