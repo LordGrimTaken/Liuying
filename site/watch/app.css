@@ -967,3 +967,19 @@ body:has(#banner:not([hidden])) #view{padding-bottom:110px}
 /* a stream without a size or quality gets class "empty" on its cell; the empty-state rule (.empty, 58vh) must not stretch the row */
 .scell.empty{min-height:0;padding:0;gap:0;display:block;text-align:inherit;animation:none}
 @media(max-width:719px){.scell.empty{display:none}}
+
+/* ---------- watch party ---------- */
+.party-fab{position:fixed;right:16px;bottom:calc(92px + env(safe-area-inset-bottom,0px));z-index:60;display:grid;place-items:center;width:46px;height:46px;border-radius:50%;border:1px solid rgba(201,164,92,.35);background:rgba(29,25,22,.82);color:var(--paper);backdrop-filter:blur(10px);cursor:pointer;transition:color .2s,transform .15s}
+.party-fab:hover,.party-fab:focus-visible{color:var(--gold);transform:scale(1.04)}
+.party-badge{position:fixed;top:calc(14px + env(safe-area-inset-top,0px));right:16px;z-index:60;padding:5px 11px;border-radius:999px;background:var(--red);color:#fff;font:600 12px/1.4 system-ui,sans-serif;letter-spacing:.02em}
+.party-dialog{position:fixed;right:16px;bottom:calc(148px + env(safe-area-inset-bottom,0px));z-index:70;width:min(300px,calc(100vw - 32px));background:var(--surface);color:var(--paper);border:1px solid rgba(201,164,92,.28);border-radius:14px;padding:14px;box-shadow:0 18px 44px rgba(0,0,0,.55);font:400 14px/1.45 system-ui,sans-serif}
+.party-dialog-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.party-dialog-head strong{font:600 15px/1.2 Georgia,serif;letter-spacing:.01em}
+.party-code{margin:2px 0 6px;font:700 26px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.18em;color:var(--gold);text-align:center}
+.party-hint{margin:0 0 10px;color:var(--mute);font-size:13px}
+.party-row{display:flex;gap:8px;margin-bottom:10px}
+.party-row .btn{flex:1}
+.party-join{display:flex;gap:8px}
+.party-join input{flex:1;min-width:0;padding:8px 10px;border-radius:10px;border:1px solid rgba(201,164,92,.3);background:var(--surface2);color:var(--paper);font:600 14px/1.2 ui-monospace,Menlo,monospace;letter-spacing:.12em;text-transform:uppercase}
+.party-join input:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+@media (prefers-reduced-motion: reduce){.party-fab{transition:none}}

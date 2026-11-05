@@ -17,6 +17,8 @@ small account/sync backend. Liuying hosts nothing: you point it at sources you a
 - **A web player too.** The same sources and progress in a browser, signed in or not.
 - **Optional sync.** A username/password account syncs sources, shelf, progress and settings between the
   app and the web through a small API.
+- **Watch together.** A watch party shares only playback position, never media: one host drives, everyone
+  else follows within a couple of seconds.
 - **No ads, no analytics, no bundled content.**
 
 ## What it is not

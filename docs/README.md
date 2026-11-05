@@ -15,6 +15,7 @@ Everything Liuying's documentation, grouped by what you are trying to do.
 | Document | What it covers |
 |---|---|
 | [cloudflare.md](cloudflare.md) | The Worker + D1 backend: schema, endpoints, deploy and migration runbook |
+| [watch-party.md](watch-party.md) | The watch-party API, storage and client behaviour |
 | [web-server-audit.md](web-server-audit.md) | Audit of the web surface: routes, headers, caching, CSP |
 | [android-audit.md](android-audit.md) | Audit of the Android code: findings, fixes, and what still needs a device |
 

@@ -10,11 +10,14 @@ import { checkD1, checkRelay, createLimiter, SYNC_LIMIT } from './rateLimit.js';
 import { parseRelaySpec, relayFetch } from './relay.js';
 import { LIMITS as RELAY_LIMITS } from '../../site/watch/plugins/rules.js';
 import { handleSync } from './sync.js';
+import { handleParty } from './party.js';
 import { json, respond, parseJsonBody } from './http.js';
 
 const MAX_SESSIONS = 20;
 const publicId = (tokenHash) => tokenHash.slice(0, 16);
 const syncMemLimiter = createLimiter(SYNC_LIMIT); // per-isolate fallback when the rate-limit binding is absent
+// Party polling is 30 requests/minute per guest; allow headroom for two devices on one account.
+const partyMemLimiter = createLimiter({ limit: 120, windowMs: 60 * 1000 });
 
 const limited = (retryAfterSec) =>
   new ApiError(429, 'rate_limited', 'Too many attempts. Please try again later.', { 'Retry-After': String(retryAfterSec) });
@@ -64,6 +67,11 @@ export async function handleApi(request, env, ctx, { now = () => Date.now(), rel
     if (path === '/relay') {
       if (method !== 'POST') throw new ApiError(405, 'method_not_allowed', 'Use POST.', { Allow: 'POST' });
       return await relayRoute();
+    }
+    if (path === '/party' || path.startsWith('/party/')) {
+      const out = await partyRoute();
+      if (out) return finish(out.status, out.body);
+      return json(404, { error: 'not_found', message: 'Not found.' });
     }
     const out = await authRoute();
     if (out) return finish(out.status, out.body);
@@ -122,6 +130,22 @@ export async function handleApi(request, env, ctx, { now = () => Date.now(), rel
       const sub = raw.slice('/sync'.length).toLowerCase().replace(/^$/, '/');
       return handleSync({
         method, sub, db, userId, now,
+        readBody: (limit) => parseJsonBody(request, limit, { syncRoute: true }),
+      });
+    }
+
+    // Watch party. Authentication and a per-user poll limiter, then the room logic in party.js.
+    async function partyRoute() {
+      const u = await requireUser();
+      const rl = partyMemLimiter.check(u.id);
+      if (!rl.allowed) {
+        throw new ApiError(429, 'rate_limited', 'Too many watch-party requests. Slow down for a moment.',
+          { 'Retry-After': String(rl.retryAfterSec) });
+      }
+      // `raw` keeps the original case: room codes are uppercase.
+      const sub = raw.slice('/party'.length).replace(/\/+$/, '') || '/';
+      return handleParty({
+        method, sub, db, userId: u.id, username: u.username, now: now(),
         readBody: (limit) => parseJsonBody(request, limit, { syncRoute: true }),
       });
     }

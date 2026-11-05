@@ -12,6 +12,7 @@ import { SubtitleController } from './subs-controller.js';
 import { fmtTime, clamp } from '../util.js';
 import { streamsHref } from '../ui/continue.js';
 import { loadMeta } from '../addon/service.js';
+import { attachParty } from './party.js';
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 const SWATCHES = [['#ffffff', 'c1', 'White'], ['#ffe27a', 'c2', 'Yellow'], ['#8de0ff', 'c3', 'Cyan'], ['#9be58f', 'c4', 'Green'], ['#ffb3a8', 'c5', 'Rose']];
@@ -740,6 +741,14 @@ export function player({ params, query }) {
   root.focus();
   // test hook (read-only) for automated checks
   root.dataset.state = 'ready';
+
+  // ---------- watch party ----------
+  const party = attachParty({
+    video,
+    getMedia: () => ({ mediaId: id, episodeId: videoId || null, name: title }),
+    toast: pToast,
+  });
+  cleanups.push(() => party.destroy());
 
   return {
     destroy() {

@@ -3,6 +3,12 @@
 Notable changes to Liuying, newest first. Versions match `liuying.versionName` in `gradle.properties`;
 the version code increments with every release.
 
+## Unreleased
+
+- Watch party: a host creates a room and shares a link; guests follow play, pause and seek by polling the
+  room every two seconds. Available in the web player and the Android app; no media is relayed.
+  API and storage: `docs/watch-party.md`.
+
 ## 0.6.1 — 2026-10-23
 
 - Plugins: resilient DNS with retry, cache and DNS-over-HTTPS fallback.
