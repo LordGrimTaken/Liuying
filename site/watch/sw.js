@@ -8,12 +8,12 @@
  * content changed without the hash being updated (the failure prints the new hash).
  * Between bumps, shell assets are served stale-while-revalidate, so an edit that forgot the bump
  * still arrives on the next load.
- * shell-hash: c36ea86bebd9
+ * shell-hash: 71afab2843bc
  *
  * NEVER cached: /api/*, addon manifests/catalogs/streams, subtitles, posters and media (cross-origin
  * or non-shell). Only same-origin GETs under /watch/ and the hls vendor file are handled here.
  */
-const VERSION = 'v28';
+const VERSION = 'v29';
 const CACHE = `liuying-shell-${VERSION}`;
 const PREFIX = 'liuying-shell-';
 const SCOPE_PATH = '/watch/';
@@ -136,6 +136,8 @@ self.addEventListener('fetch', (event) => {
     }
   })());
 });
+
+
 
 
 

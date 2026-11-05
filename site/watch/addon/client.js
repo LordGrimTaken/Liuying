@@ -27,9 +27,17 @@ export function describeError(e) {
   }
 }
 
+/** In the desktop shell, addon requests go through the local proxy so a server without CORS headers still works. */
+function viaDesktopProxy(url) {
+  const base = globalThis.liuyingDesktop?.proxy;
+  if (!base || typeof url !== 'string' || !/^https?:\/\//i.test(url)) return url;
+  return base + encodeURIComponent(url);
+}
+
 /** Fetch JSON with timeout + external abort signal. Lenient about content type. */
 export async function fetchJson(url, { timeout = 15000, signal, fetchImpl } = {}) {
   const f = fetchImpl || globalThis.fetch.bind(globalThis);
+  const target = fetchImpl ? url : viaDesktopProxy(url);
   const ctl = new AbortController();
   let timedOut = false;
   const t = setTimeout(() => { timedOut = true; ctl.abort(); }, timeout * timeoutScale);
@@ -38,7 +46,7 @@ export async function fetchJson(url, { timeout = 15000, signal, fetchImpl } = {}
   try {
     let res;
     try {
-      res = await f(url, { signal: ctl.signal, credentials: 'omit', redirect: 'follow', headers: { Accept: 'application/json, */*;q=0.5' } });
+      res = await f(target, { signal: ctl.signal, credentials: 'omit', redirect: 'follow', headers: { Accept: 'application/json, */*;q=0.5' } });
     } catch (e) {
       if (timedOut) throw new AddonError('timeout', 'timeout');
       if (signal?.aborted) throw new AddonError('abort', 'aborted');

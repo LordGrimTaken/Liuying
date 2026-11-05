@@ -97,7 +97,20 @@ function createWindow({ show = true } = {}) {
 
   // Addon hosts are reached through the proxy; the page itself stays same-origin with the real site.
   win.webContents.session.webRequest.onHeadersReceived((details, callback) => {
-    callback({ responseHeaders: { ...details.responseHeaders, 'Access-Control-Allow-Origin': ['*'] } });
+    const headers = { ...details.responseHeaders };
+    // 1. Responses the page fetches directly can be read even without CORS on the addon side.
+    headers['Access-Control-Allow-Origin'] = ['*'];
+    // 2. The page's CSP must allow the loopback proxy, otherwise connect-src blocks it. Only this
+    //    desktop session gets the extra origin; the public site keeps its stricter policy.
+    const cspKey = Object.keys(headers).find((k) => k.toLowerCase() === 'content-security-policy');
+    if (cspKey) {
+      const value = [].concat(headers[cspKey]).join('; ');
+      const patched = /connect-src([^;]*)/i.test(value)
+        ? value.replace(/connect-src([^;]*)/i, (m, list) => `connect-src${list} http://127.0.0.1:${PROXY_PORT}`)
+        : `${value}; connect-src 'self' https: http://127.0.0.1:${PROXY_PORT}`;
+      headers[cspKey] = [patched];
+    }
+    callback({ responseHeaders: headers });
   });
 
   win.loadURL(APP_URL);
@@ -177,6 +190,26 @@ app.whenReady().then(() => {
     if (typeof url !== 'string' || !/^https?:/i.test(url)) return null;
     return openExternal(url);
   });
+  if (process.env.LIUYING_CORS_PROBE === '1') {
+    createWindow({ show: false });
+    win.webContents.once('did-finish-load', async () => {
+      try {
+        const out = await win.webContents.executeJavaScript(`(async () => {
+          const url = 'https://thepiratebay-plus.strem.fun/manifest.json';
+          const probe = async (target) => { try { const r = await fetch(target); const j = await r.json(); return j.name || 'ok'; } catch (e) { return 'BLOCKED: ' + e.message; } };
+          return JSON.stringify({
+            proxy: await probe('http://127.0.0.1:${PROXY_PORT}/?url=' + encodeURIComponent(url)),
+            direct: await probe(url),
+            proxyFlag: !!(window.liuyingDesktop && window.liuyingDesktop.proxy),
+          });
+        })()`);
+        console.log(JSON.stringify({ corsProbe: true, ...JSON.parse(out) }));
+        app.exit(0);
+      } catch (e) { console.error(String(e)); app.exit(3); }
+    });
+    setTimeout(() => { console.error('cors probe timeout'); app.exit(2); }, 25000);
+    return;
+  }
   if (process.env.LIUYING_UPDATE_CHECK === '1') {
     checkForUpdate({ currentVersion: app.getVersion() })
       .then((r) => { console.log(JSON.stringify({ updateCheck: true, ...r })); app.exit(0); })
