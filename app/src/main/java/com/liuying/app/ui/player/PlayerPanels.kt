@@ -319,6 +319,7 @@ private fun StreamsTab(c: PlayerController) {
 
 @Composable
 private fun MoreTab(c: PlayerController) {
+    PartySection(c)
     SectionLabel("Sleep timer")
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         com.liuying.app.ui.player.logic.SleepTimer.Choices.forEach { ch ->
@@ -341,14 +342,14 @@ private fun MoreTab(c: PlayerController) {
 private fun Chip(text: String, selected: Boolean, onClick: () -> Unit) = PillButton(text, onClick, selected = selected)
 
 @Composable
-private fun SectionLabel(text: String) {
+internal fun SectionLabel(text: String) {
     Spacer(Modifier.height(14.dp))
     Text(text.uppercase(), style = MaterialTheme.typography.labelMedium, color = Gold)
     Spacer(Modifier.height(6.dp))
 }
 
 @Composable
-private fun Muted(text: String) = Text(text, style = MaterialTheme.typography.bodyMedium, color = PaperMuted)
+internal fun Muted(text: String) = Text(text, style = MaterialTheme.typography.bodyMedium, color = PaperMuted)
 
 @Composable
 private fun Row2(label: String, selected: Boolean, onClick: () -> Unit) {

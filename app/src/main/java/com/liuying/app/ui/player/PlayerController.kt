@@ -36,6 +36,10 @@ import androidx.media3.exoplayer.Renderer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.text.TextOutput
 import androidx.media3.session.MediaSession
+import com.liuying.app.data.party.PartyController
+import com.liuying.app.domain.party.PartyLocalPlayback
+import com.liuying.app.domain.party.PartyLogic
+import com.liuying.app.domain.party.PartyPlaybackState
 import com.liuying.app.ui.player.logic.AutoSubtitleMode
 import com.liuying.app.ui.player.logic.ErrorCopy
 import com.liuying.app.ui.player.logic.PlaybackStats
@@ -73,6 +77,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.Request
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.math.abs
 
 enum class UiPhase { LOADING, READY, RECONNECTING, ERROR }
 
@@ -83,7 +88,12 @@ data class ErrorInfo(val kind: ErrorKind, val title: String, val message: String
  * Compose reads the `mutableStateOf` fields directly.
  */
 @OptIn(UnstableApi::class)
-class PlayerController(private val activity: PlayerActivity, initialRequest: PlaybackRequest) {
+class PlayerController(
+    private val activity: PlayerActivity,
+    initialRequest: PlaybackRequest,
+    /** Watch-party session for this player; null when the app has no account server wired. */
+    val party: PartyController? = null,
+) {
 
     /** The playback being shown. Changes when the user switches stream or episode without leaving the player. */
     var request by mutableStateOf(initialRequest); private set
@@ -232,6 +242,11 @@ class PlayerController(private val activity: PlayerActivity, initialRequest: Pla
     fun start() {
         if (started) return
         started = true
+        // The party session reads this player and applies the host's state; it never owns the ExoPlayer itself.
+        party?.bind(
+            localPlayback = { partyLocalPlayback() },
+            applyRemote = { applyPartyRemote(it) },
+        )
         player.addListener(listener)
         player.addAnalyticsListener(object : AnalyticsListener {
             override fun onDroppedVideoFrames(eventTime: AnalyticsListener.EventTime, droppedFrames: Int, elapsedMs: Long) {
@@ -271,6 +286,7 @@ class PlayerController(private val activity: PlayerActivity, initialRequest: Pla
     fun release() {
         if (released) return
         released = true
+        party?.close()
         retryJob?.cancel()
         streamsJob?.cancel()
         switchJob?.cancel()
@@ -961,6 +977,33 @@ class PlayerController(private val activity: PlayerActivity, initialRequest: Pla
     fun tryAnotherStream() {
         maybeReport(force = true)
         activity.onPlayerFinished(PlayerExit.TryAnotherStream(request.mediaId, request.episodeId, player.currentPosition))
+    }
+
+    // ---- watch party ----
+
+    /** What the host shares: the user's play/pause intent, not the momentary buffer state. */
+    private fun partyPlaying(): Boolean = player.playWhenReady && player.playbackState != Player.STATE_ENDED
+
+    private fun partyLocalPlayback(): PartyLocalPlayback {
+        if (released) return PartyLocalPlayback(0L, false, request.mediaId, request.episodeId)
+        return PartyLocalPlayback(
+            positionMs = player.currentPosition.coerceAtLeast(0L),
+            playing = partyPlaying(),
+            mediaId = request.mediaId,
+            episodeId = request.episodeId,
+        )
+    }
+
+    /** Create a room for the title on screen, starting from the real position and play state. */
+    fun startWatchParty() {
+        party?.start(request.mediaId, request.episodeId, player.currentPosition.coerceAtLeast(0L), partyPlaying())
+    }
+
+    /** A guest's state from the host: seek only when it is far away, then follow play/pause (the host is authoritative). */
+    private fun applyPartyRemote(state: PartyPlaybackState) {
+        if (released) return
+        if (abs(state.positionMs - player.currentPosition) > PartyLogic.DRIFT_MS) seekTo(state.positionMs)
+        if (state.playing) player.play() else player.pause()
     }
 
     // ---- progress ----

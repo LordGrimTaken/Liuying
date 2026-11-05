@@ -148,6 +148,13 @@ class AccountApi(
         return call("POST", "/api/sync/progress", body).unit()
     }
 
+    /**
+     * A JSON call on this session for a feature client (the watch party): the `liuying_sid` cookie, the Origin header,
+     * no-store caching and the usual friendly error mapping are shared with the account and sync routes. Never throws.
+     */
+    suspend fun request(method: String, path: String, body: JsonObject? = null): ApiResult<JsonElement> =
+        call(method, path, body?.toString())
+
     // ------------------------------------------------------------------------------------ transport
 
     private fun ApiResult<JsonElement>.unit(): ApiResult<Unit> = when (this) {

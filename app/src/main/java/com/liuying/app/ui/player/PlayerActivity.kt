@@ -46,11 +46,11 @@ class PlayerActivity : ComponentActivity() {
         }
         hideSystemBars()
 
-        val c = PlayerController(this, request)
+        val container = (application as com.liuying.app.LiuyingApplication).container
+        val c = PlayerController(this, request, container.newPartyController())
         controller = c
         c.onFirstPlayback = { maybeRequestNotificationPermission() }
         c.start()
-        val container = (application as com.liuying.app.LiuyingApplication).container
         setContent {
             // QA #24: honour the Appearance text-size setting in the player too
             val appSettings by container.settings.settings.collectAsStateWithLifecycle(com.liuying.app.data.settings.AppSettings())

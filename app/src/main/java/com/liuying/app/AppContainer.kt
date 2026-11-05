@@ -6,6 +6,8 @@ import androidx.datastore.preferences.preferencesDataStoreFile
 import com.liuying.app.data.account.AccountApi
 import com.liuying.app.data.account.PrefsSessionStore
 import com.liuying.app.data.db.LiuyingDatabase
+import com.liuying.app.data.party.PartyApi
+import com.liuying.app.data.party.PartyController
 import com.liuying.app.data.remote.AddonClient
 import com.liuying.app.data.repo.CatalogRepository
 import com.liuying.app.data.repo.LibraryRepository
@@ -103,7 +105,14 @@ class AppContainer(private val app: Application) {
 
     private val session = PrefsSessionStore(app.getSharedPreferences("liuying_account", 0))
     val accountApi = AccountApi(http, session)
+    val partyApi by lazy { PartyApi(accountApi) }
     val sync by lazy { SyncManager(accountApi, session, library, progress, sources, settings, scope) }
+
+    /**
+     * A watch-party session for one player. The player binds it to its own ExoPlayer; it uses the app scope so the
+     * final leave/end still reaches the server while the player activity is being destroyed.
+     */
+    fun newPartyController(): PartyController = PartyController(partyApi, scope)
 
     /** Details-screen hints: the list item (and its source) a title was opened from. */
     private val hints = HashMap<String, Pair<MetaPreview, Long?>>()

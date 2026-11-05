@@ -73,6 +73,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.liuying.app.data.party.PartyUiState
 import com.liuying.app.ui.player.logic.GestureMath
 import com.liuying.app.ui.player.logic.NextEpisodeTiming
 import com.liuying.app.ui.player.logic.TimeFormat
@@ -83,6 +85,7 @@ import com.liuying.app.ui.theme.Paper
 import com.liuying.app.ui.theme.PaperMuted
 import com.liuying.app.ui.theme.Vermilion
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.abs
 
@@ -294,6 +297,8 @@ private fun ReconnectBanner(c: PlayerController) {
 
 @Composable
 private fun ControlsOverlay(c: PlayerController, activity: PlayerActivity) {
+    val partyState by (c.party?.state ?: emptyFlow<PartyUiState>())
+        .collectAsStateWithLifecycle(PartyUiState())
     Box(Modifier.fillMaxSize()) {
         // top bar
         Row(
@@ -316,7 +321,7 @@ private fun ControlsOverlay(c: PlayerController, activity: PlayerActivity) {
                 PillButton(speedLabel(c.speed), { c.panelTab = PanelTab.SPEED })
                 PillButton(c.aspect.label, { c.cycleAspect(); c.poke() })
                 if (Build.VERSION.SDK_INT >= 26) PillButton("PiP", { activity.requestEnterPip() })
-                PillButton("More", { c.panelTab = PanelTab.MORE }, selected = c.sleepStatus != null || c.statsVisible)
+                PillButton("More", { c.panelTab = PanelTab.MORE }, selected = c.sleepStatus != null || c.statsVisible || partyState.active)
                 PillButton("Lock", { c.locked = true; c.controlsVisible = false }, description = "Lock controls")
             }
         }
