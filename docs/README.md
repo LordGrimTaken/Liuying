@@ -32,19 +32,6 @@ Everything Liuying's documentation, grouped by what you are trying to do.
 | [qa-android-report.md](qa-android-report.md) | The Android QA pass: findings, fixes, screenshots |
 | [qa-web-report.md](qa-web-report.md) | The web QA pass |
 
-## Release engineering
-
-| Document | What it covers |
-|---|---|
-| [play/PLAY_READINESS.md](play/PLAY_READINESS.md) | Current state of the Google Play track and what blocks it |
-| [play/LAUNCH_CHECKLIST.md](play/LAUNCH_CHECKLIST.md) | Console, signing, listing, testing and rollout checklist |
-| [play/CONSOLE_SETUP.md](play/CONSOLE_SETUP.md) | Creating the Play app and API access |
-| [play/STORE_LISTING.md](play/STORE_LISTING.md) | Store copy, category and keywords |
-| [play/PRIVACY_POLICY.md](play/PRIVACY_POLICY.md) | The privacy policy text |
-| [play/DATA_SAFETY.md](play/DATA_SAFETY.md) | Answers for the Data safety form |
-| [play/CONTENT_RATING.md](play/CONTENT_RATING.md) | Answers for the IARC questionnaire |
-| [play/POLICY_RISKS.md](play/POLICY_RISKS.md) | Policy risks and mitigations |
-
 ## Brand
 
 `logo/` and `logo-v2/` hold the seal mark explorations and the final assets (SVG and PNG).
