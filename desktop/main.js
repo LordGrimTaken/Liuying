@@ -196,6 +196,44 @@ app.whenReady().then(() => {
     if (typeof url !== 'string' || !/^https?:/i.test(url)) return null;
     return openExternal(url);
   });
+  if (process.env.LIUYING_E2E === '1') {
+    createWindow({ show: false });
+    win.webContents.once('did-finish-load', async () => {
+      try {
+        const out = await win.webContents.executeJavaScript(`(async () => {
+          const creds = ${JSON.stringify({ u: process.env.LIUYING_E2E_USER || '', p: process.env.LIUYING_E2E_PASS || '' })};
+          let login = 'no-credentials';
+          if (creds.u && creds.p) {
+            try {
+              const r = await fetch('/api/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: creds.u, password: creds.p }) });
+              login = r.status;
+            } catch (e) { login = 'ERR ' + e.message; }
+          }
+          let sources = [];
+          try {
+            const st = await (await fetch('/api/sync/state')).json();
+            sources = (st.sources || []).filter((s) => s.enabled !== false).map((s) => s.url);
+          } catch (e) { return JSON.stringify({ login, error: 'state: ' + e.message }); }
+          const mod = await import('/watch/addon/client.js');
+          const results = [];
+          for (const u of sources) {
+            const host = (() => { try { return new URL(u).host; } catch { return u; } })();
+            try {
+              const m = await mod.fetchManifest(u);
+              results.push({ host, ok: true, name: m && m.name, types: (m && m.types || []).join(',') });
+            } catch (e) {
+              results.push({ host, ok: false, err: String((e && (e.code || e.message)) || e) });
+            }
+          }
+          return JSON.stringify({ login, count: sources.length, results });
+        })()`, true);
+        console.log(JSON.stringify({ e2e: true, ...JSON.parse(out) }));
+        app.exit(0);
+      } catch (e) { console.error(String(e)); app.exit(3); }
+    });
+    setTimeout(() => { console.error('e2e timeout'); app.exit(2); }, 60000);
+    return;
+  }
   if (process.env.LIUYING_CORS_PROBE === '1') {
     createWindow({ show: false });
     win.webContents.once('did-finish-load', async () => {
