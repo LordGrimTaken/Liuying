@@ -225,7 +225,11 @@ app.whenReady().then(() => {
               results.push({ host, ok: false, err: String((e && (e.code || e.message)) || e) });
             }
           }
-          return JSON.stringify({ login, count: sources.length, results });
+          // Also render the real Sources page so the UI path is exercised, not just the network.
+          location.hash = '#/sources';
+          await new Promise((r) => setTimeout(r, 6000));
+          const ui = document.body.innerText.replace(/\s+/g, ' ').slice(0, 900);
+          return JSON.stringify({ login, count: sources.length, results, ui });
         })()`, true);
         console.log(JSON.stringify({ e2e: true, ...JSON.parse(out) }));
         app.exit(0);
@@ -239,10 +243,11 @@ app.whenReady().then(() => {
     win.webContents.once('did-finish-load', async () => {
       try {
         const out = await win.webContents.executeJavaScript(`(async () => {
-          const urls = ['https://torrentio.strem.fun/manifest.json', 'https://comet.elfhosted.com/manifest.json'];
-          const probe = async (target) => { try { const r = await fetch(target); const j = await r.json(); return (j.name || 'ok') + ' (' + r.status + ')'; } catch (e) { return 'BLOCKED: ' + e.message; } };
+          const urls = (${JSON.stringify(process.env.LIUYING_PROBE_URLS || '')}).split(',').filter(Boolean);
+          const list = urls.length ? urls : ['https://torrentio.strem.fun/manifest.json', 'https://comet.elfhosted.com/manifest.json'];
+          const probe = async (target) => { try { const r = await fetch(target); const t = await r.text(); let n = null; try { n = JSON.parse(t).name; } catch {} return (n || 'ok') + ' (' + r.status + ', ' + t.length + 'b)'; } catch (e) { return 'BLOCKED: ' + e.message; } };
           const results = {};
-          for (const u of urls) {
+          for (const u of list) {
             results[u] = { proxy: await probe('http://127.0.0.1:${PROXY_PORT}/?url=' + encodeURIComponent(u)), direct: await probe(u) };
           }
           return JSON.stringify({ proxyFlag: !!(window.liuyingDesktop && window.liuyingDesktop.proxy), results });
