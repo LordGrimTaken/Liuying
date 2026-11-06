@@ -8,7 +8,7 @@
 //   2. Hands an unsupported stream to a native player (mpv/VLC) on request.
 //
 // It loads the production web player unchanged; there is no second UI to maintain.
-const { app, BrowserWindow, Menu, ipcMain, shell, dialog } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, shell, dialog, session } = require('electron');
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -189,7 +189,21 @@ function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // A new build must not inherit the previous build's service worker and asset cache: otherwise the
+  // window keeps running an old copy of the site (that is exactly how a fixed client.js stayed broken).
+  try {
+    const stampFile = path.join(app.getPath('userData'), 'build-version');
+    let previous = '';
+    try { previous = fs.readFileSync(stampFile, 'utf8').trim(); } catch { /* first run */ }
+    if (previous !== app.getVersion()) {
+      await session.defaultSession.clearCache();
+      await session.defaultSession.clearStorageData({ storages: ['serviceworkers', 'cachestorage'] });
+      fs.mkdirSync(path.dirname(stampFile), { recursive: true });
+      fs.writeFileSync(stampFile, app.getVersion());
+    }
+  } catch { /* best effort */ }
+
   startProxy();
   buildMenu();
   ipcMain.handle('open-external', (_event, url) => {
