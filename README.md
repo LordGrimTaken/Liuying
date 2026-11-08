@@ -1,12 +1,16 @@
 # 流影 Liuying
 
-**A media centre for your own sources.** Android app (Kotlin + Compose), a browser player, and a
-small account/sync backend. Liuying hosts nothing: you point it at sources you already have access to.
+**A media centre for your own sources.** The Android app (Kotlin + Compose) is what ships right now.
+Liuying hosts nothing: you point it at sources you already have access to.
 
-**[Use it](https://www.liuyingapp.com)** · **[Download the APK](https://www.liuyingapp.com/download)** ·
-**[Open the web player](https://www.liuyingapp.com/watch)**
+**[Download the APK](https://www.liuyingapp.com/download)** · **[Website](https://www.liuyingapp.com)**
 
-<img src="site/assets/screens/app-today.webp" alt="Liuying on Android — Today" width="260"> <img src="site/assets/screens/app-series-rows.webp" alt="Series rows" width="260"> <img src="site/assets/screens/web-movies.webp" alt="Web player" width="420">
+> **Status:** Android only, for now. The web player and the desktop builds are paused — `/watch` redirects
+> to the download page and no desktop installers are offered. The source for both is still in this
+> repository (`site/watch/`, `desktop/`) and the older releases remain on the releases page, but neither is
+> supported while they are paused.
+
+<img src="site/assets/screens/app-today.webp" alt="Liuying on Android — Today" width="260"> <img src="site/assets/screens/app-series-rows.webp" alt="Series rows" width="260">
 
 ## What it is
 
@@ -14,11 +18,8 @@ small account/sync backend. Liuying hosts nothing: you point it at sources you a
 - **A real player.** Audio and subtitle track selection, subtitle styling, gestures, PiP, sleep timer, resume.
 - **Your sources.** Add addon/source URLs (the Stremio manifest format); catalogs, streams and subtitles are
   fetched from them and merged into one library view.
-- **A web player too.** The same sources and progress in a browser, signed in or not.
-- **Optional sync.** A username/password account syncs sources, shelf, progress and settings between the
-  app and the web through a small API.
-- **Watch together.** A watch party shares only playback position, never media: one host drives, everyone
-  else follows within a couple of seconds.
+- **Optional sync.** A username/password account syncs sources, shelf, progress and settings through a
+  small API.
 - **No ads, no analytics, no bundled content.**
 
 ## What it is not
@@ -44,10 +45,10 @@ small account/sync backend. Liuying hosts nothing: you point it at sources you a
 | Path | What lives there |
 |---|---|
 | `app/` | The Android app — Kotlin, Compose, Room, Media3, QuickJS plugin runner |
-| `site/` | The public website and the web player (`site/watch/`) — plain HTML/CSS/JS, no build step |
+| `site/` | The public website (plain HTML/CSS/JS, no build step) and the paused web player (`site/watch/`) |
 | `cloudflare/` | The current backend: one Worker serving the site, the web player and the sync API on D1 |
 | `server/` | The previous Express + PostgreSQL backend, kept until the Cloudflare cutover is complete |
-| `desktop/` | Electron shell: the web player with CORS-free addon access and native playback hand-off |
+| `desktop/` | Paused Electron shell (the web player with CORS-free addon access and playback hand-off) |
 | `docs/` | Architecture, plugin contract, design reference, research, audits, release notes |
 | `scripts/` | Release tooling |
 

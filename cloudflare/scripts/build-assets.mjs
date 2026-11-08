@@ -25,6 +25,8 @@ let files = 0; let bytes = 0;
   for (const e of fs.readdirSync(src, { withFileTypes: true })) {
     const r = `${rel}${e.name}`;
     if (e.name.startsWith('.')) continue;
+    // The web player is paused: do not ship it at all (the Worker redirects /watch to /download).
+    if (rel === '' && e.name === 'watch') continue;
     if (rel === 'watch/' && e.name === 'test') continue;
     if (e.isDirectory()) { copy(path.join(src, e.name), path.join(dst, e.name), `${r}/`); continue; }
     if (rel === 'downloads/' && e.name.endsWith('.apk') && e.name !== keepApk) continue;
@@ -47,22 +49,7 @@ const rule = (p, h, detach = []) => {
   lines.push('');
 };
 rule('/*', securityHeaders(false));
-rule('/watch/*', { 'Content-Security-Policy': securityHeaders(true)['Content-Security-Policy'] }, ['Content-Security-Policy']);
-// The plugin sandbox frame (plugins run in a Worker started by this page, inside <iframe sandbox="allow-scripts">). It gets its OWN
-// policy instead of the /watch one: no network of any kind (default-src 'none', so no connect-src), and 'unsafe-eval' so plugin
-// scripts can be evaluated. 'unsafe-eval' appears nowhere else. The inline script is the tiny starter in the page; the plugin itself
-// only ever runs in the Worker (worker-src blob:, which inherits this policy). `sandbox allow-scripts` forces an opaque origin even if
-// the page is opened directly; frame-ancestors 'self' lets only the web player embed it. .htm on purpose: Workers Assets redirects
-// .html URLs to the extension-less path, which would miss this rule.
-rule('/watch/plugins/sandbox.htm', {
-  'Content-Security-Policy': "default-src 'none'; script-src 'unsafe-eval' 'unsafe-inline'; worker-src blob:; sandbox allow-scripts; base-uri 'none'; form-action 'none'; frame-ancestors 'self'",
-  'X-Frame-Options': 'SAMEORIGIN',
-  'Content-Type': 'text/html; charset=utf-8',
-  'Cache-Control': 'no-cache',
-  'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=(), display-capture=(), clipboard-read=(), clipboard-write=(), fullscreen=()',
-}, ['Content-Security-Policy', 'X-Frame-Options']);
-rule('/watch/sw.js', { 'Cache-Control': 'no-cache', 'Service-Worker-Allowed': '/watch/' });
-rule('/watch/manifest.webmanifest', { 'Content-Type': 'application/manifest+json; charset=utf-8' });
+// The web player is paused, so no /watch rules are emitted; the Worker redirects those paths.
 rule('/downloads/latest.json', { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache' });
 rule(`/downloads/${keepApk}`, {
   'Content-Type': 'application/vnd.android.package-archive',

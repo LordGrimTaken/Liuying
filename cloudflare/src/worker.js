@@ -32,13 +32,9 @@ export default {
       }
     }
 
+    // The web player is paused for now: keep old links working by sending them to the Android download.
     if (lower === '/watch' || lower.startsWith('/watch/')) {
-      if (request.method !== 'GET' && request.method !== 'HEAD') return notFound(request, true);
-      if (lower === '/watch/test' || lower.startsWith('/watch/test/')) return notFound(request, true); // unit tests are not part of the product
-      if (/\.[^/]+$/.test(path)) return notFound(request, true); // missing asset, not an app route
-      // SPA shell: /watch, /watch/ and any extension-less deep link serve the player's index.html (200).
-      const shell = await env.ASSETS.fetch(new Request(new URL('/watch/', url), request));
-      return shell;
+      return new Response(null, { status: 302, headers: { Location: new URL('/download', url).toString(), 'Cache-Control': 'no-store' } });
     }
 
     return env.ASSETS.fetch(request);
