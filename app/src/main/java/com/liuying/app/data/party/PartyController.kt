@@ -62,6 +62,8 @@ class PartyController(
     private var pollJob: Job? = null
     /** Consecutive failed polls; drives the backoff so an offline phone does not poll every 2 s. */
     private var pollFailures = 0
+    /** Consecutive failed host writes; same idea, so an offline host stops asking every 2 s. */
+    private var pushFailures = 0
     private var pushJob: Job? = null
     private var lastRev = 0L
     private var lastPushAt = 0L
@@ -184,6 +186,7 @@ class PartyController(
     private fun stopLoops() {
         pollJob?.cancel(); pollJob = null
         pollFailures = 0
+        pushFailures = 0
         pushJob?.cancel(); pushJob = null
     }
 
@@ -248,6 +251,7 @@ class PartyController(
         if (!s.active || !s.host) return
         val now = clock.nowMs()
         if (!PartyLogic.shouldPush(now, lastPushAt)) return
+        if (lastPushAt > 0 && now - lastPushAt < PartyLogic.pushDelayMs(pushFailures)) return
         val local = readLocal() ?: return
         if (!PartyLogic.pushWorthwhile(local, lastPushed)) return
         // Claim the slot before the request: a slow write must not let the next tick start a second one at once.
@@ -258,9 +262,13 @@ class PartyController(
                     stopLoops()
                     _state.value = PartyUiState(error = message(r))
                 }
-                else -> _state.update { it.copy(warning = "Could not update the room. Retrying...") }
+                else -> {
+                    pushFailures++
+                    _state.update { it.copy(warning = "Could not update the room. Retrying...") }
+                }
             }
             is ApiResult.Ok -> {
+                pushFailures = 0
                 lastPushed = local
                 lastRev = maxOf(lastRev, r.value.rev)
                 _state.update { it.copy(rev = maxOf(it.rev, r.value.rev), warning = null) }

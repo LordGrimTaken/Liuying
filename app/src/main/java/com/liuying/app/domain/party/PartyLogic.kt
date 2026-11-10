@@ -19,6 +19,9 @@ object PartyLogic {
     /** A poll that keeps failing backs off to this interval instead of hammering the server every 2 s. */
     const val MAX_POLL_MS = 15_000L
 
+    /** A host whose writes keep failing backs off to this interval instead of retrying every 2 s. */
+    const val MAX_PUSH_MS = 30_000L
+
     /** The host writes at most once per this interval. */
     const val WRITE_INTERVAL_MS = 2_000L
 
@@ -98,6 +101,17 @@ object PartyLogic {
     /** The host may write now: never twice within [WRITE_INTERVAL_MS] (a clock stepping back must not wedge it). */
     fun shouldPush(nowMs: Long, lastPushAtMs: Long): Boolean =
         lastPushAtMs <= 0L || nowMs < lastPushAtMs || nowMs - lastPushAtMs >= WRITE_INTERVAL_MS
+
+    /**
+     * The host's write interval after [failures] consecutive failed writes. It doubles from [WRITE_INTERVAL_MS] to
+     * [MAX_PUSH_MS] so an offline host stops asking every two seconds, while a healthy room keeps the prompt
+     * two-second cadence.
+     */
+    fun pushDelayMs(failures: Int, baseMs: Long = WRITE_INTERVAL_MS, maxMs: Long = MAX_PUSH_MS): Long {
+        if (failures <= 0) return baseMs
+        val doublings = (failures - 1).coerceIn(0, 4)
+        return (baseMs shl doublings).coerceAtMost(maxMs)
+    }
 
     /** Whether the host has something new to say: a play/pause change, or the position moved enough to matter. */
     fun pushWorthwhile(local: PartyLocalPlayback, lastPushed: PartyLocalPlayback?): Boolean {

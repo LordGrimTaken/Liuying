@@ -11,6 +11,27 @@ class PartyLogicTest {
     private fun state(positionMs: Long, playing: Boolean, mediaId: String = "tt1", episodeId: String? = null) =
         PartyPlaybackState(mediaId, episodeId, positionMs, playing, updatedAt = 1_700_000_000_000, hostName = "mei")
 
+    // ------------------------------------------------------------------------------------ push backoff
+
+    @Test fun aHealthyHostWritesAtTheBaseInterval() {
+        assertEquals(PartyLogic.WRITE_INTERVAL_MS, PartyLogic.pushDelayMs(0))
+        assertEquals(PartyLogic.WRITE_INTERVAL_MS, PartyLogic.pushDelayMs(-1))
+    }
+
+    @Test fun failedWritesBackOffToThePushCap() {
+        assertEquals(2_000L, PartyLogic.pushDelayMs(1))
+        assertEquals(4_000L, PartyLogic.pushDelayMs(2))
+        assertEquals(8_000L, PartyLogic.pushDelayMs(3))
+        assertEquals(16_000L, PartyLogic.pushDelayMs(4))
+        assertEquals(PartyLogic.MAX_PUSH_MS, PartyLogic.pushDelayMs(5))
+        assertEquals(PartyLogic.MAX_PUSH_MS, PartyLogic.pushDelayMs(50))
+    }
+
+    @Test fun thePushBackoffRespectsCustomBounds() {
+        assertEquals(500L, PartyLogic.pushDelayMs(0, baseMs = 500L, maxMs = 3_000L))
+        assertEquals(3_000L, PartyLogic.pushDelayMs(9, baseMs = 500L, maxMs = 3_000L))
+    }
+
     // ------------------------------------------------------------------------------------ poll backoff
 
     @Test fun aHealthyRoomPollsAtTheBaseInterval() {

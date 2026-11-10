@@ -354,6 +354,21 @@ change was made there. Noted so it is not "fixed" later by mistake.
 
 **Note:** local commit only, as asked. Nothing pushed.
 
+## Cycle 16 — 2026-11-10 — the host's failing writes back off too (local commit only)
+
+**Measured (before):** cycle 4 gave the guest's poll a backoff, but the host's write loop still retried every
+`WRITE_INTERVAL_MS` (2 s) no matter how many writes had failed. An offline host therefore kept the same ~1 800
+requests an hour that the poll used to make, and logged a warning on each tick.
+
+**Changed:** `PartyLogic.pushDelayMs(failures)` doubles from 2 s to a 30 s cap; `PartyController` counts
+consecutive failed writes, resets on success and when a room ends, and skips a tick that arrives before the
+backoff has elapsed. A healthy room keeps the prompt two-second cadence because the counter is zero.
+
+**Measured (after):** **322 tests** (was 319), 0 failures, 4 skipped — three `PartyLogicTest` cases: the base
+interval, the doubling/cap table (2 s → 4 s → 8 s → 16 s → 30 s), and custom bounds.
+
+**Note:** local commit only, as asked. Nothing pushed.
+
 ## Known issue — flaky QuickJS plugin test in CI
 
 `QuickJsPluginRunnerTest.aLeftoverTimerDoesNotDelayTheAnswer` failed on the first CI run of cycle 2
