@@ -53,6 +53,30 @@ the retryable set, the doubling/cap table, negative attempts, and `Retry-After` 
 **Next candidate:** the same "fail silently" pattern exists for the watch-party poll and for update
 checks; and the shelf still never marks a series Completed (backlog L005).
 
+## Cycle 3 — 2026-11-10 — stop the QuickJS teardown race
+
+**Measured (before):** `QuickJsPluginRunnerTest.aLeftoverTimerDoesNotDelayTheAnswer` failed in **2 of 3 CI
+runs** (`42756847245` first attempt, `42759560788`), always with *"Cannot get jni env because the vm is not
+cached"*, and always passed locally in isolation. Two attempted fixes made every plugin test fail and were
+reverted (async close on the VM executor; `submit().get()`).
+
+**Hypothesis:** the native engine was closed in `finally` while a host callback (the leftover timer, an
+in-flight host sleep) could still be running against it; under CI's scheduling that callback lands after
+`close()` and the JVM binding reports the VM as no longer cached.
+
+**Changed:** `job.cancel()` now also **joins** the run's coroutines, bounded to 2 s (`NonCancellable` +
+`withTimeoutOrNull`), before `js.close()`. A run that cannot stop in that window still closes on a helper
+thread, so a stuck engine cannot block the caller.
+
+**Measured (after):**
+- plugin suite locally: **3/3** runs green;
+- full suite locally: 40 suites / **262 tests** / 0 failures / 4 skipped;
+- CI `42763071466`: **green**, then **two reruns of the same commit: green** (3/3, against 1/3 before).
+
+**Next candidate:** the watch-party poll has the same silent-failure shape as the old sync (it stops on a
+404/401 but a transient network error just waits for the next tick); then backlog L005, a series never
+reaching "Completed" on the shelf.
+
 ## Known issue — flaky QuickJS plugin test in CI
 
 `QuickJsPluginRunnerTest.aLeftoverTimerDoesNotDelayTheAnswer` failed on the first CI run of cycle 2
