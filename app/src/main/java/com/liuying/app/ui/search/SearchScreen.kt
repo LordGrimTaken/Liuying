@@ -77,6 +77,7 @@ private val Plural = mapOf("movie" to "Movies", "series" to "Series", "tv" to "T
 @Composable
 fun SearchScreen(navigator: Navigator) {
     val vm = containerViewModel { SearchViewModel(it) }
+    com.liuying.app.ui.common.PosterActionToast(vm.actions)
     val query by vm.query.collectAsStateWithLifecycle()
     val results by vm.results.collectAsStateWithLifecycle()
     val recent by vm.recent.collectAsStateWithLifecycle()

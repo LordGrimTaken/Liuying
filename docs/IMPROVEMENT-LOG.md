@@ -223,6 +223,27 @@ The wiring is proven by `TitleActionsTest`, not by a picture — I am not claimi
 
 **Note:** this cycle is committed locally only, as asked; nothing was pushed.
 
+## Cycle 10 — 2026-11-10 — a poster action that does nothing now says why (local commit only)
+
+**Measured (before):** `TitleActions.toggleWatched` on a series that has no cached episode list and no reachable
+source returned silently. The poster was unchanged, nothing was marked, and the user had no way to tell whether
+the tap registered — the same "silent no-op" class of bug as the shelf bulk action in cycle 6.
+
+**Changed:**
+- `TitleActions.message` carries one line of feedback; marking a series reports the count
+  ("Marked 12 episodes watched" / "…unwatched"), and a missing episode list explains itself
+  ("Could not load the episode list for this series. Open it once, then try again.").
+- `PosterActionToast` shows it and clears it; Today, Browse and Search each call it once (none of them had a
+  snackbar host, so a toast is the least invasive surface).
+
+**Measured (after):** **304 tests** (was 302), 0 failures, 4 skipped — two `TitleActionsTest` cases: the
+failure message when no source can answer, and the watched→unwatched round trip reporting two episodes each way.
+
+**Not verified visually:** the toast is not captured by the Robolectric harness (it goes through the platform
+Toast, outside the Compose tree); the state transitions behind it are covered by the tests above.
+
+**Note:** local commit only, as asked. Nothing pushed.
+
 ## Known issue — flaky QuickJS plugin test in CI
 
 `QuickJsPluginRunnerTest.aLeftoverTimerDoesNotDelayTheAnswer` failed on the first CI run of cycle 2

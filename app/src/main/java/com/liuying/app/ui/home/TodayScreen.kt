@@ -71,6 +71,7 @@ import com.liuying.app.ui.theme.Vermilion
 @Composable
 fun TodayScreen(navigator: Navigator) {
     val vm = containerViewModel { TodayViewModel(it) }
+    com.liuying.app.ui.common.PosterActionToast(vm.actions)
     val rows by vm.rows.collectAsStateWithLifecycle()
     val hasSources by vm.hasSources.collectAsStateWithLifecycle()
     val cw by vm.continueItems.collectAsStateWithLifecycle()

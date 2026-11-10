@@ -47,6 +47,7 @@ import com.liuying.app.ui.theme.PaperMuted
 @Composable
 fun BrowseScreen(catalogKey: String, initialGenre: String?, navigator: Navigator) {
     val vm = containerViewModel(key = "browse:$catalogKey:$initialGenre") { BrowseViewModel(it, catalogKey, initialGenre) }
+    com.liuying.app.ui.common.PosterActionToast(vm.actions)
     val ui by vm.ui.collectAsStateWithLifecycle()
     val saved by vm.savedKeys.collectAsStateWithLifecycle()
     val hideWatched by vm.hideWatched.collectAsStateWithLifecycle()

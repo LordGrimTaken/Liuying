@@ -6,6 +6,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -24,6 +25,7 @@ import com.liuying.app.domain.model.MetaPreview
 import com.liuying.app.domain.model.PlaybackRef
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
@@ -62,14 +64,23 @@ class TitleActions(private val c: AppContainer, private val scope: CoroutineScop
                 return@launch
             }
             val meta = runCatching { c.metas.cached(type, preview.id) }.getOrNull()
-                ?: runCatching { c.metas.getOrFetch(type, preview.id) }.getOrNull() ?: return@launch
-            for (v in meta.videos) {
-                val s = v.season ?: continue
-                val e = v.episode ?: continue
-                c.progress.setWatched(PlaybackRef.episode(type, preview.id, v.id, s, e), !watched)
+                ?: runCatching { c.metas.getOrFetch(type, preview.id) }.getOrNull()
+            val episodes = meta?.videos?.filter { it.season != null && it.episode != null }.orEmpty()
+            if (episodes.isEmpty()) {
+                // A silent no-op is the worst answer: say why nothing happened.
+                message.value = "Could not load the episode list for this series. Open it once, then try again."
+                return@launch
             }
+            for (v in episodes) {
+                c.progress.setWatched(PlaybackRef.episode(type, preview.id, v.id, v.season!!, v.episode!!), !watched)
+            }
+            message.value = if (watched) "Marked ${episodes.size} episodes unwatched" else "Marked ${episodes.size} episodes watched"
         }
     }
+
+    /** A one-line answer for the poster action; the screens show it and call [clearMessage]. */
+    val message = MutableStateFlow<String?>(null)
+    fun clearMessage() { message.value = null }
 }
 
 /** A poster with a long-press menu: Details, shelf, and Mark watched (a series is marked through its episodes). */
@@ -106,4 +117,20 @@ fun ActionPoster(
 fun androidx.compose.ui.text.TextStyle.forTitle(text: String): androidx.compose.ui.text.TextStyle {
     val tag = com.liuying.app.domain.CjkText.localeTag(text) ?: return this
     return copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Serif, localeList = androidx.compose.ui.text.intl.LocaleList(tag))
+}
+
+/**
+ * Shows the poster action's one-line answer (e.g. "Marked 12 episodes watched", or why nothing happened)
+ * as a toast, then clears it. Today, Browse and Search each call this once.
+ */
+@Composable
+fun PosterActionToast(actions: TitleActions) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val message by actions.message.collectAsStateWithLifecycle()
+    androidx.compose.runtime.LaunchedEffect(message) {
+        message?.let {
+            android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_SHORT).show()
+            actions.clearMessage()
+        }
+    }
 }
