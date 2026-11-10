@@ -14,29 +14,49 @@ object SearchRanking {
     }
 
     private val articles = listOf("the ", "a ", "an ")
-    private fun dropArticle(s: String): String = articles.firstOrNull { s.startsWith(it) }?.let { s.removePrefix(it) } ?: s
 
-    /** 0 exact, 1 exact without a leading article, 2 starts with the query, 3 a word starts with it, 4 contains it, 5 other. */
+    /**
+     * Canonical form without a leading or trailing article: "the matrix", "matrix" and "matrix, the" all become
+     * "matrix", so the same title typed either way is still an exact match.
+     */
+    internal fun dropArticle(s: String): String {
+        var x = s
+        articles.firstOrNull { x.startsWith(it) }?.let { x = x.removePrefix(it) }
+        for (a in listOf(" the", " a", " an")) {
+            if (x.endsWith(a)) { x = a.trim() + " " + x.removeSuffix(a); break }
+        }
+        articles.firstOrNull { x.startsWith(it) }?.let { x = x.removePrefix(it) }
+        return x
+    }
+
+    /** "spider man" and "spiderman" are the same title typed two ways; punctuation and spaces are not signal. */
+    internal fun compact(s: String): String = s.replace(" ", "")
+
+    /** 0 exact, 1 exact ignoring an article or spacing, 2 starts with the query, 3 a word starts with it, 4 contains it, 5 other. */
     fun score(title: String, query: String): Int {
         val t = normalise(title)
         val q = normalise(query)
         if (q.isEmpty() || t.isEmpty()) return 5
+        val ct = compact(t)
+        val cq = compact(q)
         return when {
             t == q -> 0
             dropArticle(t) == dropArticle(q) -> 1
-            t.startsWith(q) -> 2
+            // "Spider-Man" vs "spiderman": same title, different punctuation or spacing.
+            ct == cq -> 1
+            t.startsWith(q) || ct.startsWith(cq) -> 2
             (" $t").contains(" $q") -> 3
-            t.contains(q) -> 4
+            t.contains(q) || ct.contains(cq) -> 4
             else -> 5
         }
     }
 
     /** Stable: ties keep the source's own order. */
     fun rank(items: List<MetaPreview>, query: String): List<MetaPreview> =
-        items.withIndex().sortedWith(compareBy({ score(it.value.title, query) }, { it.index })).map { it.value }
+        items.withIndex().sortedWith(compareBy({ score(it.value.name, query) }, { it.index })).map { it.value }
 
     fun bestScore(g: SearchGroup, query: String): Int =
-        (g.state as? RowState.Loaded)?.items?.minOfOrNull { score(it.title, query) } ?: 6
+        (g.state as? RowState.Loaded)?.items?.minOfOrNull { score(it.name, query) } ?: 6
 
     /** Rows with the best title match first; equal rows keep their order. Items inside each loaded row are ranked too. */
     fun orderGroups(groups: List<SearchGroup>, query: String): List<SearchGroup> {
@@ -53,7 +73,7 @@ object SearchRanking {
         val out = ArrayList<Pair<MetaPreview, SearchGroup>>()
         for (g in groups) {
             val st = g.state as? RowState.Loaded ?: continue
-            for (m in st.items) if (score(m.title, query) <= 1 && seen.add(m.id)) out += m to g
+            for (m in st.items) if (score(m.name, query) <= 1 && seen.add(m.id)) out += m to g
         }
         return out
     }

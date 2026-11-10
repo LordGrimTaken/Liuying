@@ -174,6 +174,30 @@ reads **Selected** (gold) instead of **Seen** (red).
 **Next candidate:** `TitleActions` long-press "Mark watched" is still movie-only, and it is the last place
 that cannot mark a series now that `BulkWatch` can.
 
+## Cycle 8 — 2026-11-10 — search ignores spacing, and articles no longer hide an exact title
+
+**Measured (before):** `SearchRanking` had no test file at all, and two ordinary queries missed the obvious title:
+- `spiderman` scored 5 (no match) against **Spider-Man**, because normalising turns the hyphen into a space and
+  nothing compared the two spellings;
+- `the matrix` scored 5 against **Matrix, The**, because only a *leading* article was dropped.
+
+**Changed:**
+- `compact()` compares titles with spaces removed, so "spiderman", "Spider-Man" and "Spider Man" meet at
+  rank 1, and a compact prefix still ranks above a plain substring.
+- `dropArticle()` is now canonical in both directions ("the matrix", "matrix", "matrix, the" → "matrix"), so the
+  article position no longer changes the score.
+
+**Measured (after):** **294 tests** (was 284), 0 failures, 4 skipped — a new `SearchRankingTest` with ten cases
+covering normalisation (accents, punctuation, CJK), exact-before-prefix ordering, articles, spacing, word-start
+vs substring, empty queries, stable ties, empty groups and the suggestion text.
+
+**What the tests caught:** my first version of `dropArticle` was one-way and my own expectations for two cases
+were wrong (a pair that normalises to the same string scores 0, not 1; CJK punctuation creates a word boundary).
+Both are now recorded in the tests as the intended behaviour.
+
+**Next candidate:** `TitleActions` long-press "Mark watched" remains movie-only; that is still the last place a
+series cannot be marked.
+
 ## Known issue — flaky QuickJS plugin test in CI
 
 `QuickJsPluginRunnerTest.aLeftoverTimerDoesNotDelayTheAnswer` failed on the first CI run of cycle 2
