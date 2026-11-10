@@ -332,6 +332,28 @@ finished series: with the switch on the title is **absent** and its neighbours r
 
 **Note:** local commit only, as asked. Nothing pushed.
 
+## Cycle 15 — 2026-11-10 — resume follows the user's completion threshold (local commit only)
+
+**Measured (before):** `ProgressRules.resumePositionMs` refused to resume past a fixed **92 %**
+(`RESUME_MAX_FRACTION`), while the completion threshold is user-settable from 80 % to 98 %. With the threshold at
+95 % or 98 %, a title watched to 93–97 % was *neither* resumed *nor* marked finished: the player restarted it
+from zero and the user re-watched the whole thing.
+
+**Changed:** the resume window is now "started and not completed", evaluated with the caller's threshold, which
+is the same rule that decides `watched`. `PlaybackBuilder` and `DetailsViewModel` pass `settings.completionThreshold`.
+`RESUME_MAX_FRACTION` is gone.
+
+**Measured (after):** **319 tests** (was 310), 0 failures, 4 skipped — a new `ProgressRulesTest` with nine cases:
+the start floor, a normal resume, a finished title, the threshold window (93 % resumes at 98 % and is finished at
+92 %), duration-change scaling, the rewind floor/cap, threshold clamping, and `applyUpdate` (completion zeroes the
+position, a re-watch keeps the watched flag, a report without a duration keeps the known one).
+
+**Correction:** my previous note said the Calendar "still filters per episode rather than per finished series". On
+reading it, that is the correct behaviour — a calendar must hide watched *episodes*, not an entire show — so no
+change was made there. Noted so it is not "fixed" later by mistake.
+
+**Note:** local commit only, as asked. Nothing pushed.
+
 ## Known issue — flaky QuickJS plugin test in CI
 
 `QuickJsPluginRunnerTest.aLeftoverTimerDoesNotDelayTheAnswer` failed on the first CI run of cycle 2

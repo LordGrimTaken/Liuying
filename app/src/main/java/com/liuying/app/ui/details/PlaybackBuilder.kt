@@ -142,7 +142,7 @@ class AppPlaybackGateway(private val c: AppContainer) : PlaybackGateway {
         val playable = result.items.filter { it.enabled && it.kind == StreamKind.Direct && !it.url.isNullOrBlank() }
         val pick = base.bingeGroup?.let { g -> playable.firstOrNull { sameGroup(it, g) } } ?: StreamPicker.pick(playable, s) ?: return null
         val existing = progress.firstOrNull { it.videoId == episodeId || (it.season == e.season && it.episode == e.episode) }
-        val resume = existing?.let { ProgressRules.resumePositionMs(it) }
+        val resume = existing?.let { ProgressRules.resumePositionMs(it, threshold = s.completionThreshold) }
         val start = ProgressRules.rewound(resume, s.resumeRewindSec)
         return builder.build(base.type, base.mediaId, base.title, target, pick, states, start, s)
     }

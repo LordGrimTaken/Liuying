@@ -12,8 +12,11 @@ object ProgressRules {
     const val NOT_STARTED_FRACTION = 0.03
     const val NOT_STARTED_MS = 60_000L
 
-    /** Player resume window (04): resume only when between 3 % and 92 %. */
-    const val RESUME_MAX_FRACTION = 0.92
+    /**
+     * The player resumes anything started but not yet finished. "Finished" is the user's own completion
+     * threshold, not a fixed 92 %: with the threshold at 98 % a title watched to 95 % must still resume, or the
+     * app would restart it from zero while refusing to call it watched either.
+     */
 
     fun clampThreshold(t: Double) = t.coerceIn(MIN_THRESHOLD, MAX_THRESHOLD)
 
@@ -32,10 +35,15 @@ object ProgressRules {
      * Where playback should resume, or null to start from 0. If the stream's duration differs from the
      * stored one by more than ~5 % the stored fraction is used instead of the absolute position.
      */
-    fun resumePositionMs(e: ProgressEntry, newDurationMs: Long? = null): Long? {
+    fun resumePositionMs(
+        e: ProgressEntry,
+        newDurationMs: Long? = null,
+        threshold: Double = DEFAULT_THRESHOLD,
+    ): Long? {
         if (e.positionMs <= 0) return null
         if (e.durationMs <= 0) return e.positionMs
-        if (e.fraction < NOT_STARTED_FRACTION || e.fraction > RESUME_MAX_FRACTION) return null
+        if (e.fraction < NOT_STARTED_FRACTION) return null
+        if (isCompleted(e.positionMs, e.durationMs, threshold)) return null
         val nd = newDurationMs ?: return e.positionMs
         if (nd <= 0) return e.positionMs
         val diff = kotlin.math.abs(nd - e.durationMs).toDouble() / e.durationMs

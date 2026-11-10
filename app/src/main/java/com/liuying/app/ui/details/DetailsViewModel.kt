@@ -280,7 +280,7 @@ class DetailsViewModel(
             val ref = if (target.season != null && target.episode != null) PlaybackRef.episode(type, id, target.videoId, target.season, target.episode)
             else PlaybackRef.movie(type, target.videoId)
             val existing = c.progress.get(ref)
-            val resumeMs = existing?.let { ProgressRules.resumePositionMs(it) } ?: 0L
+            val resumeMs = existing?.let { ProgressRules.resumePositionMs(it, threshold = s.completionThreshold) } ?: 0L
             val start = when {
                 forcedStart != null -> forcedStart
                 s.resumeBehavior == ResumeBehavior.StartOver -> 0L
