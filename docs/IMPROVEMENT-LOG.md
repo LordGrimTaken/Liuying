@@ -428,6 +428,26 @@ release group from a different filename than the one in the call.
 
 **Note:** local commit only, as asked. Nothing pushed.
 
+## Cycle 20 — 2026-11-10 — the JSON export carries a schema marker, and the export contract is pinned (local commit only)
+
+**Measured (before):** `ExportLogic` had no tests, and the JSON export identified itself only by the app version.
+Importing a file (backlog L030) would have to guess which shape it is reading, and `appVersion` is not a contract.
+
+**Changed:**
+- `ExportLogic.SCHEMA = 1` is written as `"schema"` in the JSON export; it is meant to be bumped only when the
+  shape changes in a way an older importer cannot read.
+- A new `ExportLogicTest` pins the whole contract: UTC ISO timestamps, RFC 4180 quoting, formula neutralisation
+  (including a quoted `=1,2`), the library CSV header and `"; "` genre join, the history CSV with empty
+  season/episode for a movie, a JSON round trip through the parser (app, schema, version, exportedAt, null year,
+  episode fields present only for episodes), and a title containing quotes and newlines staying valid JSON.
+
+**Measured (after):** **358 tests** (was 351), 0 failures, 4 skipped — the seven export cases above.
+
+**What the tests caught:** both first-run failures were my own wrong expectations (a CSV row with one field too
+many, and a muddled assertion about a null year), not product bugs — the export code was already correct.
+
+**Note:** local commit only, as asked. Nothing pushed.
+
 ## Known issue — flaky QuickJS plugin test in CI
 
 `QuickJsPluginRunnerTest.aLeftoverTimerDoesNotDelayTheAnswer` failed on the first CI run of cycle 2

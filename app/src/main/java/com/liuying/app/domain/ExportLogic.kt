@@ -19,6 +19,9 @@ data class ExportHistoryRow(val entry: ProgressEntry, val title: String)
 
 /** Library and history as CSV or JSON (L031). Pure; no sources, URLs or credentials are ever included. */
 object ExportLogic {
+    /** Bumped only when the JSON shape changes in a way an older importer cannot read. */
+    const val SCHEMA = 1
+
     fun iso(ms: Long): String = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }.format(Date(ms))
 
     /** RFC 4180 quoting; also neutralises spreadsheet formulas (a cell starting with = + - @ gets a leading apostrophe). */
@@ -50,6 +53,8 @@ object ExportLogic {
     fun json(items: List<LibraryItem>, rows: List<ExportHistoryRow>, exportedAtMs: Long, appVersion: String): String {
         val obj = buildJsonObject {
             put("app", "Liuying")
+            // A stable shape marker for the import that L030 will add: appVersion is not a contract, this is.
+            put("schema", SCHEMA)
             put("version", appVersion)
             put("exportedAt", iso(exportedAtMs))
             put("library", JsonArray(items.map {
