@@ -58,7 +58,7 @@ class ShelfViewModel(private val c: AppContainer) : ViewModel() {
      * L005: films are marked directly; a series needs its episode list, which comes from the meta cache and,
      * for a small selection, one fetch. Series the app cannot see are reported instead of silently ignored.
      */
-    fun markWatched(items: List<LibraryItem>) {
+    fun markWatched(items: List<LibraryItem>, watched: Boolean = true) {
         viewModelScope.launch {
             val series = items.filter { !it.type.equals("movie", true) }
             val episodes = HashMap<String, List<Video>>()
@@ -68,9 +68,9 @@ class ShelfViewModel(private val c: AppContainer) : ViewModel() {
                 if (meta != null) episodes[BulkWatch.key(item)] = meta.videos
             }
             val plan = BulkWatch.plan(items, episodes)
-            plan.movies.forEach { c.progress.setWatched(PlaybackRef.movie(it.type, it.id), true) }
-            plan.episodes.forEach { c.progress.setWatched(PlaybackRef.episode(it.type, it.titleId, it.videoId, it.season, it.episode), true) }
-            message.value = BulkWatch.summary(plan)
+            plan.movies.forEach { c.progress.setWatched(PlaybackRef.movie(it.type, it.id), watched) }
+            plan.episodes.forEach { c.progress.setWatched(PlaybackRef.episode(it.type, it.titleId, it.videoId, it.season, it.episode), watched) }
+            message.value = BulkWatch.summary(plan, watched)
         }
     }
 

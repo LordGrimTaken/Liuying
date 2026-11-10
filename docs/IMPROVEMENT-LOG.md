@@ -149,6 +149,31 @@ tile ("Finished Show"); "Half Watched" is excluded.
 **Next candidate:** the Today screen still has no equivalent for a finished series, and `TitleActions`
 long-press "Mark watched" remains movie-only — the same decision can now be reused there.
 
+## Cycle 7 — 2026-11-10 — the bulk action is two-way, and selected is not the same as seen
+
+**Measured (before):** two defects in the shelf I had just touched.
+1. The bulk bar could mark titles watched but never unwatched — a wrong mark was permanent short of opening
+   each title.
+2. `ShelfScreen` passed `watched = e.watched || keyOf(e) in selected` to `PosterCard`, so a **selected** tile
+   showed the red **"Seen"** badge. The UI claimed a title was watched because it was selected.
+
+**Changed:**
+- `BulkWatch.summary(plan, watched)` and `ShelfViewModel.markWatched(items, watched)` now take the direction;
+  the shelf bar offers **Mark watched · Mark unwatched · Remove** in a horizontally scrolling row (four actions
+  did not fit on 360 dp) with the count and Cancel kept fixed above.
+- `PosterCard` gained a `selected` flag: a selected tile shows a gold **"Selected"** badge, a watched one keeps
+  the red "Seen".
+
+**Measured (after):** **284 tests** (was 282), 0 failures, 4 skipped — a summary test for the unwatched
+wording, plus the render below.
+
+**Visually verified:** `LIUYING_SHOTS=1 … --tests '*ShelfSelectionShotsTest*'` long-presses a tile, picks
+Select and captures `app/build/shots/shelf-selection-360.png`: the bar fits all three actions and the tile
+reads **Selected** (gold) instead of **Seen** (red).
+
+**Next candidate:** `TitleActions` long-press "Mark watched" is still movie-only, and it is the last place
+that cannot mark a series now that `BulkWatch` can.
+
 ## Known issue — flaky QuickJS plugin test in CI
 
 `QuickJsPluginRunnerTest.aLeftoverTimerDoesNotDelayTheAnswer` failed on the first CI run of cycle 2

@@ -59,6 +59,15 @@ class BulkWatchTest {
         assertEquals(2 to 3, plan.episodes[0].season to plan.episodes[0].episode)
     }
 
+    @Test fun theSummaryFollowsTheDirection() {
+        val film = lib("movie", "tt1")
+        val plan = BulkWatch.plan(listOf(film), emptyMap())
+        assertEquals("Marked 1 title watched", BulkWatch.summary(plan))
+        assertEquals("Marked 1 title unwatched", BulkWatch.summary(plan, watched = false))
+        val two = BulkWatch.plan(listOf(film, lib("movie", "tt2")), emptyMap())
+        assertEquals("Marked 2 titles unwatched", BulkWatch.summary(two, watched = false))
+    }
+
     @Test fun anEmptySelectionSaysNothing() {
         assertNull(BulkWatch.summary(BulkWatch.plan(emptyList(), emptyMap())))
     }

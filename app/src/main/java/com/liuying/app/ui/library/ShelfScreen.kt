@@ -2,6 +2,7 @@ package com.liuying.app.ui.library
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -132,11 +134,22 @@ fun ShelfScreen(navigator: Navigator) {
             item { InkTextButton("Surprise me", { vm.surprise()?.let { navigator.openTitle(it.type, it.id) } }) }
         }
         if (selecting) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("${selected.size} selected", color = Paper, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f).padding(start = 8.dp))
-                InkTextButton("Mark watched", { vm.markWatched(entries.filter { keyOf(it) in selected }.map { it.item }); selected = emptySet() })
-                InkTextButton("Remove", { vm.removeAll(entries.filter { keyOf(it) in selected }.map { it.item }); selected = emptySet() })
-                InkTextButton("Cancel", { selected = emptySet() }, color = PaperMuted)
+            val picked = { entries.filter { keyOf(it) in selected }.map { it.item } }
+            Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("${selected.size} selected", color = Paper, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f).padding(start = 8.dp))
+                    InkTextButton("Cancel", { selected = emptySet() }, color = PaperMuted)
+                }
+                // Four actions do not fit on a 360 dp row, so the actions scroll while the count stays put.
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    InkTextButton("Mark watched", { vm.markWatched(picked()); selected = emptySet() })
+                    InkTextButton("Mark unwatched", { vm.markWatched(picked(), watched = false); selected = emptySet() })
+                    InkTextButton("Remove", { vm.removeAll(picked()); selected = emptySet() })
+                }
             }
         }
         if (entries.isEmpty()) {
@@ -150,7 +163,7 @@ fun ShelfScreen(navigator: Navigator) {
             ) {
                 items(entries, key = { it.item.type + "|" + it.item.id }) { e ->
                     ShelfCell(e, navigator, onRemove = { removeWithUndo(e.item) }, onSelect = { selected = selected + keyOf(e) }) { menu, openMenu ->
-                        PosterCard(e.item.name, e.item.poster, fillWidth = true, subtitle = e.item.year, progress = e.progress, watched = e.watched || keyOf(e) in selected,
+                        PosterCard(e.item.name, e.item.poster, fillWidth = true, subtitle = e.item.year, progress = e.progress, watched = e.watched, selected = keyOf(e) in selected,
                             onLongClick = openMenu) { open(e) }
                         menu()
                     }

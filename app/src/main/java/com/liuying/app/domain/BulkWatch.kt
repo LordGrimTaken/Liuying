@@ -54,10 +54,11 @@ object BulkWatch {
     }
 
     /** The sentence shown after the action. Null when there is nothing to say (nothing selected). */
-    fun summary(plan: BulkWatchPlan): String? {
+    fun summary(plan: BulkWatchPlan, watched: Boolean = true): String? {
         if (plan.movies.isEmpty() && plan.episodes.isEmpty() && plan.unknownSeries.isEmpty()) return null
         val marked = plan.markedTitles
-        val text = if (marked == 1) "Marked 1 title watched" else "Marked $marked titles watched"
+        val state = if (watched) "watched" else "unwatched"
+        val text = if (marked == 1) "Marked 1 title $state" else "Marked $marked titles $state"
         if (plan.unknownSeries.isEmpty()) return text
         val n = plan.unknownSeries.size
         return "$text · $n series skipped (no episode list — open their Details once)"

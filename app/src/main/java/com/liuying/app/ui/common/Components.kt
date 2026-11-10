@@ -114,6 +114,8 @@ fun PosterCard(
     subtitle: String? = null,
     progress: Float? = null,
     watched: Boolean = false,
+    /** Selected in a multi-select bar: shows "Selected" instead of "Seen", which is a different fact. */
+    selected: Boolean = false,
     onLongClick: (() -> Unit)? = null,
     /** Non-null shows the quick-save button; true = already on the shelf. */
     saved: Boolean? = null,
@@ -127,8 +129,9 @@ fun PosterCard(
         .combinedClickable(interactionSource = source, indication = null, onClick = onClick, onLongClick = onLongClick)) {
         Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(PosterShape).border(BorderStroke(0.5.dp, GoldHairline), PosterShape)) {
             ArtImage(poster, title, Modifier.fillMaxSize())
-            if (watched) Text("Seen", style = MaterialTheme.typography.labelMedium, color = OnAccent,
-                modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).background(Vermilion, RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 1.dp))
+            if (selected || watched) Text(if (selected) "Selected" else "Seen", style = MaterialTheme.typography.labelMedium, color = if (selected) Ink else OnAccent,
+                modifier = Modifier.align(Alignment.TopEnd).padding(4.dp)
+                    .background(if (selected) Gold else Vermilion, RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 1.dp))
             if (progress != null) ProgressBar(progress, Modifier.align(Alignment.BottomCenter).fillMaxWidth())
             if (saved != null && onToggleSave != null) {
                 QuickSave(saved, title, onToggleSave, Modifier.align(Alignment.BottomEnd).padding(4.dp))
