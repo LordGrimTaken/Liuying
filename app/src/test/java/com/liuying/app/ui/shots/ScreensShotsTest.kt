@@ -33,6 +33,9 @@ class ScreensShotsTest : ShotBase() {
         seedSource()
         app()
         settle()
+        // Wait for the catalog instead of trusting a fixed sleep: under load the row can still be empty when the
+        // click runs, and then the failure reads as a missing poster rather than a slow one.
+        waitFor(10_000) { rule.onAllNodes(hasText("Title 2")).fetchSemanticsNodes().isNotEmpty() }
         rule.onAllNodes(hasText("Title 2")).onFirst().performClick(); settle(); shot("details-movie")
     }
 

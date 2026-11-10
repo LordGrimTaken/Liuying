@@ -37,6 +37,13 @@ object LibraryLogic {
         }
     }
 
+    /**
+     * "Unwatched first" with a real notion of finished: everything not complete keeps its order, completed
+     * entries move to the end. A series you merely started is not complete, so it stays near the top.
+     */
+    fun <T> completedLast(items: List<T>, isComplete: (T) -> Boolean): List<T> =
+        items.sortedBy { isComplete(it) }
+
     fun yearOf(s: String?): Int? = s?.let { Regex("(\\d{4})").find(it)?.groupValues?.get(1)?.toIntOrNull() }
 
     fun lastPlayed(progress: List<ProgressEntry>): Map<Pair<String, String>, Long> =

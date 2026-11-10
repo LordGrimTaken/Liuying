@@ -33,7 +33,7 @@ class ShelfViewModel(private val c: AppContainer) : ViewModel() {
     ) { lib, prog, s, f, q ->
         val shown = LibraryLogic.apply(lib, f, q, s.librarySort, LibraryLogic.lastPlayed(prog), LibraryLogic.watchedTitles(prog))
         val byTitle = prog.groupBy { it.type to it.titleId }
-        ShelfState(true, lib.size, shown.map { item ->
+        val entries = shown.map { item ->
             val rows = byTitle[item.type to item.id].orEmpty()
             val inProg = rows.filter { com.liuying.app.domain.ProgressRules.isInProgress(it, s.completionThreshold) }.maxByOrNull(ProgressEntry::updatedAt)
             val cheap = com.liuying.app.domain.ShelfStatuses.of(item.type, rows)
@@ -46,7 +46,11 @@ class ShelfViewModel(private val c: AppContainer) : ViewModel() {
                 com.liuying.app.domain.ShelfStatuses.of(item.type, rows, known)
             } else cheap
             ShelfEntry(item, inProg?.fraction?.toFloat(), item.type.equals("movie", true) && rows.any { it.watched }, status)
-        })
+        }
+        // The status knows whether a series is finished, so use it for the sort instead of "has any watched row":
+        // a show you started should stay with the unwatched ones.
+        val ordered = if (s.librarySort == LibrarySort.UnwatchedFirst) LibraryLogic.completedLast(entries, { it.status == com.liuying.app.domain.ShelfStatus.Completed }) else entries
+        ShelfState(true, lib.size, ordered)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ShelfState())
 
     fun setSort(s: LibrarySort) { viewModelScope.launch { c.settings.update { it.copy(librarySort = s) } } }

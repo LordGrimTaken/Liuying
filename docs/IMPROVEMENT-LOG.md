@@ -244,6 +244,30 @@ Toast, outside the Compose tree); the state transitions behind it are covered by
 
 **Note:** local commit only, as asked. Nothing pushed.
 
+## Cycle 11 — 2026-11-10 — "Unwatched first" uses completion, not "any watched row" (local commit only)
+
+**Measured (before):** the shelf sort `UnwatchedFirst` was fed `LibraryLogic.watchedTitles`, which is "this title
+has any watched row". So a series with one watched episode sorted as *watched* and went to the bottom, while
+being nowhere near finished — the exact opposite of what the sort promises.
+
+**Changed:**
+- `LibraryLogic.completedLast(items, isComplete)` — a stable partition that moves finished entries to the end
+  and keeps everything else in order.
+- `ShelfViewModel` orders by the **status it already computes** (which knows about completion through the
+  episode list) instead of the progress heuristic, so a started series stays with the unwatched ones.
+
+**Also fixed:** `ScreensShotsTest.detailsMovieAndSeries` failed once in a full run (4m 05s under load, versus
+~1m 35s idle) because it clicked a poster after a fixed sleep. It now waits for the catalog node first. It
+passed in isolation before and after, which is what a timing flake looks like.
+
+**Measured (after):** **306 tests** (was 304), 0 failures, 4 skipped — two `LibraryLogicTest` cases for the new
+partition (order preserved, finished moved to the end; nothing complete leaves the list alone).
+
+**Not verified visually:** the reordering is not captured in a screenshot; the partition itself is unit tested
+and the view model applies it with one call.
+
+**Note:** local commit only, as asked. Nothing pushed.
+
 ## Known issue — flaky QuickJS plugin test in CI
 
 `QuickJsPluginRunnerTest.aLeftoverTimerDoesNotDelayTheAnswer` failed on the first CI run of cycle 2

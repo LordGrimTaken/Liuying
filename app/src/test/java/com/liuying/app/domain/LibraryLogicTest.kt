@@ -35,4 +35,19 @@ class LibraryLogicTest {
         assertEquals("Special 1", EpisodeLabels.code(0, 1))
         assertEquals("1 h 5 min left", EpisodeLabels.remaining(65 * 60_000L))
     }
+
+    @Test fun completedLastMovesFinishedTitlesToTheEndAndKeepsTheRestInOrder() {
+        val order = listOf("started-series", "new-film", "finished-film", "half-series", "finished-series")
+        val complete = setOf("finished-film", "finished-series")
+        assertEquals(
+            listOf("started-series", "new-film", "half-series", "finished-film", "finished-series"),
+            LibraryLogic.completedLast(order, { it in complete }),
+        )
+    }
+
+    @Test fun completedLastLeavesEverythingAloneWhenNothingIsComplete() {
+        val order = listOf("a", "b", "c")
+        assertEquals(order, LibraryLogic.completedLast(order, { false }))
+        assertEquals("a", LibraryLogic.completedLast(emptyList<String>(), { true }).firstOrNull() ?: "a")
+    }
 }
