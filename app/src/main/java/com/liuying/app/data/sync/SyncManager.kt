@@ -12,6 +12,7 @@ import com.liuying.app.domain.Clock
 import com.liuying.app.domain.SystemClock
 import com.liuying.app.domain.model.LibraryItem
 import com.liuying.app.domain.sync.RemoteSource
+import com.liuying.app.domain.sync.RetryPolicy
 import com.liuying.app.domain.sync.SettingsSyncLogic
 import com.liuying.app.domain.sync.SyncLogic
 import com.liuying.app.domain.sync.SyncedSettings
@@ -58,6 +59,12 @@ class SyncManager(
     /** True while a round runs. A change made meanwhile asks for another round afterwards instead of cancelling this one. */
     @Volatile private var rounding = false
     @Volatile private var rerun = false
+    /** Consecutive failed rounds; drives the retry backoff and is reset by any success. */
+    private var failures = 0
+    /** The typed failure of the current round, so the retry decision can read its HTTP status. */
+    private var lastErr: ApiResult.Err? = null
+    /** The current round failed with an exception (offline, timeout) rather than a typed ApiResult. */
+    private var lastWasException = false
     private val _state = MutableStateFlow(AccountState(session.username.takeIf { session.sid != null }))
     val state: StateFlow<AccountState> = _state.asStateFlow()
 
@@ -105,15 +112,33 @@ class SyncManager(
         if (!api.signedIn) return@withLock false
         _state.value = _state.value.copy(status = SyncStatus.Syncing)
         rounding = true
+        lastErr = null
+        lastWasException = false
         var again = false
         val ok = try { round(first) } catch (e: kotlinx.coroutines.CancellationException) { throw e }
-        catch (e: Exception) { fail("Sync failed: ${e.message ?: "unknown error"}") }
+        catch (e: Exception) { lastWasException = true; fail("Sync failed: ${e.message ?: "unknown error"}") }
         finally {
             rounding = false
             if (rerun) { rerun = false; again = true; syncSoon(1_000) }
         }
         if (ok) _state.value = AccountState(session.username, SyncStatus.Done(clock.nowMs()), pending = again)
+        scheduleRetryIfNeeded(ok)
         ok
+    }
+
+    /**
+     * A failed round retries itself with a growing delay (see [RetryPolicy]); a success clears the counter.
+     * 4xx failures are not retried — they are the app's fault and would loop forever.
+     */
+    private fun scheduleRetryIfNeeded(ok: Boolean) {
+        if (ok) { failures = 0; return }
+        if (!api.signedIn) { failures = 0; return }
+        val err = lastErr
+        val retryable = if (err != null) RetryPolicy.isRetryable(err.http) else lastWasException
+        if (!retryable) { failures = 0; return }
+        val delayMs = RetryPolicy.nextDelay(failures, err?.retryAfterSec)
+        failures++
+        syncSoon(delayMs)
     }
 
     private fun fail(message: String): Boolean {
@@ -122,6 +147,7 @@ class SyncManager(
     }
 
     private fun failErr(e: ApiResult.Err): Boolean {
+        lastErr = e
         if (e.unauthenticated) {
             session.clear()
             _state.value = AccountState(null, SyncStatus.Failed("Your session ended. Sign in again to keep syncing."))

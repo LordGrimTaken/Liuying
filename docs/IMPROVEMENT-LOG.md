@@ -25,8 +25,30 @@ still produced a green build and an artifact.
   with `required file not found`; normalised to LF.
 - `desktop/dist-mac/` (a build artifact from the Windows session) removed and ignored.
 
-**Verified:** the workflow runs the same command that passed locally (258/258). CI result is the
-measurement for this cycle; it is recorded in the next entry.
+**Verified locally:** `:app:testDebugUnitTest` on Linux — 39 suites, 258 tests, 0 failures (6m 06s cold).
+**Verified in CI:** run `42755431833` — `test` job success (4m 41s), `build` job success (1m 37s), APK
+uploaded. The build no longer starts until the suite passes.
 
-**Next candidate:** the app has no local device, so the next cycles should target logic that unit tests can
-prove — stream selection, sync merge, progress rules — before any UI work.
+Two runner traps were fixed on the way: `android-actions/setup-android@v3` fails with *"Wrong version in
+preinstalled sdkmanager"* (expects cmdline-tools 12266719, the image ships 20.0), so the jobs install the
+packages with the preinstalled `sdkmanager`; and `gradlew`/`release-android.sh` had CRLF endings, which
+makes them fail on Linux.
+
+## Cycle 2 — 2026-11-10 — sync retries itself with backoff
+
+**Measured (before):** a failed sync round only set the status line. `syncSoon()` was called on local
+changes (library 1.5 s, progress 20 s), so after an offline blip the account stayed stale until the user
+changed something or relaunched — and a 429 carrying `Retry-After` was ignored.
+
+**Changed:**
+- `domain/sync/RetryPolicy.kt` — pure schedule: retry only for `http == 0` (never reached the server),
+  408, 429 and 5xx; delay 30 s doubling to a 15 min cap; a server `Retry-After` wins but is clamped to
+  5 s…15 min so a bad header cannot spin or stall the app.
+- `data/sync/SyncManager.kt` — counts consecutive failures, schedules `syncSoon(nextDelay)` after a
+  retryable failure, and resets the counter on success. Non-retryable 4xx failures are not retried.
+
+**Measured (after):** 40 suites, **262 tests**, 0 failures, 4 skipped (was 258) — the four new tests cover
+the retryable set, the doubling/cap table, negative attempts, and `Retry-After` clamping.
+
+**Next candidate:** the same "fail silently" pattern exists for the watch-party poll and for update
+checks; and the shelf still never marks a series Completed (backlog L005).
