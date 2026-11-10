@@ -95,6 +95,32 @@ bounds), 0 failures, 4 skipped. A four-failure outage now costs ~240 requests an
 **Note:** the earlier note that the poll swallowed transient failures was wrong — it already kept polling with a
 warning. The real defect was the missing backoff, which is what this cycle fixed.
 
+## Cycle 5 — 2026-11-10 — "Your viewing" stats on the You screen
+
+**Measured (before):** the app had no way to say how much the user had actually watched. Backlog L026 (hours,
+titles finished, streak) was `missing`, and nothing in `domain/` computed it.
+
+**Changed:**
+- `domain/ViewingStats.kt` — pure aggregation over the local progress rows: time watched (finished rows count
+  their runtime, unfinished ones where they stopped), finished films and episodes, and the current/best
+  streak of consecutive local days with activity. Rows with `updatedAt == 0` (cleared history kept for sync)
+  are ignored; a streak that ended yesterday still counts as current.
+- `YouViewModel.stats` maps the progress flow through it; `YouScreen` renders a three-tile strip ("Time",
+  "Finished", "Streak") under the screen title, hidden when nothing has been watched.
+- `StatsShotsTest` seeds two films (today and yesterday) and two episodes, then renders the screen through
+  the existing Roborazzi harness.
+
+**Measured (after):** **274 tests** (was 265), 0 failures, 4 skipped — 8 domain tests (empty, time sums,
+cleared rows, films vs episodes, streak back from today, streak ended yesterday, stale streak, timezone
+boundary) plus the screenshot test.
+
+**Visually verified:** `LIUYING_SHOTS=1 ./gradlew :app:testDebugUnitTest --tests '*StatsShotsTest*'` writes
+`app/build/shots/you-viewing-stats-360.png`; the rendered screen shows **5h 00m / 4 / 2 days**, which is what
+the seeded rows imply (2 h + 1 h 30 m + 45 m + 45 m; four finished rows; today and yesterday).
+
+**Next candidate:** backlog L005's remaining half — bulk "Mark watched" on the shelf silently ignores series
+(`ShelfViewModel.markWatched` filters to movies), so selecting series and tapping it does nothing.
+
 ## Known issue — flaky QuickJS plugin test in CI
 
 `QuickJsPluginRunnerTest.aLeftoverTimerDoesNotDelayTheAnswer` failed on the first CI run of cycle 2

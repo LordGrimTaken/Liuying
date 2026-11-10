@@ -10,9 +10,12 @@ import com.liuying.app.data.settings.AppSettings
 import com.liuying.app.data.sync.AccountState
 import com.liuying.app.domain.model.Source
 import com.liuying.app.domain.Ux
+import com.liuying.app.domain.ViewingStats
+import com.liuying.app.domain.ViewingStatsLogic
 import com.liuying.app.domain.sync.SettingsSyncLogic
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -40,6 +43,11 @@ class YouViewModel(private val c: AppContainer) : ViewModel() {
     val account: StateFlow<AccountState> = c.sync.state
     val repos: StateFlow<List<PluginRepo>> = c.plugins.repos.stateIn(viewModelScope, eager, emptyList())
     val pluginsRunnable: Boolean get() = c.pluginRunner.runnable
+
+    /** L026: hours, finished titles and streaks, computed from the local progress rows. */
+    val stats: StateFlow<ViewingStats> = c.progress.observeAll()
+        .map { ViewingStatsLogic.compute(it, System.currentTimeMillis()) }
+        .stateIn(viewModelScope, eager, ViewingStats())
 
     val add = MutableStateFlow(AddSourceUi())
     val form = MutableStateFlow(AccountFormUi())

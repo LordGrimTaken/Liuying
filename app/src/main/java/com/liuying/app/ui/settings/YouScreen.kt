@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -86,6 +87,7 @@ fun YouScreen(navigator: Navigator) {
     val updateState by vm.updateState.collectAsStateWithLifecycle()
     val layoutRows by vm.layoutRows.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
+    val stats by vm.stats.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var removing by remember { mutableStateOf<Source?>(null) }
     var removingRepo by remember { mutableStateOf<PluginRepo?>(null) }
@@ -110,6 +112,24 @@ fun YouScreen(navigator: Navigator) {
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = com.liuying.app.ui.nav.topBarInset(), bottom = DockClearance)) {
         item { ScreenTitle("You") }
+
+        if (!stats.isEmpty) {
+            item(key = "viewing") {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                    Text(
+                        "YOUR VIEWING",
+                        color = PaperMuted,
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.padding(bottom = 8.dp),
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                        StatTile("Time", stats.duration())
+                        StatTile("Finished", (stats.filmsFinished + stats.episodesFinished).toString())
+                        StatTile("Streak", if (stats.currentStreak == 1) "1 day" else "${stats.currentStreak} days")
+                    }
+                }
+            }
+        }
 
         item(key = "account") {
             SettingsSection("Account", YouLogic.accountSummary(account.username), sections.isOpen("account"), { sections.toggle("account") }) {
@@ -491,5 +511,19 @@ private fun ContentSettings(s: AppSettings, vm: YouViewModel) {
         ToggleRow("Save watch history", "Off stops recording progress", s.saveWatchHistory) { v -> vm.update { it.copy(saveWatchHistory = v) } }
         ToggleRow("Offer links from the clipboard", "Asks before adding a source link you copied", s.clipboardLinkDetection) { v -> vm.update { it.copy(clipboardLinkDetection = v) } }
         ToggleRow("Remember searches", null, s.recentSearchesEnabled) { v -> vm.update { it.copy(recentSearchesEnabled = v) } }
+    }
+}
+
+/** One number in the "Your viewing" strip (L026). */
+@Composable
+private fun RowScope.StatTile(label: String, value: String) {
+    Column(
+        Modifier
+            .weight(1f)
+            .border(1.dp, PaperMuted.copy(alpha = 0.35f), androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+    ) {
+        Text(value, color = Paper, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+        Text(label, color = PaperMuted, style = MaterialTheme.typography.labelSmall, maxLines = 1)
     }
 }
