@@ -313,6 +313,25 @@ works on a real screen.
 
 **Note:** local commit only, as asked. Nothing pushed.
 
+## Cycle 14 — 2026-11-10 — "Hide watched" reaches the Movies and Series tabs (local commit only)
+
+**Measured (before):** only the Browse screen had the hide-watched switch (`hideWatchedInBrowse`). The Movies and
+Series tabs — the main browsing surfaces — ignored the setting completely, so turning it on changed one screen
+and left the other two showing everything.
+
+**Changed:**
+- `TypePageViewModel` exposes the same `hideWatched` state and `setHideWatched` as Browse, persisted through the
+  same setting.
+- `TypePageScreen` shows the **Hide watched** chip in the tab header and filters each loaded row through
+  `WatchedIndex.hideWatched`, which already understands finished series since cycle 9.
+- `HomeRow.forDisplay` keeps that filter out of the rendering code.
+
+**Measured (after):** **310 tests** (was 308), 0 failures, 4 skipped — two UI tests on the Series tab with a
+finished series: with the switch on the title is **absent** and its neighbours remain; with it off the title is
+**present**. These assert semantics, not pixels.
+
+**Note:** local commit only, as asked. Nothing pushed.
+
 ## Known issue — flaky QuickJS plugin test in CI
 
 `QuickJsPluginRunnerTest.aLeftoverTimerDoesNotDelayTheAnswer` failed on the first CI run of cycle 2

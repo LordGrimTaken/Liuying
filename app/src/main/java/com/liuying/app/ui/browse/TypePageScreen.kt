@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -73,6 +74,7 @@ fun TypePageScreen(type: String, navigator: Navigator) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     val saved by vm.savedKeys.collectAsStateWithLifecycle()
     val watched by vm.actions.watchedKeys.collectAsStateWithLifecycle()
+    val hideWatched by vm.hideWatched.collectAsStateWithLifecycle()
     com.liuying.app.ui.common.PosterActionToast(vm.actions)
     val label = if (type == "movie") "movies" else "series"
     val heroOn = settings.heroEnabled && hero.isNotEmpty()
@@ -114,7 +116,14 @@ fun TypePageScreen(type: String, navigator: Navigator) {
                             )
                         }
                         else -> {
-                            items(list, key = { it.key }) { row ->
+                            if (list.any { it.state is RowState.Loaded }) {
+                                item(key = "hide-watched") {
+                                    Row(Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) {
+                                        com.liuying.app.ui.common.InkChip("Hide watched", hideWatched, { vm.setHideWatched(!hideWatched) })
+                                    }
+                                }
+                            }
+                            items(list.map { row -> row.forDisplay(hideWatched, watched) }, key = { it.key }) { row ->
                                 CatalogRow(
                                     row, navigator, saved, { vm.toggleSave(it) }, onRetry = vm::refresh, genre = genre,
                                     watched = watched, onToggleWatched = { vm.toggleWatched(it, row.entry.catalog.type) },
@@ -169,4 +178,14 @@ private fun GenreTab(text: String, active: Boolean, onClick: () -> Unit) {
         )
         Box(Modifier.height(3.dp).fillMaxWidth(0.55f).graphicsLayer { scaleX = scale }.background(Vermilion))
     }
+}
+
+/** The row as the tab should show it: with "Hide watched" on, finished titles leave the row. */
+private fun com.liuying.app.data.repo.HomeRow.forDisplay(
+    hideWatched: Boolean,
+    watched: Set<String>,
+): com.liuying.app.data.repo.HomeRow {
+    val st = state
+    if (!hideWatched || st !is com.liuying.app.data.repo.RowState.Loaded) return this
+    return copy(state = com.liuying.app.data.repo.RowState.Loaded(com.liuying.app.domain.WatchedIndex.hideWatched(st.items, entry.catalog.type, watched)))
 }

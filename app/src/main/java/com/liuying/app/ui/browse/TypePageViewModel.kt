@@ -40,6 +40,12 @@ class TypePageViewModel(private val c: AppContainer, val type: String) : ViewMod
     /** Same watched set and poster actions as Today and Browse, so the Movies/Series tabs are not a blind spot. */
     val actions = com.liuying.app.ui.common.TitleActions(c, viewModelScope)
 
+    /** L004: the same switch as the Browse screen, so hiding watched works on these tabs too. */
+    val hideWatched: StateFlow<Boolean> = c.settings.settings
+        .map { it.hideWatchedInBrowse }
+        .stateIn(viewModelScope, lazily, false)
+    fun setHideWatched(on: Boolean) { viewModelScope.launch { c.settings.update { it.copy(hideWatchedInBrowse = on) } } }
+
     fun toggleWatched(m: com.liuying.app.domain.model.MetaPreview, type: String) = actions.toggleWatched(m, type)
     val hasSources: StateFlow<Boolean?> = c.sources.sources.map { l -> l.any { it.enabled } }.stateIn(viewModelScope, lazily, null)
 
