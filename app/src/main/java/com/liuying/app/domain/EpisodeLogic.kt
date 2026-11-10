@@ -81,12 +81,15 @@ object EpisodeLogic {
     fun sequence(states: List<EpisodeState>): List<EpisodeState> =
         states.filter { !it.isSpecial || it.hasProgress }.sortedWith(compareBy({ it.season }, { it.episode }))
 
-    /** First episode after the highest watched one (skipping ahead is respected), or null. */
+    /**
+     * First *released* episode after the highest watched one (skipping ahead is respected), or null. Unreleased
+     * episodes are skipped: the Continue Watching "Up Next" card must not offer something that has not aired.
+     */
     fun nextAfterHighestWatched(states: List<EpisodeState>): EpisodeState? {
         val seq = sequence(states)
         val idx = seq.indexOfLast { it.watched }
         if (idx < 0) return null
-        return seq.getOrNull(idx + 1)
+        return seq.drop(idx + 1).firstOrNull { it.released }
     }
 
     /**

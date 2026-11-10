@@ -369,6 +369,28 @@ interval, the doubling/cap table (2 s → 4 s → 8 s → 16 s → 30 s), and cu
 
 **Note:** local commit only, as asked. Nothing pushed.
 
+## Cycle 17 — 2026-11-10 — Continue Watching no longer offers an episode that has not aired (local commit only)
+
+**Measured (before):** `EpisodeLogic` had no dedicated test file, and `nextAfterHighestWatched` — the function
+behind the Continue Watching "Up Next" card — returned the next episode regardless of its release date. A show
+mid-season, or one whose next episode is still in the future, could offer something that had not aired.
+`playTarget` already filtered on `released`.
+
+**Changed:** `nextAfterHighestWatched` now takes the first *released* episode after the highest watched one and
+returns null when there is none, so no card appears instead of a wrong one.
+
+**Measured (after):** **334 tests** (was 322), 0 failures, 4 skipped — a new `EpisodeLogicTest` with twelve cases:
+numbering (dedupe keeps the richer entry, ordering, the channels fallback, the single-unnumbered case), progress
+matching by video id and by season/episode, specials last in the season list and absent from the sequence until
+played, next-after-highest-watched (including the new unreleased skip and the no-card case), the play target for
+resume / next / first / watch-again, first-episode-ignores-specials, and the default season.
+
+**What the tests caught:** three of my first expectations were wrong, not the code — an episode is only "started"
+after a minute and 3 %, and a special that *has* progress does belong in the sequence. Those rules are now pinned
+in the test rather than assumed.
+
+**Note:** local commit only, as asked. Nothing pushed.
+
 ## Known issue — flaky QuickJS plugin test in CI
 
 `QuickJsPluginRunnerTest.aLeftoverTimerDoesNotDelayTheAnswer` failed on the first CI run of cycle 2
