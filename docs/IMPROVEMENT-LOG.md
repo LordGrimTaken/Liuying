@@ -52,3 +52,17 @@ the retryable set, the doubling/cap table, negative attempts, and `Retry-After` 
 
 **Next candidate:** the same "fail silently" pattern exists for the watch-party poll and for update
 checks; and the shelf still never marks a series Completed (backlog L005).
+
+## Known issue — flaky QuickJS plugin test in CI
+
+`QuickJsPluginRunnerTest.aLeftoverTimerDoesNotDelayTheAnswer` failed on the first CI run of cycle 2
+(`42756847245`, "Cannot get jni env because the vm is not cached") and passed on an immediate re-run of the
+same commit. It passes locally in isolation. The message comes from the JVM build of the engine when the
+native VM is touched after `close()`; a leftover timer plus a fast machine seems to hit it.
+
+Two attempted fixes were reverted because they made every plugin test fail:
+1. closing the VM asynchronously on its own executor — the next run then raced the close;
+2. `submit().get()` to keep ordering — still failed.
+
+Next attempt should be: `job.cancelAndJoin()` (bounded) before `js.close()`, so no host callback can still be
+running when the VM is closed. Until then the gate is honest but occasionally red; re-run the job.
