@@ -391,6 +391,24 @@ in the test rather than assumed.
 
 **Note:** local commit only, as asked. Nothing pushed.
 
+## Cycle 18 — 2026-11-10 — merging metadata unions the lists instead of taking the first (local commit only)
+
+**Measured (before):** `Meta.mergedWith` filled a blank field from the other source, but for *lists* it only used
+the other side when this side was empty. Two sources that each know part of a series therefore produced the
+smaller answer: if source A listed season 1 and source B listed seasons 1–3, the Details screen showed only
+season 1. Genres, cast and directors had the same first-wins behaviour.
+
+**Changed:** list fields are unioned — case-insensitively, so "Drama" and "drama" do not both appear — and
+`videos` are merged by (season, episode) for numbered episodes and by id for unnumbered ones (channels), which is
+also the key `EpisodeLogic.numbered` uses.
+
+**Measured (after):** **341 tests** (was 334), 0 failures, 4 skipped — a new `MetaMergeTest` with seven cases:
+null other, blanks filled while real values win, case-insensitive union of genres and cast, a partial episode list
+completed by a second source, channel videos keyed by id, behaviour hints from either side, and stability when one
+side is empty.
+
+**Note:** local commit only, as asked. Nothing pushed.
+
 ## Known issue — flaky QuickJS plugin test in CI
 
 `QuickJsPluginRunnerTest.aLeftoverTimerDoesNotDelayTheAnswer` failed on the first CI run of cycle 2
