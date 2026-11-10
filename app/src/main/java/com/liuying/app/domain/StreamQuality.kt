@@ -56,7 +56,8 @@ object StreamQualityParser {
     private val res1440 = Regex("${B}(?:1440p|2k)${E}|\\d{3,4}x1440", o)
     private val res1080 = Regex("${B}(?:1080[pi]?|fhd)${E}|\\d{3,4}x1080", o)
     private val res720 = Regex("${B}720[pi]?${E}|\\d{3,4}x720", o)
-    private val resSd = Regex("${B}(?:480p|576p|360p|dvdrip|sdtv)${E}|\\d{3,4}x(?:480|576)", o)
+    // A bare "SD" tag is common ("SD CAM"); SDR is excluded by the word boundary, not by listing variants.
+    private val resSd = Regex("${B}(?:480p|576p|360p|dvdrip|sdtv|sd)${E}|\\d{3,4}x(?:480|576)", o)
 
     private val dv = Regex("dolby[ .\\-]?vision|${B}dovi${E}|${B}dv${E}", o)
     private val hdr10p = Regex("hdr10\\+|hdr10plus", o)

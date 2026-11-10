@@ -409,6 +409,25 @@ side is empty.
 
 **Note:** local commit only, as asked. Nothing pushed.
 
+## Cycle 19 — 2026-11-10 — a stream tagged only "SD" is now recognised as SD (local commit only)
+
+**Measured (before):** `StreamQualityParser` had no test file, and its resolution patterns listed `480p`, `576p`,
+`360p`, `dvdrip` and `sdtv` but not the bare **SD** that many stream titles use. A line like "SD CAM" therefore
+came back with `resolution = null`: no chip on the row, and `StreamPicker.score` treats an unknown height as 0,
+so it could rank below an explicitly tagged 480p stream.
+
+**Changed:** `resSd` also matches a standalone `sd` (word-boundaried, so `SDR` is untouched).
+
+**Measured (after):** **351 tests** (was 341), 0 failures, 4 skipped — a new `StreamQualityTest` with ten cases:
+a typical WEB-DL line (resolution, source, codec, DD+, 5.1 channels), 4K with HDR10+/DV/Atmos, 720p HDTV, low
+resolutions including the bare SD tag, sizes from text or from the behaviour hint, seeds from the emoji or a word,
+the release group from a filename, flag-emoji decoding, badge order and content, and every `kindOf` branch.
+
+**What the tests caught:** one genuine parser gap (bare SD) and one wrong expectation of mine — I had written a
+release group from a different filename than the one in the call.
+
+**Note:** local commit only, as asked. Nothing pushed.
+
 ## Known issue — flaky QuickJS plugin test in CI
 
 `QuickJsPluginRunnerTest.aLeftoverTimerDoesNotDelayTheAnswer` failed on the first CI run of cycle 2
