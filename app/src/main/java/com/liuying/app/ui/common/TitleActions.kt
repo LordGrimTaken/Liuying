@@ -18,32 +18,61 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.liuying.app.AppContainer
+import com.liuying.app.domain.SeriesCompletion
 import com.liuying.app.domain.WatchedIndex
 import com.liuying.app.domain.model.MetaPreview
 import com.liuying.app.domain.model.PlaybackRef
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /** Shared by Today, Browse and Search view models: which movies are watched, and the poster long-press actions (L016). */
 class TitleActions(private val c: AppContainer, private val scope: CoroutineScope) {
-    val watchedKeys: StateFlow<Set<String>> =
-        c.progress.observeAll().map { WatchedIndex.watchedKeys(it) }.stateIn(scope, SharingStarted.WhileSubscribed(5_000), emptySet())
+    /**
+     * Titles that count as watched: movies with a watched row, and series the app knows are finished (every
+     * episode of their cached episode list is watched). Only series that are already fully watched are looked
+     * up, so a row of posters costs nothing.
+     */
+    val watchedKeys: StateFlow<Set<String>> = combine(c.progress.observeAll(), c.metas.observeChanges()) { rows, _ ->
+        val finished = HashSet<String>()
+        for ((key, group) in rows.filter { !it.type.equals("movie", true) }.groupBy { it.type to it.titleId }) {
+            if (!group.all { it.watched }) continue
+            val known = runCatching { c.metas.cached(key.first, key.second) }.getOrNull()
+                ?.videos?.count { it.season != null && it.episode != null } ?: continue
+            if (SeriesCompletion.isComplete(group, known)) finished += WatchedIndex.key(key.first, key.second)
+        }
+        WatchedIndex.watchedKeys(rows, finished)
+    }.stateIn(scope, SharingStarted.WhileSubscribed(5_000), emptySet())
 
+    /**
+     * Marks a movie directly; a series is marked through its episode list (cached, or fetched once), which is
+     * also what makes its poster show "Seen" and lets hide-watched remove it.
+     */
     fun toggleWatched(preview: MetaPreview, fallbackType: String) {
         val type = preview.type.ifBlank { fallbackType }
-        if (type != "movie") return // a series is watched episode by episode
+        val key = WatchedIndex.key(type, preview.id)
+        val watched = key in watchedKeys.value
         scope.launch {
-            val now = WatchedIndex.key(type, preview.id) in watchedKeys.value
-            c.progress.setWatched(PlaybackRef.movie(type, preview.id), !now)
+            if (type.equals("movie", true)) {
+                c.progress.setWatched(PlaybackRef.movie(type, preview.id), !watched)
+                return@launch
+            }
+            val meta = runCatching { c.metas.cached(type, preview.id) }.getOrNull()
+                ?: runCatching { c.metas.getOrFetch(type, preview.id) }.getOrNull() ?: return@launch
+            for (v in meta.videos) {
+                val s = v.season ?: continue
+                val e = v.episode ?: continue
+                c.progress.setWatched(PlaybackRef.episode(type, preview.id, v.id, s, e), !watched)
+            }
         }
     }
 }
 
-/** A poster with a long-press menu: Details, shelf, and Mark watched (movies). Talkback gets the same as custom actions. */
+/** A poster with a long-press menu: Details, shelf, and Mark watched (a series is marked through its episodes). */
 @Composable
 fun ActionPoster(
     m: MetaPreview, type: String, saved: Boolean, watched: Boolean,
@@ -52,7 +81,7 @@ fun ActionPoster(
 ) {
     var menu by remember { mutableStateOf(false) }
     val haptic = LocalHapticFeedback.current
-    val canMark = onToggleWatched != null && m.type.ifBlank { type } == "movie"
+    val canMark = onToggleWatched != null
     Box(modifier.semantics {
         customActions = buildList {
             add(CustomAccessibilityAction(if (saved) "Remove from shelf" else "Add to shelf") { onToggleSave(); true })

@@ -19,6 +19,7 @@ import com.liuying.app.domain.model.declares
 import com.liuying.app.domain.model.declaresAny
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.first
@@ -33,6 +34,8 @@ interface MetaStore {
     suspend fun put(type: String, id: String, meta: Meta, fetchedAt: Long)
     /** Keeps the cache from growing without bound (series metas with thousands of episodes are large). */
     suspend fun prune() {}
+    /** A signal that changes when anything is written, so derived state (badges) can recompute. */
+    fun observeChanges(): Flow<Int> = flowOf(0)
 }
 
 class RoomMetaStore(private val dao: MetaCacheDao) : MetaStore {
@@ -50,6 +53,8 @@ class RoomMetaStore(private val dao: MetaCacheDao) : MetaStore {
     }
 
     override suspend fun prune() = dao.prune(KEEP)
+
+    override fun observeChanges(): Flow<Int> = dao.observeCount()
 
     private companion object { const val KEEP = 400 }
 }
@@ -150,6 +155,9 @@ class MetaRepository(
 
     /** Cached meta only (no network). */
     suspend fun cached(type: String, id: String): Meta? = store.get(type, id)?.meta
+
+    /** Recomputed whenever the cache gains or loses an entry. */
+    fun observeChanges(): Flow<Int> = store.observeChanges()
 
     /**
      * Meta for background use (Continue Watching cards): cache if younger than [maxAgeMs], else one live fetch

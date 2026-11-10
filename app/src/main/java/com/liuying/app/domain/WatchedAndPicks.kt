@@ -12,8 +12,8 @@ object WatchedIndex {
      * Movies with a watched flag. Series are not hidden: whether a whole series is finished depends on its episode list,
      * which a catalog page does not carry.
      */
-    fun watchedKeys(progress: List<ProgressEntry>): Set<String> =
-        progress.filter { !it.isEpisode && it.watched }.map { key(it.type, it.titleId) }.toSet()
+    fun watchedKeys(progress: List<ProgressEntry>, finishedSeries: Set<String> = emptySet()): Set<String> =
+        (progress.filter { !it.isEpisode && it.watched }.map { key(it.type, it.titleId) } + finishedSeries).toSet()
 
     fun hideWatched(items: List<MetaPreview>, fallbackType: String, watched: Set<String>): List<MetaPreview> =
         if (watched.isEmpty()) items else items.filter { key(it.type.ifBlank { fallbackType }, it.id) !in watched }
@@ -70,11 +70,7 @@ object ShelfStatuses {
         return when {
             !started -> ShelfStatus.Planned
             type.equals("movie", true) -> if (rows.any { it.watched }) ShelfStatus.Completed else ShelfStatus.Watching
-            // A series is only Completed when the app knows the whole episode list and every episode is watched;
-            // guessing from the rows it happens to have would call a half-watched show finished.
-            knownEpisodes != null && knownEpisodes > 0 && rows.all { it.watched } &&
-                rows.filter { it.isEpisode && it.watched }.map { it.season to it.episode }.distinct().size >= knownEpisodes ->
-                ShelfStatus.Completed
+            SeriesCompletion.isComplete(rows, knownEpisodes) -> ShelfStatus.Completed
             else -> ShelfStatus.Watching
         }
     }

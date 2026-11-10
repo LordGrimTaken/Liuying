@@ -198,6 +198,31 @@ Both are now recorded in the tests as the intended behaviour.
 **Next candidate:** `TitleActions` long-press "Mark watched" remains movie-only; that is still the last place a
 series cannot be marked.
 
+## Cycle 9 — 2026-11-10 — a finished series counts as watched everywhere (local commit only)
+
+**Measured (before):** `TitleActions.toggleWatched` returned early for anything that was not a movie, and
+`WatchedIndex.watchedKeys` only counted movie rows, so a series could never show the "Seen" badge, could not be
+marked from a poster, and was never removed by hide-watched — even when the shelf already knew it was finished.
+
+**Changed:**
+- `domain/SeriesCompletion.kt` — one rule ("the whole known episode list is watched") now used by the shelf
+  status, the poster badge and hide-watched instead of being duplicated.
+- `TitleActions` marks a series through its episode list (cached, else one fetch) and includes finished series
+  in `watchedKeys`, so Browse/Today/Search show "Seen" and Browse's hide-watched removes them.
+- **Bug found while testing it:** the badge flow only observed the progress table, so a series became watched
+  in the cache but the badge never updated. `MetaCacheDao.observeCount()` → `MetaStore.observeChanges()` →
+  `MetaRepository.observeChanges()` now lets the flow recompute when an episode list arrives.
+
+**Measured (after):** **302 tests** (was 294), 0 failures, 4 skipped — five `SeriesCompletionTest` cases plus
+watched-index/hide-watched, and `TitleActionsTest`, which proves a series is *not* counted while its episode
+list is unknown and *is* counted once the cache has it.
+
+**Not verified visually:** the Browse screenshot (`browse-series-watched-360.png`) renders the row but **no
+"Seen" badge**, most likely because `collectAsStateWithLifecycle` does not collect in the Robolectric harness.
+The wiring is proven by `TitleActionsTest`, not by a picture — I am not claiming the badge was seen.
+
+**Note:** this cycle is committed locally only, as asked; nothing was pushed.
+
 ## Known issue — flaky QuickJS plugin test in CI
 
 `QuickJsPluginRunnerTest.aLeftoverTimerDoesNotDelayTheAnswer` failed on the first CI run of cycle 2
