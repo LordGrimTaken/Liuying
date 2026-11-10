@@ -107,8 +107,14 @@ class QuickJsPluginRunner(
             finished = true
         } finally {
             job.cancel()
+            // Let the engine's coroutines stop before the native VM is closed. A host callback that runs after
+            // close() touches a VM that no longer exists, which surfaces as
+            // "Cannot get jni env because the vm is not cached" and made a plugin test flaky under CI load.
+            val joined = kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                kotlinx.coroutines.withTimeoutOrNull(2_000) { job.join(); true } ?: false
+            }
             val close = { runCatching { js.close() }; runCatching { executor.shutdownNow() }; Unit }
-            if (finished || job.isCompleted) kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable + kotlinx.coroutines.Dispatchers.IO) { close() }
+            if (joined && (finished || job.isCompleted)) kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable + kotlinx.coroutines.Dispatchers.IO) { close() }
             // A timed-out or cancelled run may be stuck inside the engine, and closing waits for it: never on the caller.
             else Thread({ close() }, "liuying-plugin-close").apply { isDaemon = true }.start()
         }
