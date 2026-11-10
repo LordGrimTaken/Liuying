@@ -1,6 +1,7 @@
 package com.liuying.app.ui.shots
 
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
 import com.liuying.app.data.db.ProgressEntity
 import com.liuying.app.data.repo.RoomMetaStore
@@ -36,6 +37,8 @@ class SeriesBadgeShotsTest : ShotBase() {
         rule.onNode(hasContentDescription("Series")).performClick()
         waitFor(8000) { addon.hits.any { it.contains("/catalog/series/") } }
         settle()
+        val seen = rule.onAllNodesWithText("Seen").fetchSemanticsNodes()
+        org.junit.Assert.assertTrue("expected a Seen badge on the finished series, found ${seen.size}", seen.isNotEmpty())
         shot("browse-series-watched-360")
     }
 }

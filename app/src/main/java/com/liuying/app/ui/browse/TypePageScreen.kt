@@ -72,6 +72,8 @@ fun TypePageScreen(type: String, navigator: Navigator) {
     val hasSources by vm.hasSources.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
     val saved by vm.savedKeys.collectAsStateWithLifecycle()
+    val watched by vm.actions.watchedKeys.collectAsStateWithLifecycle()
+    com.liuying.app.ui.common.PosterActionToast(vm.actions)
     val label = if (type == "movie") "movies" else "series"
     val heroOn = settings.heroEnabled && hero.isNotEmpty()
 
@@ -113,7 +115,10 @@ fun TypePageScreen(type: String, navigator: Navigator) {
                         }
                         else -> {
                             items(list, key = { it.key }) { row ->
-                                CatalogRow(row, navigator, saved, { vm.toggleSave(it) }, onRetry = vm::refresh, genre = genre)
+                                CatalogRow(
+                                    row, navigator, saved, { vm.toggleSave(it) }, onRetry = vm::refresh, genre = genre,
+                                    watched = watched, onToggleWatched = { vm.toggleWatched(it, row.entry.catalog.type) },
+                                )
                             }
                             if (list.all { it.state is RowState.Loaded && (it.state as RowState.Loaded).items.isEmpty() }) item(key = "allempty") {
                                 EmptyBlock("Nothing to show", "These catalogs returned no titles${genre?.let { " for $it" }.orEmpty()}.")

@@ -290,6 +290,29 @@ was wrong, and the missing *series* badge in that earlier shot still needs its o
 
 **Note:** local commit only, as asked. Nothing pushed.
 
+## Cycle 13 — 2026-11-10 — the Movies and Series tabs never showed watched state (local commit only)
+
+**Root cause of the open question from cycles 9 and 12.** A finished series did not show "Seen" on the Series
+tab, and I had blamed `collectAsStateWithLifecycle`. That was wrong. A test that asserts the badge directly
+failed, while a probe proved `TitleActions.watchedKeys` *did* contain `series|ttS1`. The screen was the problem:
+`TypePageScreen` (the Movies/Series tabs) called `CatalogRow` without `watched` or `onToggleWatched`, so those
+tabs had no badge, no poster action and no hide-watched at all. Browse and Today passed both; the type page
+never did.
+
+**Changed:**
+- `TypePageViewModel` owns a `TitleActions`, like Today and Browse.
+- `TypePageScreen` collects `watchedKeys`, passes `watched` and `onToggleWatched` into `CatalogRow`, and calls
+  `PosterActionToast` so the poster action's feedback reaches this screen too.
+- `SeriesBadgeShotsTest` now **asserts** the badge exists (not just captures a picture), so the regression
+  cannot come back silently.
+
+**Measured (after):** **308 tests**, 0 failures, 4 skipped (the suite gained the assertion; no new test class).
+The rendered `browse-series-watched-360.png` now shows the red **"Seen"** badge on the finished series — the
+first visual confirmation that the whole chain (progress → cached episode list → completion rule → badge)
+works on a real screen.
+
+**Note:** local commit only, as asked. Nothing pushed.
+
 ## Known issue — flaky QuickJS plugin test in CI
 
 `QuickJsPluginRunnerTest.aLeftoverTimerDoesNotDelayTheAnswer` failed on the first CI run of cycle 2

@@ -36,6 +36,11 @@ class TypePageViewModel(private val c: AppContainer, val type: String) : ViewMod
     private val refreshTick = MutableStateFlow(0)
 
     val settings: StateFlow<AppSettings> = c.settings.settings.stateIn(viewModelScope, lazily, AppSettings())
+
+    /** Same watched set and poster actions as Today and Browse, so the Movies/Series tabs are not a blind spot. */
+    val actions = com.liuying.app.ui.common.TitleActions(c, viewModelScope)
+
+    fun toggleWatched(m: com.liuying.app.domain.model.MetaPreview, type: String) = actions.toggleWatched(m, type)
     val hasSources: StateFlow<Boolean?> = c.sources.sources.map { l -> l.any { it.enabled } }.stateIn(viewModelScope, lazily, null)
 
     private val entries: StateFlow<List<CatalogEntry>?> =
