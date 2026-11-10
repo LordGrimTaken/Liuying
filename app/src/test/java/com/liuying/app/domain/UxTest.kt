@@ -17,6 +17,18 @@ class UxTest {
     private fun mp(id: String, poster: String? = null, bg: String? = null, desc: String? = null) =
         MetaPreview(id = id, poster = poster, background = bg, description = desc)
 
+    @Test fun pickFeaturedSkipsWatchedTitlesButNeverEmptiesTheHero() {
+        val items = listOf(
+            mp("a", bg = "b", desc = "d"),
+            mp("b", bg = "b", desc = "d"),
+            mp("c", bg = "b", desc = "d"),
+        )
+        // A watched title drops out of the pick entirely.
+        assertEquals(listOf("b", "c"), Ux.pickFeatured(items, 5) { it.id == "a" }.map { it.id })
+        // When everything is watched the hero still has something to show.
+        assertEquals(listOf("a", "b", "c"), Ux.pickFeatured(items, 5) { true }.map { it.id })
+    }
+
     @Test fun pickFeaturedNeedsArtPrefersBackgroundAndDescriptionDedupesAndCaps() {
         val items = listOf(mp("a"), mp("b", poster = "p"), mp("c", bg = "x", desc = "d"), mp("b", poster = "p"), mp("d", bg = "x"), mp("e", poster = "p", desc = "d"))
         assertEquals(listOf("c", "d", "e"), Ux.pickFeatured(items, 3).map { it.id })

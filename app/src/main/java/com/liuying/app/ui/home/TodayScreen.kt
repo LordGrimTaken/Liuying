@@ -86,7 +86,9 @@ fun TodayScreen(navigator: Navigator) {
     // the hero comes from the first catalog on Today
     val first = rows?.firstOrNull()
     val firstItems = (first?.state as? RowState.Loaded)?.items.orEmpty()
-    val featured = androidx.compose.runtime.remember(firstItems) { Ux.pickFeatured(firstItems, 5) } // QA #30
+    val featured = androidx.compose.runtime.remember(firstItems, watched) {
+        Ux.pickFeatured(firstItems, 5) { (it.type.ifBlank { first?.entry?.catalog?.type.orEmpty() } + "|" + it.id) in watched }
+    } // QA #30
     val hasHero = settings.heroEnabled && first != null && (featured.isNotEmpty() || first.state == RowState.Loading)
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val scrolled by androidx.compose.runtime.remember { androidx.compose.runtime.derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 60 } }

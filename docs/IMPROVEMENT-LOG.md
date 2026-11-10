@@ -268,6 +268,28 @@ and the view model applies it with one call.
 
 **Note:** local commit only, as asked. Nothing pushed.
 
+## Cycle 12 — 2026-11-10 — the hero no longer features something already watched (local commit only)
+
+**Measured (before):** `Ux.pickFeatured` chose the Today hero purely on art quality and catalog order. A title the
+user had already watched could take the biggest slot on the screen, and a finished series certainly could.
+
+**Changed:** `pickFeatured(items, n, isWatched)` drops watched titles from the pool, but falls back to the full
+list when *everything* is watched, so the hero never disappears. Today passes the real watched set (same keys as
+the poster badges, which now include finished series).
+
+**Measured (after):** **308 tests** (was 306), 0 failures, 4 skipped — a `UxTest` case for both branches (watched
+titles drop out; an all-watched row still yields a hero).
+
+**Screenshot limitation, and one correction:** the harness cannot show this — `FakeAddon` catalog items carry no
+poster or background, so `pickFeatured` has always returned an empty list there and Today renders without a hero
+at all. The new `today-hero-skips-watched-360.png` therefore shows the rows, not the hero.
+
+That shot did prove something useful: the first movie poster shows the red **"Seen"** badge, so the badge pipeline
+in cycle 9 does render under Robolectric. My cycle-9 note blamed `collectAsStateWithLifecycle`; that explanation
+was wrong, and the missing *series* badge in that earlier shot still needs its own answer.
+
+**Note:** local commit only, as asked. Nothing pushed.
+
 ## Known issue — flaky QuickJS plugin test in CI
 
 `QuickJsPluginRunnerTest.aLeftoverTimerDoesNotDelayTheAnswer` failed on the first CI run of cycle 2

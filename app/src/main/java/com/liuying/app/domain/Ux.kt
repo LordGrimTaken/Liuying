@@ -12,18 +12,28 @@ import java.util.TimeZone
 object Ux {
     // ---------------------------------------------------------------------------- featured / search filter
 
-    /** Items worth featuring: need art; prefer ones with a background and a synopsis. Stable, de-duplicated, max [n]. */
-    fun pickFeatured(items: List<MetaPreview>, n: Int = 5): List<MetaPreview> {
+    /**
+     * Items worth featuring: need art; prefer ones with a background and a synopsis. Stable, de-duplicated,
+     * max [n]. Titles the user has already watched are skipped, because featuring something finished wastes the
+     * biggest slot on the screen — but if *everything* is watched the full list is used, so the hero never
+     * disappears.
+     */
+    fun pickFeatured(items: List<MetaPreview>, n: Int = 5, isWatched: (MetaPreview) -> Boolean = { false }): List<MetaPreview> {
+        val fresh = items.filterNot(isWatched)
+        val pool = if (fresh.any { artOk(it) }) fresh else items
         val seen = HashSet<String>()
         data class Scored(val item: MetaPreview, val index: Int, val score: Int)
         val scored = ArrayList<Scored>()
-        items.forEachIndexed { i, it ->
-            if (it.id.isEmpty() || it.id in seen || (it.background.isNullOrBlank() && it.poster.isNullOrBlank())) return@forEachIndexed
+        pool.forEachIndexed { i, it ->
+            if (it.id.isEmpty() || it.id in seen || !artOk(it)) return@forEachIndexed
             seen += it.id
             scored += Scored(it, i, (if (!it.background.isNullOrBlank()) 2 else 0) + (if (!it.description.isNullOrBlank()) 1 else 0))
         }
         return scored.sortedWith(compareByDescending<Scored> { it.score }.thenBy { it.index }).take(n).map { it.item }
     }
+
+    private fun artOk(it: MetaPreview): Boolean = !it.background.isNullOrBlank() || !it.poster.isNullOrBlank()
+
 
     /** "all" | "movie" | "series" | other catalog type. */
     fun matchesType(type: String, filter: String?): Boolean = filter.isNullOrEmpty() || filter == "all" || type == filter
