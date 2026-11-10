@@ -448,6 +448,31 @@ many, and a muddled assertion about a null year), not product bugs — the expor
 
 **Note:** local commit only, as asked. Nothing pushed.
 
+## Cycle 21 — 2026-11-10 — downloads: a design note and the pure queue logic (local commit only)
+
+**Measured (before):** backlog L122 (offline downloads) was `missing` and had no design. The pieces it needs —
+storage, HTTP Range resume, index, UI — only make sense once the *decisions* are settled, and those decisions are
+the part that can be wrong in a way tests can see.
+
+**Changed:**
+- `docs/DESIGN-downloads.md` — scope (plain http(s) files the user may keep; no torrents, no DRM, no
+  transcoding), storage layout (`filesDir/downloads/<type>/<titleId>/<videoId>.<ext>` + `index.json` + `.part`),
+  queue rules, failure handling, and an explicit out-of-scope list (background downloads, variants, external
+  storage).
+- `domain/DownloadPlan.kt` — pure queue logic: at most two transfers, oldest first; progress as a fraction with
+  an indeterminate state for unknown sizes; a cap that evicts finished downloads oldest-first and **never** an
+  active one; a refusal with a reason when the item cannot fit even in an empty cache; pause/resume/failure that
+  always keep the partial file; a one-line summary for the UI.
+- `DownloadPlanTest` — ten cases over exactly those rules.
+
+**Measured (after):** **368 tests** (was 358), 0 failures, 4 skipped.
+
+**Honest status:** this is groundwork, not a shipped feature. Nothing downloads yet: the storage layer, the
+Range requests and the UI are the next slices, in that order. I would rather build them against this tested
+contract than invent the rules while writing file I/O.
+
+**Note:** local commit only, as asked. Nothing pushed.
+
 ## Known issue — flaky QuickJS plugin test in CI
 
 `QuickJsPluginRunnerTest.aLeftoverTimerDoesNotDelayTheAnswer` failed on the first CI run of cycle 2
