@@ -16,6 +16,9 @@ object PartyLogic {
     /** How often a participant asks for the room. */
     const val POLL_MS = 2_000L
 
+    /** A poll that keeps failing backs off to this interval instead of hammering the server every 2 s. */
+    const val MAX_POLL_MS = 15_000L
+
     /** The host writes at most once per this interval. */
     const val WRITE_INTERVAL_MS = 2_000L
 
@@ -29,6 +32,16 @@ object PartyLogic {
     const val MIN_PUSH_DELTA_MS = 1_000L
 
     /** Where the web player opens a room; keep in step with the site's `/watch/?party=CODE` route. */
+    /**
+     * Delay before the next poll. A healthy room polls at [POLL_MS]; each consecutive failure doubles the wait,
+     * capped at [MAX_POLL_MS], so an offline phone stops waking every two seconds while still recovering quickly.
+     */
+    fun pollDelayMs(failures: Int, baseMs: Long = POLL_MS, maxMs: Long = MAX_POLL_MS): Long {
+        if (failures <= 0) return baseMs
+        val doublings = (failures - 1).coerceIn(0, 8)
+        return (baseMs shl doublings).coerceAtMost(maxMs)
+    }
+
     const val LINK_BASE = "https://www.liuyingapp.com/watch/?party="
 
     /**

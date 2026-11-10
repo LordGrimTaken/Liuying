@@ -77,6 +77,24 @@ thread, so a stuck engine cannot block the caller.
 404/401 but a transient network error just waits for the next tick); then backlog L005, a series never
 reaching "Completed" on the shelf.
 
+## Cycle 4 — 2026-11-10 — a failing watch-party poll backs off
+
+**Measured (before):** the poll loop slept `PartyLogic.POLL_MS` (2 s) after every result, success or failure. A
+phone in a room with no connection therefore made ~1 800 requests an hour and woke as often, while the only
+feedback was the same "Connection lost. Retrying..." line.
+
+**Changed:**
+- `PartyLogic.pollDelayMs(failures)` — a healthy room keeps 2 s; consecutive failures double the wait
+  (2 s, 4 s, 8 s, 15 s cap). Pure, with custom bounds for tests.
+- `PartyController` counts consecutive failures, resets on success and on leaving a room, and delays by that
+  value. Fatal codes (`not_found`, `forbidden`, `unauthenticated`) still end the room immediately.
+
+**Measured (after):** **265 tests** (was 262; +3 covering the base interval, the doubling/cap, and custom
+bounds), 0 failures, 4 skipped. A four-failure outage now costs ~240 requests an hour instead of ~1 800.
+
+**Note:** the earlier note that the poll swallowed transient failures was wrong — it already kept polling with a
+warning. The real defect was the missing backoff, which is what this cycle fixed.
+
 ## Known issue — flaky QuickJS plugin test in CI
 
 `QuickJsPluginRunnerTest.aLeftoverTimerDoesNotDelayTheAnswer` failed on the first CI run of cycle 2

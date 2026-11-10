@@ -11,6 +11,28 @@ class PartyLogicTest {
     private fun state(positionMs: Long, playing: Boolean, mediaId: String = "tt1", episodeId: String? = null) =
         PartyPlaybackState(mediaId, episodeId, positionMs, playing, updatedAt = 1_700_000_000_000, hostName = "mei")
 
+    // ------------------------------------------------------------------------------------ poll backoff
+
+    @Test fun aHealthyRoomPollsAtTheBaseInterval() {
+        assertEquals(PartyLogic.POLL_MS, PartyLogic.pollDelayMs(0))
+        assertEquals(PartyLogic.POLL_MS, PartyLogic.pollDelayMs(-2))
+    }
+
+    @Test fun eachConsecutiveFailureDoublesTheWaitUpToTheCap() {
+        assertEquals(2_000L, PartyLogic.pollDelayMs(1))
+        assertEquals(4_000L, PartyLogic.pollDelayMs(2))
+        assertEquals(8_000L, PartyLogic.pollDelayMs(3))
+        assertEquals(15_000L, PartyLogic.pollDelayMs(4))
+        assertEquals(15_000L, PartyLogic.pollDelayMs(50))
+    }
+
+    @Test fun theBackoffRespectsCustomBounds() {
+        assertEquals(500L, PartyLogic.pollDelayMs(0, baseMs = 500L, maxMs = 3_000L))
+        assertEquals(500L, PartyLogic.pollDelayMs(1, baseMs = 500L, maxMs = 3_000L))   // first retry keeps the base
+        assertEquals(1_000L, PartyLogic.pollDelayMs(2, baseMs = 500L, maxMs = 3_000L))
+        assertEquals(3_000L, PartyLogic.pollDelayMs(9, baseMs = 500L, maxMs = 3_000L))
+    }
+
     // ------------------------------------------------------------------------------------ codes
 
     @Test fun codesAreSixUppercaseLetters() {

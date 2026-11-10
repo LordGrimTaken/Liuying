@@ -60,6 +60,8 @@ class PartyController(
     private var localPlayback: (() -> PartyLocalPlayback)? = null
     private var applyRemote: ((PartyPlaybackState) -> Unit)? = null
     private var pollJob: Job? = null
+    /** Consecutive failed polls; drives the backoff so an offline phone does not poll every 2 s. */
+    private var pollFailures = 0
     private var pushJob: Job? = null
     private var lastRev = 0L
     private var lastPushAt = 0L
@@ -161,11 +163,11 @@ class PartyController(
         stopLoops()
         pollJob = scope.launch {
             while (isActive) {
-                delay(PartyLogic.POLL_MS)
+                delay(PartyLogic.pollDelayMs(pollFailures))
                 val code = _state.value.code ?: break
                 when (val r = api.get(code)) {
-                    is ApiResult.Err -> handlePollError(r)
-                    is ApiResult.Ok -> handleRoom(r.value)
+                    is ApiResult.Err -> { pollFailures++; handlePollError(r) }
+                    is ApiResult.Ok -> { pollFailures = 0; handleRoom(r.value) }
                 }
             }
         }
@@ -181,6 +183,7 @@ class PartyController(
 
     private fun stopLoops() {
         pollJob?.cancel(); pollJob = null
+        pollFailures = 0
         pushJob?.cancel(); pushJob = null
     }
 
