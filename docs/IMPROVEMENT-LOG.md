@@ -473,6 +473,36 @@ contract than invent the rules while writing file I/O.
 
 **Note:** local commit only, as asked. Nothing pushed.
 
+## Cycle 22 — 2026-11-10 — downloads: the storage slice that survives a process death (local commit only)
+
+**Measured (before):** cycle 21 settled the queue rules but there were no files yet. The design promised that a
+half-finished download survives the process being killed; nothing implemented that claim.
+
+**Changed:** `data/download/DownloadStore.kt` — the file side of L122, with no Android APIs so it is tested on the
+JVM against a temporary directory:
+- one directory per title (`downloads/<type>/<titleId>/`), file named after the **video id** so the directory
+  already carries the type and title;
+- `.part` while transferring, renamed on completion, with the real byte count read from the file rather than the
+  size the server promised;
+- a single `index.json` at the root (schema + items) so the queue survives a restart, and an unreadable index is
+  treated as "nothing" instead of crashing;
+- `delete` removes the bytes and the now-empty title directory;
+- `freeBytes()` for the pre-flight check, and `downloadExtension()` that prefers a known media extension from the
+  filename, then the URL, then `mkv`.
+
+**Measured (after):** **376 tests** (was 368), 0 failures, 4 skipped — eight `DownloadStoreTest` cases: empty
+store, queue survives a restart, unreadable index, safe file naming, completion renaming + real size, delete
+removing the directory, partial-file size, and extension choice.
+
+**Two bugs the tests caught in this new code:** path helpers called `mkdirs()` as a side effect, so asking for a
+file's path could recreate the directory that had just been deleted; and file names used the whole key instead of
+the video id, making `x y` become `movie_tt_1_x_y`. Both are fixed. One further failure was my own test calling
+the path helper after the delete, which is exactly the side effect above — the test now holds the `File` it wrote.
+
+**Honest status:** still nothing downloads: the Range transfer and the UI are the remaining slices.
+
+**Note:** local commit only, as asked. Nothing pushed.
+
 ## Known issue — flaky QuickJS plugin test in CI
 
 `QuickJsPluginRunnerTest.aLeftoverTimerDoesNotDelayTheAnswer` failed on the first CI run of cycle 2
