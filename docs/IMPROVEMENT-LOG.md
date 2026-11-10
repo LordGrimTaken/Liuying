@@ -503,6 +503,33 @@ the path helper after the delete, which is exactly the side effect above — the
 
 **Note:** local commit only, as asked. Nothing pushed.
 
+## Cycle 23 — 2026-11-10 — downloads: the transfer, and the resume bug it exposed (local commit only)
+
+**Measured (before):** the queue and the files existed but nothing could move bytes. The design claimed resume
+would continue a partial file with an HTTP `Range` request; that claim had never been exercised.
+
+**Changed:** `data/download/DownloadTransfer.kt` — one transfer of a direct http(s) file:
+- `Range: bytes=<have>-` when bytes are already on disk, and a **fresh start** when the server answers 200 instead
+  of 206 (appending to a full body would corrupt the file);
+- progress reported per chunk with a known or unknown total;
+- a body shorter than its `Content-Length` is an error, so a truncated file never passes as complete;
+- server errors and connection failures become `DownloadTransferException` and leave the partial file untouched;
+- `DownloadStore.localFileFor` for the player to prefer a local copy.
+
+**Measured (after):** **382 tests** (was 376), 0 failures, 4 skipped — six `DownloadTransferTest` cases against a
+local `MockWebServer`: whole file, resume with the `Range` header asserted on the recorded request, a server that
+ignores the range, a 503 that keeps the partial bytes, a dropped connection, and a short body.
+
+**The test caught a real bug in the new code:** the resume path opened the `.part` file with `outputStream()`,
+which truncates — so a resumed download silently lost the bytes it already had and produced a file whose head was
+missing. It now appends only on a 206, and opens empty otherwise.
+
+**Honest status:** still nothing downloads from the UI. What is left is wiring: a queue worker that applies
+`DownloadLogic.plan`, a Download action on stream rows, the Downloads section, and preferring the local file in
+the player. Those are UI/plumbing slices, not logic that tests can protect.
+
+**Note:** local commit only, as asked. Nothing pushed.
+
 ## Known issue — flaky QuickJS plugin test in CI
 
 `QuickJsPluginRunnerTest.aLeftoverTimerDoesNotDelayTheAnswer` failed on the first CI run of cycle 2
