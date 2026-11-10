@@ -65,11 +65,16 @@ object ShelfStatuses {
      * A movie is Completed once watched, Watching while in progress. A series is Watching once any episode was started
      * or watched (a catalog page does not say when a whole series is finished). Anything else is Planned.
      */
-    fun of(type: String, rows: List<ProgressEntry>): ShelfStatus {
+    fun of(type: String, rows: List<ProgressEntry>, knownEpisodes: Int? = null): ShelfStatus {
         val started = rows.any { it.watched || it.positionMs > 0 }
         return when {
             !started -> ShelfStatus.Planned
             type.equals("movie", true) -> if (rows.any { it.watched }) ShelfStatus.Completed else ShelfStatus.Watching
+            // A series is only Completed when the app knows the whole episode list and every episode is watched;
+            // guessing from the rows it happens to have would call a half-watched show finished.
+            knownEpisodes != null && knownEpisodes > 0 && rows.all { it.watched } &&
+                rows.filter { it.isEpisode && it.watched }.map { it.season to it.episode }.distinct().size >= knownEpisodes ->
+                ShelfStatus.Completed
             else -> ShelfStatus.Watching
         }
     }

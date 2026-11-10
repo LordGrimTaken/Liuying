@@ -121,6 +121,34 @@ the seeded rows imply (2 h + 1 h 30 m + 45 m + 45 m; four finished rows; today a
 **Next candidate:** backlog L005's remaining half — bulk "Mark watched" on the shelf silently ignores series
 (`ShelfViewModel.markWatched` filters to movies), so selecting series and tapping it does nothing.
 
+## Cycle 6 — 2026-11-10 — bulk "Mark watched" works for series, and a finished series reaches Completed
+
+**Measured (before):** `ShelfViewModel.markWatched` filtered the selection to movies, so selecting only series
+and tapping **Mark watched** did nothing at all — no change, no message. The same L005 gap kept every series at
+**Watching** forever, because `ShelfStatuses.of` had no way to know when a series was finished.
+
+**Changed:**
+- `domain/BulkWatch.kt` — pure plan for a mixed selection: films are marked directly, a series is expanded into
+  its episodes from the meta cache (one fetch only when five or fewer series are selected), and a series whose
+  episode list is unknown is *reported*, not dropped.
+- `ShelfViewModel.markWatched` applies the plan and publishes a one-line summary; `ShelfScreen` shows it in
+  the existing snackbar. Example: "Marked 2 titles watched · 1 series skipped (no episode list — open their
+  Details once)".
+- `ShelfStatuses.of(type, rows, knownEpisodes)` — a series is **Completed** only when the app knows the whole
+  episode list and every episode is watched; otherwise it stays Watching. The shelf looks up the cached meta
+  only for series whose rows are all watched, so the common case costs nothing.
+
+**Measured (after):** **282 tests** (was 274), 0 failures, 4 skipped — six `BulkWatchTest` cases (movies,
+known series, unknown series, mixed, malformed episodes, empty selection) and a series-completion test
+(complete list, list longer than watched, one unfinished row, duplicate rows).
+
+**Visually verified:** `LIUYING_SHOTS=1 … --tests '*ShelfStatusShotsTest*'` seeds a two-episode series with
+both episodes watched plus a half-watched one, then opens Shelf → **Completed**. The render shows exactly one
+tile ("Finished Show"); "Half Watched" is excluded.
+
+**Next candidate:** the Today screen still has no equivalent for a finished series, and `TitleActions`
+long-press "Mark watched" remains movie-only — the same decision can now be reused there.
+
 ## Known issue — flaky QuickJS plugin test in CI
 
 `QuickJsPluginRunnerTest.aLeftoverTimerDoesNotDelayTheAnswer` failed on the first CI run of cycle 2

@@ -38,6 +38,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.LaunchedEffect
 import com.liuying.app.data.settings.LibrarySort
 import com.liuying.app.data.settings.LibraryView
 import com.liuying.app.domain.TypeFilter
@@ -85,6 +86,8 @@ fun ShelfScreen(navigator: Navigator) {
     fun keyOf(e: ShelfEntry) = e.item.type + "|" + e.item.id
     val open = { e: ShelfEntry -> if (selecting) selected = if (keyOf(e) in selected) selected - keyOf(e) else selected + keyOf(e) else navigator.openTitle(e.item.type, e.item.id) }
     val snackbar = remember { androidx.compose.material3.SnackbarHostState() }
+    val bulkMessage by vm.message.collectAsStateWithLifecycle()
+    LaunchedEffect(bulkMessage) { bulkMessage?.let { snackbar.showSnackbar(it); vm.clearMessage() } }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val removeWithUndo = { item: LibraryItem ->
         vm.remove(item)

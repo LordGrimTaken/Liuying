@@ -27,6 +27,21 @@ class Wave1UiLogicTest {
     @Test fun shelfStatusSeries() {
         assertEquals(ShelfStatus.Planned, ShelfStatuses.of("series", listOf(prog("series", "s", s = 1, e = 1))))
         assertEquals(ShelfStatus.Watching, ShelfStatuses.of("series", listOf(prog("series", "s", watched = true, s = 1, e = 1))))
+        // Without an episode list the status stays Watching: the rows alone cannot prove the series is finished.
+        assertEquals(ShelfStatus.Watching, ShelfStatuses.of("series", listOf(prog("series", "s", watched = true, s = 1, e = 1)), null))
+    }
+
+    @Test fun aSeriesIsCompletedOnlyWhenEveryKnownEpisodeIsWatched() {
+        val s1 = prog("series", "s", watched = true, s = 1, e = 1)
+        val s2 = prog("series", "s", watched = true, s = 1, e = 2)
+        assertEquals(ShelfStatus.Completed, ShelfStatuses.of("series", listOf(s1, s2), knownEpisodes = 2))
+        // A known list longer than what was watched keeps it Watching.
+        assertEquals(ShelfStatus.Watching, ShelfStatuses.of("series", listOf(s1, s2), knownEpisodes = 3))
+        // One unfinished row blocks completion even when the count matches.
+        val s3 = prog("series", "s", pos = 4_000, s = 1, e = 3)
+        assertEquals(ShelfStatus.Watching, ShelfStatuses.of("series", listOf(s1, s2, s3), knownEpisodes = 2))
+        // The same rows seen twice (e.g. a re-watch) do not double-count.
+        assertEquals(ShelfStatus.Completed, ShelfStatuses.of("series", listOf(s1, s2, s2), knownEpisodes = 2))
     }
 
     @Test fun testSummary() {
