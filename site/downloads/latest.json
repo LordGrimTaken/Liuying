@@ -1,9 +1,9 @@
 {
-  "versionName": "0.6.1",
-  "versionCode": 11,
-  "apkUrl": "https://www.liuyingapp.com/downloads/Liuying-0.6.1.apk",
-  "sha256": "cea23975030020ca994f563b99fdb043b43a0750c0be31f7cf0115f8e3bfddd4",
-  "sizeBytes": 16159583,
-  "releasedAt": "2026-10-23T06:13:12Z",
-  "notes": "Plugins: DNS retry and fallback, fixes for plugins that returned no result, cheerio and crypto-js support, readable grouped plugin errors, Retry failed plugins"
+  "versionName": "0.7.0",
+  "versionCode": 12,
+  "apkUrl": "https://www.liuyingapp.com/downloads/Liuying-0.7.0.apk",
+  "sha256": "2162e912826fedec6efa8bbdec1f27f76ecce4b127e59566dc6d4ad9b524ed91",
+  "sizeBytes": 16225151,
+  "releasedAt": "2026-11-11T04:05:45Z",
+  "notes": "Series now reach Completed; watched state and Hide watched work on the Movies and Series tabs; the hero skips watched titles; resume follows your completion threshold; Up Next never offers an unaired episode; metadata from several sources merges instead of losing seasons; SD streams are recognised; sync and the watch party retry with backoff."
 }

@@ -49,7 +49,14 @@ if [ -z "$APKSIGNER" ]; then
   [ -n "$SDK" ] && APKSIGNER="$(ls -d "$SDK"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1 || true)"
 fi
 if [ -n "$APKSIGNER" ]; then
-  "$APKSIGNER" verify --print-certs "$SRC" | grep -E "Signer #1 certificate (DN|SHA-256)" || true
+  CERTS="$("$APKSIGNER" verify --print-certs "$SRC")"
+  echo "$CERTS" | grep -E "Signer #1 certificate (DN|SHA-256)" || true
+  # Never publish a debug-signed build: it would be a different signer from every later release.
+  if echo "$CERTS" | grep -q "CN=Android Debug"; then
+    echo "Refusing to publish: the APK is signed with the Android debug key." >&2
+    echo "Set LIUYING_KEYSTORE / LIUYING_KEYSTORE_PASSWORD / LIUYING_KEY_PASSWORD, or fix keystore.properties." >&2
+    exit 1
+  fi
   "$APKSIGNER" verify "$SRC"
 else
   echo "(apksigner not found; skipping signature check)"

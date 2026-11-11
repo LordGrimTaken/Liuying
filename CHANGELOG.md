@@ -3,6 +3,24 @@
 Notable changes to Liuying, newest first. Versions match `liuying.versionName` in `gradle.properties`;
 the version code increments with every release.
 
+## 0.7.0 — 2026-11-11
+
+First build signed with the new release key. **If you have 0.6.1 or older, uninstall it once** before installing
+this version; later updates install over it normally.
+
+- A series reaches **Completed** on the shelf once its whole episode list is watched, and "Mark watched" /
+  "Mark unwatched" work on series too, not just films.
+- The Movies and Series tabs now show watched badges, offer the poster watched action and honour **Hide watched**.
+- A selected poster says "Selected" instead of claiming it was "Seen".
+- The Today hero no longer features something you have already watched.
+- Resume follows your completion threshold: with it at 95 %/98 % a title watched to 93 % continues instead of
+  restarting.
+- Up Next never offers an episode that has not aired.
+- Metadata from several sources merges (episode lists and credits union instead of the first source winning).
+- Streams tagged only "SD" are parsed as SD.
+- Sync and the watch-party poll/host writes retry with backoff instead of hammering every 2 s.
+- Export: the JSON carries a schema marker.
+
 ## Unreleased
 
 - Watch party: a host creates a room and shares a link; guests follow play, pause and seek by polling the

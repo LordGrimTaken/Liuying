@@ -11,7 +11,9 @@ plugins {
 // Release signing: keystore.properties in the repository root, or LIUYING_* environment variables.
 // Absent both, release falls back to the debug key (installable, but not upgradable from a real release).
 val signingProps = Properties().apply {
-    val f = file(System.getenv("LIUYING_KEYSTORE_PROPERTIES") ?: "keystore.properties")
+    // Resolved against the repository root, not this module: file("keystore.properties") would look in app/,
+    // find nothing, and silently fall back to the debug key — which is exactly how 0.7.0 was first published.
+    val f = file(System.getenv("LIUYING_KEYSTORE_PROPERTIES") ?: rootProject.file("keystore.properties").absolutePath)
     if (f.isFile) f.inputStream().use { load(it) }
 }
 fun signingValue(env: String, prop: String): String? =

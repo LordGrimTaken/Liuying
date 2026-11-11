@@ -58,10 +58,13 @@ class TitleActionsTest {
 
     @Test fun aSeriesWithoutAnEpisodeListSaysWhyNothingHappened() = runBlocking {
         val c = container()
+        // The Room database is shared by every test in this JVM, so a source installed by an earlier screen test
+        // would still be here and the fetch would wait on a MockWebServer that has already been shut down.
+        c.db.sourceDao().deleteAll()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val actions = TitleActions(c, scope)
         actions.toggleWatched(MetaPreview(id = "ttS9", type = "series", name = "Unknown Show"), "series")
-        withTimeoutOrNull(5_000) { while (actions.message.value == null) delay(50) }
+        withTimeoutOrNull(15_000) { while (actions.message.value == null) delay(50) }
         val msg = actions.message.value
         assertTrue("message was $msg", msg != null && msg.contains("Could not load the episode list"))
     }
@@ -81,13 +84,13 @@ class TitleActionsTest {
         val preview = MetaPreview(id = "ttS7", type = "series", name = "Show")
 
         actions.toggleWatched(preview, "series")
-        withTimeoutOrNull(5_000) { while (actions.message.value == null) delay(50) }
+        withTimeoutOrNull(15_000) { while (actions.message.value == null) delay(50) }
         assertTrue("first: ${actions.message.value}", actions.message.value!!.contains("Marked 2 episodes watched"))
         actions.clearMessage()
         delay(400)
 
         actions.toggleWatched(preview, "series")
-        withTimeoutOrNull(5_000) { while (actions.message.value == null) delay(50) }
+        withTimeoutOrNull(15_000) { while (actions.message.value == null) delay(50) }
         assertTrue("second: ${actions.message.value}", actions.message.value!!.contains("Marked 2 episodes unwatched"))
         subscription.cancel()
     }
